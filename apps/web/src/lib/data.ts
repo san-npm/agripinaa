@@ -8,7 +8,7 @@ import {
   type Feedback,
   type IndexStats,
   type Page,
-} from '@foyer/agent-index';
+} from '@agripinaa/agent-index';
 import { cacheLife } from 'next/cache';
 
 /** The marketplace currently serves BNB Smart Chain mainnet. */

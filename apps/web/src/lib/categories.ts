@@ -1,4 +1,4 @@
-import type { Category } from "@foyer/agent-index";
+import type { Category } from "@agripinaa/agent-index";
 
 export const CATEGORY_INFO: Record<
   Category,

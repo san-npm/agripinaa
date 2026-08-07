@@ -1,4 +1,4 @@
-import type { AgentSummary } from "@foyer/agent-index";
+import type { AgentSummary } from "@agripinaa/agent-index";
 import Link from "next/link";
 
 import { FreshnessStamp } from "./FreshnessStamp";

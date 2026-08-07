@@ -3,7 +3,7 @@ import {
   BSC_TESTNET,
   ERC8004_REGISTRIES,
   IDENTITY_REGISTRY_ABI,
-} from '@foyer/shared';
+} from '@agripinaa/shared';
 import {
   createPublicClient,
   fallback,
