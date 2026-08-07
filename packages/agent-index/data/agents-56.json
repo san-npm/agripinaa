@@ -1,0 +1,5750 @@
+{
+  "chainId": 56,
+  "seededAt": "2026-08-07T18:39:09.967Z",
+  "items": [
+    {
+      "id": "56-258571",
+      "chainId": 56,
+      "tokenId": "258571",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258571",
+      "name": "Agent #258571",
+      "description": "",
+      "imageUrl": null,
+      "owner": "0xaad1105c3c4d67bf6f2eef280645cdade81bc427",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T18:38:35Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258570",
+      "chainId": 56,
+      "tokenId": "258570",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258570",
+      "name": "AlloyPro.agent",
+      "description": "AlloyPro.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xbc33ac9d1385427e56ad71e9b63f3fa3c0e80c96",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:38:17Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258569",
+      "chainId": 56,
+      "tokenId": "258569",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258569",
+      "name": "SeaLambda.agent",
+      "description": "SeaLambda.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc4cd7e8ee12434539a247b46db9ef40f9a979832",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:38:11Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258568",
+      "chainId": 56,
+      "tokenId": "258568",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258568",
+      "name": "Deep-PortEdge.agent",
+      "description": "Deep-PortEdge.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x735d2be00aae4042e87d8e0c4aa347cd7800f64c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:37:52Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258567",
+      "chainId": 56,
+      "tokenId": "258567",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258567",
+      "name": "Wild-Go.agent",
+      "description": "Wild-Go.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xf3f70242517a164227b340e31bb34b4e3a2d14c5",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:37:01Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258566",
+      "chainId": 56,
+      "tokenId": "258566",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258566",
+      "name": "Mint-Fund.agent",
+      "description": "Mint-Fund.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xac200fda784b69d09993a3e4bdaefb39ed9074c4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:34:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258565",
+      "chainId": 56,
+      "tokenId": "258565",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258565",
+      "name": "IonDevMesh.agent",
+      "description": "IonDevMesh.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x46efcb02091f3a6fe07f8b9a9692a4947774faa7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:29:09Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258564",
+      "chainId": 56,
+      "tokenId": "258564",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258564",
+      "name": "Hawk-VestPhi.agent",
+      "description": "Hawk-VestPhi.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x66d09998cfa483377625e4e9d1fe25f63ef83177",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:28:36Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258563",
+      "chainId": 56,
+      "tokenId": "258563",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258563",
+      "name": "Ion_Gold.agent",
+      "description": "Ion_Gold.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x1263061ee1a3b4ee008b46b446243ecf218cdf80",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:28:31Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258562",
+      "chainId": 56,
+      "tokenId": "258562",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258562",
+      "name": "Nano-Zero.agent",
+      "description": "Nano-Zero.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xd6ca4064fe822913f98c7e7d6eaa03922ae4e6fb",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:27:51Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258561",
+      "chainId": 56,
+      "tokenId": "258561",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258561",
+      "name": "ApexWave.agent",
+      "description": "ApexWave.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc49be2c1a1cf29ed6929ef8630a426d54c4a0894",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:27:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258560",
+      "chainId": 56,
+      "tokenId": "258560",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258560",
+      "name": "PhoenixScout404.agent",
+      "description": "PhoenixScout404.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xacfefa2e5e2eef2faa937ed850898716502f7c11",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:27:16Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258559",
+      "chainId": 56,
+      "tokenId": "258559",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258559",
+      "name": "Phase-mk3.agent",
+      "description": "Phase-mk3.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x2d774ea5ac966d96f9ab3f14c500ea775f62bee9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:25:29Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258558",
+      "chainId": 56,
+      "tokenId": "258558",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258558",
+      "name": "Alpha_ize.agent",
+      "description": "Alpha_ize.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xaf2ad94a1cabd4014952b150d4ccb85ccbc8557c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:25:20Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258557",
+      "chainId": 56,
+      "tokenId": "258557",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258557",
+      "name": "Chain_Neural-Trust.agent",
+      "description": "Chain_Neural-Trust.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0ae540cd2aab18e5fb8ff012b87f1adcc9731c86",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:25:09Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258556",
+      "chainId": 56,
+      "tokenId": "258556",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258556",
+      "name": "OrionLeap.agent",
+      "description": "OrionLeap.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x94dc071e4a44247e5b98a3edb01bdd47e18d92af",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:24:17Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258555",
+      "chainId": 56,
+      "tokenId": "258555",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258555",
+      "name": "Aura_101.agent",
+      "description": "Aura_101.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xbcba5f3b1fba725f3491f2896a1a0d6ccb013f9e",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:24:01Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258554",
+      "chainId": 56,
+      "tokenId": "258554",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258554",
+      "name": "Phase_Cloud.agent",
+      "description": "Phase_Cloud.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x98aafd2bb82e91c766cbb1d1a45a8adf5107a4bd",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:23:20Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258553",
+      "chainId": 56,
+      "tokenId": "258553",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258553",
+      "name": "ScanCore.agent",
+      "description": "ScanCore.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xf8e920229563eb64c7995eeee96a4459fefd146f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:23:09Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258552",
+      "chainId": 56,
+      "tokenId": "258552",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258552",
+      "name": "BoltNano.agent",
+      "description": "BoltNano.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xda01e17efa1682635ad7329a716505e676228292",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:21:04Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258551",
+      "chainId": 56,
+      "tokenId": "258551",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258551",
+      "name": "Link-Beta.agent",
+      "description": "Link-Beta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x3af48afc14671bbed23e7cc72a5d8f1e7ada53c4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:20:15Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258550",
+      "chainId": 56,
+      "tokenId": "258550",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258550",
+      "name": "BlockNode.agent",
+      "description": "BlockNode.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x3f876b952fc1f9f826fa78b0fff54df6fc6ace8a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:20:10Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258549",
+      "chainId": 56,
+      "tokenId": "258549",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258549",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x34d75e95dafd1afaf546422ff82c1e50b062e653",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T18:20:05Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258548",
+      "chainId": 56,
+      "tokenId": "258548",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258548",
+      "name": "CraftSun_7777.agent",
+      "description": "CraftSun_7777.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xcc7a1d7df937e5985d61d540603cf739cbb57129",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:19:59Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258547",
+      "chainId": 56,
+      "tokenId": "258547",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258547",
+      "name": "Bolt-360.agent",
+      "description": "Bolt-360.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xd0b5d6ef75c32904e4139b95ff786af1cfbbac91",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:19:56Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258546",
+      "chainId": 56,
+      "tokenId": "258546",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258546",
+      "name": "UltraMoonster.agent",
+      "description": "UltraMoonster.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x7f63d2132470d4ffcf935ec4ad7cbf4c0204dc1c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:19:20Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258545",
+      "chainId": 56,
+      "tokenId": "258545",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258545",
+      "name": "Tokenify.agent",
+      "description": "Tokenify.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x6ad5fca8c14e10be65e47cc164d762728777d1c6",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:18:06Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258544",
+      "chainId": 56,
+      "tokenId": "258544",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258544",
+      "name": "SolCashLite.agent",
+      "description": "SolCashLite.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x70b58abf8db3e8968d1c941025ae070c71a40046",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:18:03Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258543",
+      "chainId": 56,
+      "tokenId": "258543",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258543",
+      "name": "Nexus-Brain.agent",
+      "description": "Nexus-Brain.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xd734916d89591bd4893b4bfda69902d832c4de8b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:18:01Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258542",
+      "chainId": 56,
+      "tokenId": "258542",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258542",
+      "name": "BlazeWave.agent",
+      "description": "BlazeWave.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8386bbecdb9f1a5b63b6c0d27bfc713b582c0f7e",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:16:12Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258541",
+      "chainId": 56,
+      "tokenId": "258541",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258541",
+      "name": "DataSafe.agent",
+      "description": "DataSafe.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x087fa207d761e014776dd487e0f635ca0fb6d99d",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:14:48Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258540",
+      "chainId": 56,
+      "tokenId": "258540",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258540",
+      "name": "Echo-Orbit-Mesh.agent",
+      "description": "Echo-Orbit-Mesh.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xea678d69f39e1187e2c8bf76a9800093b0868a9a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:13:49Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258539",
+      "chainId": 56,
+      "tokenId": "258539",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258539",
+      "name": "ApexSwapgen2.agent",
+      "description": "ApexSwapgen2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa38fdd4519a539d17fbc7538ca2798d5dfb200d2",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:13:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258538",
+      "chainId": 56,
+      "tokenId": "258538",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258538",
+      "name": "Token_ize.agent",
+      "description": "Token_ize.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x68f67258d4ffd0b1034d3cc88358d33961587dc7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:13:36Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258537",
+      "chainId": 56,
+      "tokenId": "258537",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258537",
+      "name": "Shield_404.agent",
+      "description": "Shield_404.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe7afc461056357805dedb2e2e90079e61825f076",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:11:54Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258536",
+      "chainId": 56,
+      "tokenId": "258536",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258536",
+      "name": "Arc-SolvePro.agent",
+      "description": "Arc-SolvePro.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x6fc6a3de38780d149e35391169b8ff338a63c3b3",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:11:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258535",
+      "chainId": 56,
+      "tokenId": "258535",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258535",
+      "name": "Hub-ster.agent",
+      "description": "Hub-ster.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x57b44c7583d4978fecc77293f3c044bd4c051d71",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:11:26Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258534",
+      "chainId": 56,
+      "tokenId": "258534",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258534",
+      "name": "LinkDock.agent",
+      "description": "LinkDock.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xfc43961cb6dda85fbdb2b44e157bc1652c94fcaa",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:10:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258533",
+      "chainId": 56,
+      "tokenId": "258533",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258533",
+      "name": "Sage-Hub.agent",
+      "description": "Sage-Hub.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x9f00a4ebab98baea5e136d93816ba6a92d599f71",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:10:39Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258532",
+      "chainId": 56,
+      "tokenId": "258532",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258532",
+      "name": "MacroIronCoin.agent",
+      "description": "MacroIronCoin.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x43da89048c476d1b79230de1a22a738de1dd780b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:10:38Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258531",
+      "chainId": 56,
+      "tokenId": "258531",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258531",
+      "name": "Vector-007.agent",
+      "description": "Vector-007.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x587ddb77be5ab4301aefb7fcd06c430f70e3d964",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:10:19Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258530",
+      "chainId": 56,
+      "tokenId": "258530",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258530",
+      "name": "Mint99.agent",
+      "description": "Mint99.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x9b3c6898d3c3ce5c9eec804bed2431ebf2375e38",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:09:12Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258529",
+      "chainId": 56,
+      "tokenId": "258529",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258529",
+      "name": "Tera_Flow-99.agent",
+      "description": "Tera_Flow-99.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa2795100d320c144f2f32cac5db6bf29aec1552c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:08:32Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258528",
+      "chainId": 56,
+      "tokenId": "258528",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258528",
+      "name": "Capgen1.agent",
+      "description": "Capgen1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x61c28d6fedd49b3d73f0923a0f1b704fde1c09e4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:08:03Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258527",
+      "chainId": 56,
+      "tokenId": "258527",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258527",
+      "name": "Cyber-Trade.agent",
+      "description": "Cyber-Trade.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xfa4d8a39eaf8ac993c1942b1991d1912707838da",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:07:09Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258526",
+      "chainId": 56,
+      "tokenId": "258526",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258526",
+      "name": "ChainPod.agent",
+      "description": "ChainPod.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xddd0abe2f3ca8833857463ceba6e1fbf62ead243",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:04:30Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258525",
+      "chainId": 56,
+      "tokenId": "258525",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258525",
+      "name": "Sol_Mini.agent",
+      "description": "Sol_Mini.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0b0663eb933df6b4a5d44033708b10d0a025519d",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:03:12Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258524",
+      "chainId": 56,
+      "tokenId": "258524",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258524",
+      "name": "ChainSolve_yx.agent",
+      "description": "ChainSolve_yx.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x9d7c8c158fade7eed17f3dc726fb9be3d0b0bd62",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:02:55Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258523",
+      "chainId": 56,
+      "tokenId": "258523",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258523",
+      "name": "RavenPort7777.agent",
+      "description": "RavenPort7777.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc7057d5012ccff1d58d165bb67a7006622cbfd7f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:02:33Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258522",
+      "chainId": 56,
+      "tokenId": "258522",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258522",
+      "name": "GhostSkyDAO.agent",
+      "description": "GhostSkyDAO.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0fd9fe66c2ad5649a929e4a8fd2695f7dcf41e76",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:02:32Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258521",
+      "chainId": 56,
+      "tokenId": "258521",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258521",
+      "name": "GigaAlloy.agent",
+      "description": "GigaAlloy.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x6c58f921ba825ce3c17534f7387fdae441cd40d8",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:02:09Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258520",
+      "chainId": 56,
+      "tokenId": "258520",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258520",
+      "name": "EchoFindCloud.agent",
+      "description": "EchoFindCloud.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x9a2f4a32c79280fce8fd9aac521cae65af0da99b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:01:46Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258519",
+      "chainId": 56,
+      "tokenId": "258519",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258519",
+      "name": "ApexPortster.agent",
+      "description": "ApexPortster.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe34d48352dd877cc1c2d5181df75b0c8ef6c7b67",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:01:24Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258518",
+      "chainId": 56,
+      "tokenId": "258518",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258518",
+      "name": "SageBox.agent",
+      "description": "SageBox.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x58d5582b2aa3297f14b5f457f3b64030c4ca1769",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:01:13Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258517",
+      "chainId": 56,
+      "tokenId": "258517",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258517",
+      "name": "ZenSynth-Nano.agent",
+      "description": "ZenSynth-Nano.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x4092f97c60885d4b0250860a77c98d26fc1acea1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:00:17Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258516",
+      "chainId": 56,
+      "tokenId": "258516",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258516",
+      "name": "Find_007.agent",
+      "description": "Find_007.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x2ba5533f15a0cb59aaaefb8f7d69595a6e2f6675",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T18:00:04Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258514",
+      "chainId": 56,
+      "tokenId": "258514",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258514",
+      "name": "Sky_v3.agent",
+      "description": "Sky_v3.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa393e13dc671303fa5de95ca4a1b59d630dd9051",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:58:22Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258513",
+      "chainId": 56,
+      "tokenId": "258513",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258513",
+      "name": "ZetaGold404.agent",
+      "description": "ZetaGold404.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc19e763a9cc364e9414561db693232723e2ebd81",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:57:45Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258512",
+      "chainId": 56,
+      "tokenId": "258512",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258512",
+      "name": "ForgeBridgeMesh.agent",
+      "description": "ForgeBridgeMesh.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x2bd703ad0c24efe40c2f4ec7ce7a2e2ea217b07e",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:55:25Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258511",
+      "chainId": 56,
+      "tokenId": "258511",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258511",
+      "name": "Phoenix-Tradegen2.agent",
+      "description": "Phoenix-Tradegen2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x04cb951ae02a1c7c6bc9fa16789cb53f93f14500",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:54:20Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258510",
+      "chainId": 56,
+      "tokenId": "258510",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258510",
+      "name": "FundNode.agent",
+      "description": "FundNode.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xcdebc5810e03bd3cc9bd3c578b7ca503a6534a33",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:53:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258509",
+      "chainId": 56,
+      "tokenId": "258509",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258509",
+      "name": "MuseSeekora.agent",
+      "description": "MuseSeekora.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x84fb0f6cf65ead7b1ff25df75230e59f9bded092",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:51:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258508",
+      "chainId": 56,
+      "tokenId": "258508",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258508",
+      "name": "Link-Chain.agent",
+      "description": "Link-Chain.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0eb9a2037370c1cd15f6cd166539ca925c9c2134",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:47:30Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258507",
+      "chainId": 56,
+      "tokenId": "258507",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258507",
+      "name": "EdgeKnow.agent",
+      "description": "EdgeKnow.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x09d33117a1a5cf738ecbd8091491de4232c061b4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:46:56Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258506",
+      "chainId": 56,
+      "tokenId": "258506",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258506",
+      "name": "ArcLite.agent",
+      "description": "ArcLite.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x3e3f2449562a18d9ecddd80133bbc5921ce4d785",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:46:32Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258505",
+      "chainId": 56,
+      "tokenId": "258505",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258505",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x756249b23a7317c16069a3e5447db5f35ab97de0",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T17:45:18Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258504",
+      "chainId": 56,
+      "tokenId": "258504",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258504",
+      "name": "Coregen2.agent",
+      "description": "Coregen2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xb2ec4892eeb36f062ca7d13a38b2602c42e9c9d5",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:45:03Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258503",
+      "chainId": 56,
+      "tokenId": "258503",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258503",
+      "name": "GridLoop-gen1.agent",
+      "description": "GridLoop-gen1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0ab71d947fe41da6058404933c22b9e525e46c42",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:44:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258502",
+      "chainId": 56,
+      "tokenId": "258502",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258502",
+      "name": "Token_LearnHive.agent",
+      "description": "Token_LearnHive.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8c62ca2fd875a5ac3e232a901d15d1e7477dcdf1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:44:38Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:49.447Z"
+      }
+    },
+    {
+      "id": "56-258502",
+      "chainId": 56,
+      "tokenId": "258502",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258502",
+      "name": "Token_LearnHive.agent",
+      "description": "Token_LearnHive.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8c62ca2fd875a5ac3e232a901d15d1e7477dcdf1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:44:38Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258501",
+      "chainId": 56,
+      "tokenId": "258501",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258501",
+      "name": "Turbo-MoonEdge.agent",
+      "description": "Turbo-MoonEdge.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5d379ade6c6ef99c0dac2e4830ec232fb33ccdef",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:42:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258500",
+      "chainId": 56,
+      "tokenId": "258500",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258500",
+      "name": "Mint-Guard.agent",
+      "description": "Mint-Guard.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x15df7b2edccf0009b614de10184f6007eaba6538",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:41:58Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258499",
+      "chainId": 56,
+      "tokenId": "258499",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258499",
+      "name": "Peta_360.agent",
+      "description": "Peta_360.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc939b7a1bc0e0f42e534fbc7dad9ba324c567b3f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:41:53Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258498",
+      "chainId": 56,
+      "tokenId": "258498",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258498",
+      "name": "BrightSpin_42.agent",
+      "description": "BrightSpin_42.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x24072885f6f26346b2f126f7bc261c0e96885668",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:41:40Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258497",
+      "chainId": 56,
+      "tokenId": "258497",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258497",
+      "name": "Phoenixv3.agent",
+      "description": "Phoenixv3.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe47cdbe2bc26088d5966da9d7a5c090dccb3b595",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:41:13Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258496",
+      "chainId": 56,
+      "tokenId": "258496",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258496",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x31dd3a6b9830d102f90f54cce6c0151112ed9396",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T17:41:07Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258495",
+      "chainId": 56,
+      "tokenId": "258495",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258495",
+      "name": "Rockica.agent",
+      "description": "Rockica.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x21709b35bc88b90f86257a7e37a1aa3964ae2ccc",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:40:58Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258494",
+      "chainId": 56,
+      "tokenId": "258494",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258494",
+      "name": "NovaFundGo.agent",
+      "description": "NovaFundGo.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x16d48713d87ff8c17768e68829dc310c188084b7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:40:35Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258493",
+      "chainId": 56,
+      "tokenId": "258493",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258493",
+      "name": "Farm-Hive.agent",
+      "description": "Farm-Hive.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x9aa33394dbe10cf6cb7f3435998c423ffaf1f2e1",
+      "category": "yield",
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:40:32Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258492",
+      "chainId": 56,
+      "tokenId": "258492",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258492",
+      "name": "Cipher-Steel.agent",
+      "description": "Cipher-Steel.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x88a3c049554749f14beee43bb0dcabfaeafcd047",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:40:23Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258491",
+      "chainId": 56,
+      "tokenId": "258491",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258491",
+      "name": "Byteium.agent",
+      "description": "Byteium.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe4428e627ad64055eb69748c636cd9571feee078",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:39:16Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258490",
+      "chainId": 56,
+      "tokenId": "258490",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258490",
+      "name": "WiseEarth_ize.agent",
+      "description": "WiseEarth_ize.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x1098599c7685a9291de9725456a0541314067730",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:39:11Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258489",
+      "chainId": 56,
+      "tokenId": "258489",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258489",
+      "name": "PhantomAlgo.agent",
+      "description": "PhantomAlgo.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0adc6699a0939004a0464841dec36b3c0b0c141c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:37:53Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258488",
+      "chainId": 56,
+      "tokenId": "258488",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258488",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0xd61b43ba57d9710205dcdd9335504ee5f349b083",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T17:37:52Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258487",
+      "chainId": 56,
+      "tokenId": "258487",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258487",
+      "name": "ShadowMorphgen2.agent",
+      "description": "ShadowMorphgen2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5233c7cb99375e941a3fefc44941dc5d9428e7db",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:36:46Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258486",
+      "chainId": 56,
+      "tokenId": "258486",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258486",
+      "name": "Cyber_v2.agent",
+      "description": "Cyber_v2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x04db421678fa33d873ffeca913eb732796ac7bfe",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:35:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258485",
+      "chainId": 56,
+      "tokenId": "258485",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258485",
+      "name": "HelixThink.agent",
+      "description": "HelixThink.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc20576c0ee5d8ac0a83a13687ec31d26f47005d9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:35:23Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258484",
+      "chainId": 56,
+      "tokenId": "258484",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258484",
+      "name": "Brainica.agent",
+      "description": "Brainica.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xfa6ccd3d4e6d106ddd71fa7fab19c1718e41d854",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:35:16Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258483",
+      "chainId": 56,
+      "tokenId": "258483",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258483",
+      "name": "ProtoThink-lex.agent",
+      "description": "ProtoThink-lex.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x546dc58234540d8725ef23aa744585db1a7c70b6",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:34:00Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258482",
+      "chainId": 56,
+      "tokenId": "258482",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258482",
+      "name": "NanoMoonAlpha.agent",
+      "description": "NanoMoonAlpha.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa4313b6c1bd20adcd4eeaab00896459abc1a3ff5",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:32:29Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258481",
+      "chainId": 56,
+      "tokenId": "258481",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258481",
+      "name": "Ultra_BondFi.agent",
+      "description": "Ultra_BondFi.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa17c887e5fb097b254dfce91147b8bc5587947f9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:32:16Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258480",
+      "chainId": 56,
+      "tokenId": "258480",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258480",
+      "name": "Shadow_Trade_ara.agent",
+      "description": "Shadow_Trade_ara.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa7c286a9f823430f0594e62dbb7aa18edbe3501a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:30:13Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258479",
+      "chainId": 56,
+      "tokenId": "258479",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258479",
+      "name": "Pixel_Beam.agent",
+      "description": "Pixel_Beam.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x277734a47bc934d7369aaacb87e4481165025fce",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:30:07Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258478",
+      "chainId": 56,
+      "tokenId": "258478",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258478",
+      "name": "Link-BridgeBot.agent",
+      "description": "Link-BridgeBot.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xcb7f866d1af3f7225442ec14d97c832b3cc51a64",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:30:06Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258477",
+      "chainId": 56,
+      "tokenId": "258477",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258477",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x3fd27c2fce8610a5364be4e43c6799eeb31d0f4e",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T17:29:50Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258476",
+      "chainId": 56,
+      "tokenId": "258476",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258476",
+      "name": "Deca_X.agent",
+      "description": "Deca_X.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xee9cd167449ba558bbc2c1c1066bf242824ee0da",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:29:38Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258475",
+      "chainId": 56,
+      "tokenId": "258475",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258475",
+      "name": "StakeX.agent",
+      "description": "StakeX.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x6837c8774a57cdd6fb32e73c233c0bc6f5f97a35",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:29:22Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258474",
+      "chainId": 56,
+      "tokenId": "258474",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258474",
+      "name": "RavenCoil_Go.agent",
+      "description": "RavenCoil_Go.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x96abe81bcebd1892551c2d597a3cd9eb48770511",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:28:55Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258473",
+      "chainId": 56,
+      "tokenId": "258473",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258473",
+      "name": "Vector_Fi.agent",
+      "description": "Vector_Fi.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe0d654e3ed4f8bfead025a200451be4ef68c4a76",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:28:01Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258472",
+      "chainId": 56,
+      "tokenId": "258472",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258472",
+      "name": "MetaYieldPhi.agent",
+      "description": "MetaYieldPhi.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa54b4b74b9f60dccfb5cfdcf9f85b53cc4ee482a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:27:46Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258471",
+      "chainId": 56,
+      "tokenId": "258471",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258471",
+      "name": "Atlasv1.agent",
+      "description": "Atlasv1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xcd6b473825d7fe173ebd9761c052a076510121e3",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:26:28Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258470",
+      "chainId": 56,
+      "tokenId": "258470",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258470",
+      "name": "PulseMorph.agent",
+      "description": "PulseMorph.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xd578a816eec10f8d6cc519a780c26f774ffd542a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:26:24Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258469",
+      "chainId": 56,
+      "tokenId": "258469",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258469",
+      "name": "Tera_Hub.agent",
+      "description": "Tera_Hub.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x2f61d6822232131ba7cac226a37508e1f7788bff",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:25:32Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258468",
+      "chainId": 56,
+      "tokenId": "258468",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258468",
+      "name": "ArcEarn.agent",
+      "description": "ArcEarn.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x30be7fd9f6c7595271f08c8e5868a275de61fce4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:24:25Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258467",
+      "chainId": 56,
+      "tokenId": "258467",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258467",
+      "name": "AuraZero.agent",
+      "description": "AuraZero.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x00839f0472b3c67a7d32410023eb2ffe6f381563",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:24:20Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258466",
+      "chainId": 56,
+      "tokenId": "258466",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258466",
+      "name": "SageDevora.agent",
+      "description": "SageDevora.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xd49948a70ea665252611cd54c4d128a84904e77a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:24:16Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258465",
+      "chainId": 56,
+      "tokenId": "258465",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258465",
+      "name": "CloudMineLambda.agent",
+      "description": "CloudMineLambda.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xf369d751db17aedffec9b1b387597bebc73d177d",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:23:57Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258464",
+      "chainId": 56,
+      "tokenId": "258464",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258464",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x347e934abc47dc56b4d3128f1e8444aa0e276b2f",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T17:22:49Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258463",
+      "chainId": 56,
+      "tokenId": "258463",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258463",
+      "name": "Stake-v1.agent",
+      "description": "Stake-v1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x323699ddf21af1f11e9e2ab3e98c9bb881209234",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:21:52Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258462",
+      "chainId": 56,
+      "tokenId": "258462",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258462",
+      "name": "Pixel-Bond_ize.agent",
+      "description": "Pixel-Bond_ize.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5792fb206fa53b9cb66bb9f28c5e2a1aa5430394",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:21:40Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258461",
+      "chainId": 56,
+      "tokenId": "258461",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258461",
+      "name": "ZenPod.agent",
+      "description": "ZenPod.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x3d85896308598609aada5fd0f89c2fe66b742346",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:21:23Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258460",
+      "chainId": 56,
+      "tokenId": "258460",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258460",
+      "name": "Dark-Capster.agent",
+      "description": "Dark-Capster.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x88c314d72ee9d3859b990cca31691a337a0ccfa7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:21:14Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258459",
+      "chainId": 56,
+      "tokenId": "258459",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258459",
+      "name": "ChainIce-mk2.agent",
+      "description": "ChainIce-mk2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5a3baf2bb4c4c58fc8abc794ae473b527c74791a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:21:02Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258458",
+      "chainId": 56,
+      "tokenId": "258458",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258458",
+      "name": "Nebula-gen2.agent",
+      "description": "Nebula-gen2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x4083e7c837e4df487723196a2bc3f6e3e969d9ea",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:19:50Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258457",
+      "chainId": 56,
+      "tokenId": "258457",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258457",
+      "name": "WolfScangen2.agent",
+      "description": "WolfScangen2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa5570a5042f87e722ed85c2c201e3bdb1769cfe2",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:19:11Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258456",
+      "chainId": 56,
+      "tokenId": "258456",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258456",
+      "name": "Stakegen1.agent",
+      "description": "Stakegen1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa9443d316630c39f080e337fc62d9da89478c07c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:18:58Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258455",
+      "chainId": 56,
+      "tokenId": "258455",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258455",
+      "name": "MorphHive.agent",
+      "description": "MorphHive.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x76abfb1308e72f28e11128f72a417c114b4f30d1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:15:22Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258454",
+      "chainId": 56,
+      "tokenId": "258454",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258454",
+      "name": "ShadowGoldKappa.agent",
+      "description": "ShadowGoldKappa.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x9ad82cd2003c72f24fb4004bc2d40024adff1cb1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:14:53Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258453",
+      "chainId": 56,
+      "tokenId": "258453",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258453",
+      "name": "IonSeek.agent",
+      "description": "IonSeek.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xae7e33bac7ac1cf86cb4f6718820fd9502c10d42",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:12:56Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258452",
+      "chainId": 56,
+      "tokenId": "258452",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258452",
+      "name": "StormHubGo.agent",
+      "description": "StormHubGo.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0c7075750cb2f23ed542e496e9d44ba8553a0269",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:12:03Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258451",
+      "chainId": 56,
+      "tokenId": "258451",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258451",
+      "name": "Zeneon.agent",
+      "description": "Zeneon.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x2a6dedfa30c946ede18720176980626e03d1d03e",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:11:33Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258450",
+      "chainId": 56,
+      "tokenId": "258450",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258450",
+      "name": "LoopMesh.agent",
+      "description": "LoopMesh.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x20b78629aa57e7840631881bf3aed95e708f18b2",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:10:50Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258449",
+      "chainId": 56,
+      "tokenId": "258449",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258449",
+      "name": "Rush_Beta.agent",
+      "description": "Rush_Beta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8eb8982bdcb9b5c55041a92af224236e6ee29f2d",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:10:49Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258448",
+      "chainId": 56,
+      "tokenId": "258448",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258448",
+      "name": "MatrixMind.agent",
+      "description": "MatrixMind.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0983fb3016fe430170160ccb786a3bf5532de2ce",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:10:48Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258447",
+      "chainId": 56,
+      "tokenId": "258447",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258447",
+      "name": "Warp_v1.agent",
+      "description": "Warp_v1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xbd132fd809dca1ab4d39878f4dceac116db33e01",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:09:49Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258446",
+      "chainId": 56,
+      "tokenId": "258446",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258446",
+      "name": "Vortex_Edge.agent",
+      "description": "Vortex_Edge.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8e1a4f016efea04d7e84f9244f0d2e3c15c242ca",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:09:16Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258445",
+      "chainId": 56,
+      "tokenId": "258445",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258445",
+      "name": "Stellar-Core.agent",
+      "description": "Stellar-Core.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe6b506920a6e9b41199c844d14f07325ddea55d2",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:08:30Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258444",
+      "chainId": 56,
+      "tokenId": "258444",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258444",
+      "name": "AtlasChipCoin.agent",
+      "description": "AtlasChipCoin.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8cf1911c5c22568b4833b9a474e61964c7c8b366",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:08:22Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258443",
+      "chainId": 56,
+      "tokenId": "258443",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258443",
+      "name": "GhostMorph-One.agent",
+      "description": "GhostMorph-One.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x648086497d68793af861ae3be00d21681109d42f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:08:12Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258442",
+      "chainId": 56,
+      "tokenId": "258442",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258442",
+      "name": "Stake_Chain.agent",
+      "description": "Stake_Chain.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5733192e0438c3df194c8df9b02f1ecad1148ac9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:07:05Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258441",
+      "chainId": 56,
+      "tokenId": "258441",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258441",
+      "name": "CoreHive.agent",
+      "description": "CoreHive.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x3aedb0942948b517d23c10883866f9ec6b84189b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:05:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258440",
+      "chainId": 56,
+      "tokenId": "258440",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258440",
+      "name": "Grid_SynthSwarm.agent",
+      "description": "Grid_SynthSwarm.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x1dc886f6eaf59a6f86716aecbd3ee0c413bf895d",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:05:12Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258439",
+      "chainId": 56,
+      "tokenId": "258439",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258439",
+      "name": "FluxCodemk2.agent",
+      "description": "FluxCodemk2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xaa2e64f3b3cb91e14a6c53488454bbb532dbd55b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:05:06Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258438",
+      "chainId": 56,
+      "tokenId": "258438",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258438",
+      "name": "MoonNode.agent",
+      "description": "MoonNode.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xf35e22ee880f684c021050a8c9c49281c8c9e428",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:04:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258437",
+      "chainId": 56,
+      "tokenId": "258437",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258437",
+      "name": "MintTrackNode.agent",
+      "description": "MintTrackNode.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5a897ec3ce844491145f9d7f3c2b9791e4da50b4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:03:30Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258436",
+      "chainId": 56,
+      "tokenId": "258436",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258436",
+      "name": "SteelKappa.agent",
+      "description": "SteelKappa.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xc0b7b49b9144b80108d593fee3d1527b07f2e1e4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:02:45Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258435",
+      "chainId": 56,
+      "tokenId": "258435",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258435",
+      "name": "VortexGate.agent",
+      "description": "VortexGate.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x4407fdb531d709c15b774d018ec7c7cdf9c3cf06",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:02:41Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258434",
+      "chainId": 56,
+      "tokenId": "258434",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258434",
+      "name": "GridWatchTheta.agent",
+      "description": "GridWatchTheta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x89e641a6943a701ccdec4aa9fdbe1e18fdb8f9c6",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:01:40Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258433",
+      "chainId": 56,
+      "tokenId": "258433",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258433",
+      "name": "TurboSolve.agent",
+      "description": "TurboSolve.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xddb0ceec3a3c7bde61a0da43a0734f32334d0cc9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:01:20Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258432",
+      "chainId": 56,
+      "tokenId": "258432",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258432",
+      "name": "Echo_Make.agent",
+      "description": "Echo_Make.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe72ef525ecbc3199f581fc9f97dad9614b477499",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:01:00Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258431",
+      "chainId": 56,
+      "tokenId": "258431",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258431",
+      "name": "PhoenixDeFi.agent",
+      "description": "PhoenixDeFi.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x15932194857a11a4da8d09cc340a16c0de139245",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:00:43Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258430",
+      "chainId": 56,
+      "tokenId": "258430",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258430",
+      "name": "Pure_Code.agent",
+      "description": "Pure_Code.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x150f1d5433525235632e52a92466b461d556de27",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:00:40Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258429",
+      "chainId": 56,
+      "tokenId": "258429",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258429",
+      "name": "Boldize.agent",
+      "description": "Boldize.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x55a9cc2b5248fb43abd980fef7dedab5d3fceb34",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:00:30Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258428",
+      "chainId": 56,
+      "tokenId": "258428",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258428",
+      "name": "Dark7777.agent",
+      "description": "Dark7777.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x2f539902bfeb116b705f5e0d283db2094cfb5e82",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T17:00:22Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258427",
+      "chainId": 56,
+      "tokenId": "258427",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258427",
+      "name": "Axon-101.agent",
+      "description": "Axon-101.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xb5246fbf835af9d596c21ef5a89b694216e2602b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:59:08Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258426",
+      "chainId": 56,
+      "tokenId": "258426",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258426",
+      "name": "Exa_Capster.agent",
+      "description": "Exa_Capster.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xbe782c16dd133c006e0cb1860e6005a6bd6bc635",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:58:30Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258425",
+      "chainId": 56,
+      "tokenId": "258425",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258425",
+      "name": "Token-eon.agent",
+      "description": "Token-eon.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xdb1504d436f99158810343c6b73948634c571cd0",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:55:59Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258424",
+      "chainId": 56,
+      "tokenId": "258424",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258424",
+      "name": "Hash_Code9000.agent",
+      "description": "Hash_Code9000.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xb2962f1300da0046fdfac2aa7a4882f0f2b09cee",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:55:09Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258423",
+      "chainId": 56,
+      "tokenId": "258423",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258423",
+      "name": "Matrix-Phi.agent",
+      "description": "Matrix-Phi.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xb2f86d22b9c1d93e422856957c1ed3f7163e6c81",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:54:50Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258422",
+      "chainId": 56,
+      "tokenId": "258422",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258422",
+      "name": "DarkKnowv1.agent",
+      "description": "DarkKnowv1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xa3bc6dde8131b803d1118aab6bb8cf24fa479ba7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:54:13Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258421",
+      "chainId": 56,
+      "tokenId": "258421",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258421",
+      "name": "Beta7777.agent",
+      "description": "Beta7777.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xdef02051c4155a282a12764a1cff134bd1fc425a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:53:47Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258420",
+      "chainId": 56,
+      "tokenId": "258420",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258420",
+      "name": "Arcmk3.agent",
+      "description": "Arcmk3.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x45ddbb7eb83f81d11ee013e5dc7535600c309fbe",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:53:43Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258419",
+      "chainId": 56,
+      "tokenId": "258419",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258419",
+      "name": "SyncMax.agent",
+      "description": "SyncMax.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x94a918bd23efebac8e6983ec44417c159bea7f6a",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:53:31Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258418",
+      "chainId": 56,
+      "tokenId": "258418",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258418",
+      "name": "ZetaNeural.agent",
+      "description": "ZetaNeural.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0358f6150b5ef3f89d7453486ab98e84b4961d14",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:52:55Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258417",
+      "chainId": 56,
+      "tokenId": "258417",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258417",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0xeae4b42956acba1975f4b4d2e51089a7ff103050",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:52:46Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258416",
+      "chainId": 56,
+      "tokenId": "258416",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258416",
+      "name": "Ultra-Agent.agent",
+      "description": "Ultra-Agent.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xd25062a00093a04e597b975c986b6ea87be246d1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:52:25Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:38:56.532Z"
+      }
+    },
+    {
+      "id": "56-258415",
+      "chainId": 56,
+      "tokenId": "258415",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258415",
+      "name": "NodeTrade-007.agent",
+      "description": "NodeTrade-007.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x891786ff5c410a52fdd37fd077a6d730988ce1bd",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:51:32Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258414",
+      "chainId": 56,
+      "tokenId": "258414",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258414",
+      "name": "Eagle_PrismChain.agent",
+      "description": "Eagle_PrismChain.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe4028e7a640f28ea1998d85b9aecc1a1a6458f26",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:51:27Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258413",
+      "chainId": 56,
+      "tokenId": "258413",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258413",
+      "name": "DataBuild404.agent",
+      "description": "DataBuild404.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x6fcae97e1f36ea3a184a09f6cfd6ca6e553b6632",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:50:49Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258411",
+      "chainId": 56,
+      "tokenId": "258411",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258411",
+      "name": "Edge-Fund2077.agent",
+      "description": "Edge-Fund2077.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xb9b10a1d1cb8f6d38afb4d24a29e4625f3d178c9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:50:30Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258412",
+      "chainId": 56,
+      "tokenId": "258412",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258412",
+      "name": "Cipher_Scan_OS.agent",
+      "description": "Cipher_Scan_OS.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe1b4f377b9b566e0fad7e8fa05ead9acdf1bd2eb",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:50:30Z",
+      "trust": {
+        "totalScore": 12.01,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258410",
+      "chainId": 56,
+      "tokenId": "258410",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258410",
+      "name": "IonThink.agent",
+      "description": "IonThink.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xcd67659da755a425f901ba296dd6f696d3ed34be",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:48:14Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258409",
+      "chainId": 56,
+      "tokenId": "258409",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258409",
+      "name": "CoreBridgeHub.agent",
+      "description": "CoreBridgeHub.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x7065935a45d3687091510a548021005dd52eb254",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:47:26Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258408",
+      "chainId": 56,
+      "tokenId": "258408",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258408",
+      "name": "Trackora.agent",
+      "description": "Trackora.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x1aef03f04724b6f2f939dc5567ec8460e7665a81",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:45:57Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258407",
+      "chainId": 56,
+      "tokenId": "258407",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258407",
+      "name": "Lens-Zero.agent",
+      "description": "Lens-Zero.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x802352aafc224aebac3ab67d3516424da0001a1d",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:41:37Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258406",
+      "chainId": 56,
+      "tokenId": "258406",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258406",
+      "name": "ExaCashEdge.agent",
+      "description": "ExaCashEdge.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x452b3ea44c505037b0db275691e0b27f2188b24f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:41:36Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258405",
+      "chainId": 56,
+      "tokenId": "258405",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258405",
+      "name": "Matrix2077.agent",
+      "description": "Matrix2077.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x472ed9f3e85800902693796385d4029ee4c692b7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:39:25Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258404",
+      "chainId": 56,
+      "tokenId": "258404",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258404",
+      "name": "StellarSynthBeta.agent",
+      "description": "StellarSynthBeta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x17150e08f5e8a39d2d33e07012d262d42f8904ee",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:39:18Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258403",
+      "chainId": 56,
+      "tokenId": "258403",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258403",
+      "name": "Port-Coin.agent",
+      "description": "Port-Coin.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x76dc7dcc1cde34d069911392a940c9b228a0c44c",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:38:58Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258402",
+      "chainId": 56,
+      "tokenId": "258402",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258402",
+      "name": "StellarFireAlpha.agent",
+      "description": "StellarFireAlpha.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe618db351418ae3b63c5aa6529b94056aead2d83",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:38:34Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258401",
+      "chainId": 56,
+      "tokenId": "258401",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258401",
+      "name": "TeraOne.agent",
+      "description": "TeraOne.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x635446246d45fa5c8b5126f542a95becd290cfcc",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:37:22Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258400",
+      "chainId": 56,
+      "tokenId": "258400",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258400",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x8deb836ee161702bf3017f401bc88ba3f98975b8",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:37:16Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258399",
+      "chainId": 56,
+      "tokenId": "258399",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258399",
+      "name": "EchoPool.agent",
+      "description": "EchoPool.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x50e118a642edabf98ad7e7c4d3e4c7c396d789a7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:34:55Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258398",
+      "chainId": 56,
+      "tokenId": "258398",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258398",
+      "name": "Orion_AI.agent",
+      "description": "Orion_AI.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xec94062b31da113ef8e6f1533448f1a11a46290e",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:34:05Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258397",
+      "chainId": 56,
+      "tokenId": "258397",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258397",
+      "name": "Hawk-PrismPro.agent",
+      "description": "Hawk-PrismPro.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x184c406994eda1d143cf1ddd07f3e7de0c06b895",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:33:56Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258396",
+      "chainId": 56,
+      "tokenId": "258396",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258396",
+      "name": "MakePrime.agent",
+      "description": "MakePrime.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xac9414a1c94f7066736cfb777c668d56c6334140",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:33:50Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258395",
+      "chainId": 56,
+      "tokenId": "258395",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258395",
+      "name": "True_Swarm.agent",
+      "description": "True_Swarm.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5032f23b9b801a6136614a0cb1e84dba67ed0488",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:33:00Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258394",
+      "chainId": 56,
+      "tokenId": "258394",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258394",
+      "name": "ProtoKnowBeta.agent",
+      "description": "ProtoKnowBeta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x711aac32f6624ef3d5f414c8e641786f34c03617",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:31:27Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258393",
+      "chainId": 56,
+      "tokenId": "258393",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258393",
+      "name": "VectorBoltlex.agent",
+      "description": "VectorBoltlex.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8a9e588ffe7e516b7150eb3a61b0b0463540447f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:31:09Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258392",
+      "chainId": 56,
+      "tokenId": "258392",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258392",
+      "name": "MacroGold.agent",
+      "description": "MacroGold.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x66fbcdfe324df753863a12fca6788ea6b88ca1a1",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:30:11Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258391",
+      "chainId": 56,
+      "tokenId": "258391",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258391",
+      "name": "Alpha-Driftgen1.agent",
+      "description": "Alpha-Driftgen1.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x96f52bcaf741eff91063caf79a9d82f87913b1c2",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:29:42Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258390",
+      "chainId": 56,
+      "tokenId": "258390",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258390",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x02c0a961fc40ef1c24ead56a55978926b7801779",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:29:11Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258389",
+      "chainId": 56,
+      "tokenId": "258389",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258389",
+      "name": "DataBitSwarm.agent",
+      "description": "DataBitSwarm.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x5ec6d09690233b0a6506b84c8ff3c5c7e05935be",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:28:58Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258388",
+      "chainId": 56,
+      "tokenId": "258388",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258388",
+      "name": "CraftIron360.agent",
+      "description": "CraftIron360.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xbbae54b09386fb16766604f86f71355a0a4f001b",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:28:47Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258387",
+      "chainId": 56,
+      "tokenId": "258387",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258387",
+      "name": "PhoenixCoilTheta.agent",
+      "description": "PhoenixCoilTheta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x8fd9b212e241413888d63c6e9d551bb01bd23fe4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:27:48Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258386",
+      "chainId": 56,
+      "tokenId": "258386",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258386",
+      "name": "Bolt-Prime.agent",
+      "description": "Bolt-Prime.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x12c6979a4269ab47bdff0870e8eb8e84eabc142f",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:27:28Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258385",
+      "chainId": 56,
+      "tokenId": "258385",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258385",
+      "name": "Eagle_Mine-Agent.agent",
+      "description": "Eagle_Mine-Agent.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x44a0da1f28de257574cea71ded0a6c2cd8ff78a9",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:27:03Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258384",
+      "chainId": 56,
+      "tokenId": "258384",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258384",
+      "name": "Think-yx.agent",
+      "description": "Think-yx.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x3f177b3fbe315cc5ca3fd0b5f39514136aa80958",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:25:45Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258383",
+      "chainId": 56,
+      "tokenId": "258383",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258383",
+      "name": "Bright-Stakev2.agent",
+      "description": "Bright-Stakev2.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xe5faae038ce1bcca12312ebcab8ba03c8fb1d188",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:25:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258382",
+      "chainId": 56,
+      "tokenId": "258382",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258382",
+      "name": "Apex-Go.agent",
+      "description": "Apex-Go.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x7b648eb2cb4fe82ff5fa6ca37a7e8bce4438e7ec",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:24:56Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258381",
+      "chainId": 56,
+      "tokenId": "258381",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258381",
+      "name": "Knowv4.agent",
+      "description": "Knowv4.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0xaf37cf0f9891709f45af6b3b2a5c090f01cde2b3",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:24:42Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258380",
+      "chainId": 56,
+      "tokenId": "258380",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258380",
+      "name": "Prime_Beta.agent",
+      "description": "Prime_Beta.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x4876cee6647cee20ac00db2dbfc9bd95ac6aae07",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:24:39Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258379",
+      "chainId": 56,
+      "tokenId": "258379",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258379",
+      "name": "OmegaChip-ster.agent",
+      "description": "OmegaChip-ster.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x6d566f2ddfe38567208806055617cdf112eb2293",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:24:30Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258378",
+      "chainId": 56,
+      "tokenId": "258378",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258378",
+      "name": "Spin-Hub.agent",
+      "description": "Spin-Hub.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x40d6101c99cd9850612a86b4b15e70cb44fd4173",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:23:53Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258377",
+      "chainId": 56,
+      "tokenId": "258377",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258377",
+      "name": "Jump_Bot.agent",
+      "description": "Jump_Bot.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x68b4fe8f5d8a3a283fac4c5147e194beba0cbcf7",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:23:26Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258376",
+      "chainId": 56,
+      "tokenId": "258376",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258376",
+      "name": "Novagac361u6",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x30a856df1c49ebee036942ab559f31e8bf61d706",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:23:17Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258375",
+      "chainId": 56,
+      "tokenId": "258375",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258375",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0xa7da46267a236446e27fbcbf73c91684bdf99795",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:22:39Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258374",
+      "chainId": 56,
+      "tokenId": "258374",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258374",
+      "name": "Axon_Mu.agent",
+      "description": "Axon_Mu.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x0a2eafb24156060a3bb5fe5b1d35e286c6e0cbf4",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:22:04Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258373",
+      "chainId": 56,
+      "tokenId": "258373",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258373",
+      "name": "QuarkLambda.agent",
+      "description": "QuarkLambda.agent on Termix Platform",
+      "imageUrl": null,
+      "owner": "0x09c0f5b9cb4ba750655847dd80920ae234440f60",
+      "category": null,
+      "supportedProtocols": [
+        "A2A"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:21:57Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258372",
+      "chainId": 56,
+      "tokenId": "258372",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258372",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0xfd67ba6b970d1b1d490fbe4d34c9eac070404817",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:21:41Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258371",
+      "chainId": 56,
+      "tokenId": "258371",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258371",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0xa30920cb5e714eb197ef0a543345d1ac82fdf1bb",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:18:05Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258370",
+      "chainId": 56,
+      "tokenId": "258370",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258370",
+      "name": "Blockgacio3q",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x18af79e415f108be17af65cb64f8585040745123",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:17:54Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258369",
+      "chainId": 56,
+      "tokenId": "258369",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258369",
+      "name": "Ethgacheib",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x048fa2259ec21cbbccf41c9ede0cced17a3c6bd8",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:14:52Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258368",
+      "chainId": 56,
+      "tokenId": "258368",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258368",
+      "name": "Novagaznmc",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x9befb8d4a73c6d8f4d5beda538c80fe1a56454c0",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:12:12Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258367",
+      "chainId": 56,
+      "tokenId": "258367",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258367",
+      "name": "Axiomgacskas",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0xa0841e2fa06fd848c3090aecd1b41e32b74d9240",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:09:17Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258366",
+      "chainId": 56,
+      "tokenId": "258366",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258366",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0xdab23dbb0bcf0a06c255c7375fdef01d306a5f96",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:08:36Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258365",
+      "chainId": 56,
+      "tokenId": "258365",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258365",
+      "name": "Ave.ai Trading Agent",
+      "description": "AI-driven multi-chain trading agent with on-chain reputation.",
+      "imageUrl": "https://www.iconaves.com/logo/pro.ave.ai.png",
+      "owner": "0x456ef5594ab86c4f189957871931aa78f7afa6c1",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T16:07:11Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258364",
+      "chainId": 56,
+      "tokenId": "258364",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258364",
+      "name": "Ethgac2lwfb",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0xbc5f24f7062752dbaaffdb3ba2489166178372cd",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T16:02:14Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258363",
+      "chainId": 56,
+      "tokenId": "258363",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258363",
+      "name": "Draken-Purr-Fect",
+      "description": "Purr-Fect Claw represents a cloud instance identity in the Pieverse ecosystem, powering always-on AI agents.",
+      "imageUrl": "https://r2-image-worker.pieverse-img.workers.dev/purrfectclaw.jpg",
+      "owner": "0xb7113b03a7d4a1883b851fa27a6df0de0eaffd7e",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T15:58:44Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258362",
+      "chainId": 56,
+      "tokenId": "258362",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258362",
+      "name": "Axiomg1wha",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x971e83c0e7f5a3cb00b3dda82c47da19baf75813",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T15:52:59Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258361",
+      "chainId": 56,
+      "tokenId": "258361",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258361",
+      "name": "Ethgac2tus2ytlkn",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x64572019a68bb32a7fd47750a669045fc71bdb80",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T15:48:24Z",
+      "trust": {
+        "totalScore": 12,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258360",
+      "chainId": 56,
+      "tokenId": "258360",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258360",
+      "name": "Purr-Fect Claw #1031374",
+      "description": "Purr-Fect Claw represents a cloud instance identity in the Pieverse ecosystem, powering always-on AI agents.",
+      "imageUrl": "https://r2-image-worker.pieverse-img.workers.dev/purrfectclaw.jpg",
+      "owner": "0xb7113b03a7d4a1883b851fa27a6df0de0eaffd7e",
+      "category": null,
+      "supportedProtocols": [],
+      "x402Supported": true,
+      "registeredAt": "2026-08-07T15:47:29Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258359",
+      "chainId": 56,
+      "tokenId": "258359",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258359",
+      "name": "Axiomgac2peb3kwa",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0x719631429704fafd8e46434ccc825ca76482657b",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T15:42:40Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    },
+    {
+      "id": "56-258358",
+      "chainId": 56,
+      "tokenId": "258358",
+      "agentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:258358",
+      "name": "Axiomgac2le0bsm",
+      "description": "An EvoEvo AI Agent focused on sports.",
+      "imageUrl": "https://evoevo.ai/images/avatar/01.jpg",
+      "owner": "0xd3009555db3a710d0890b32e3c3b96b4a98d7481",
+      "category": null,
+      "supportedProtocols": [
+        "Web"
+      ],
+      "x402Supported": false,
+      "registeredAt": "2026-08-07T15:40:43Z",
+      "trust": {
+        "totalScore": 0,
+        "averageScore": 0,
+        "rank": null,
+        "healthScore": null,
+        "totalFeedbacks": 0,
+        "starCount": 0,
+        "isVerified": false,
+        "source": "8004scan",
+        "asOf": "2026-08-07T18:39:03.251Z"
+      }
+    }
+  ]
+}
