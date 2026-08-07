@@ -10,10 +10,10 @@ importers:
 
   apps/web:
     dependencies:
-      '@foyer/agent-index':
+      '@agripinaa/agent-index':
         specifier: workspace:*
         version: link:../../packages/agent-index
-      '@foyer/shared':
+      '@agripinaa/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       next:
@@ -56,7 +56,7 @@ importers:
 
   packages/agent-index:
     dependencies:
-      '@foyer/shared':
+      '@agripinaa/shared':
         specifier: workspace:*
         version: link:../shared
       viem:

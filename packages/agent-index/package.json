@@ -1,5 +1,5 @@
 {
-  "name": "@foyer/agent-index",
+  "name": "@agripinaa/agent-index",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
-    "@foyer/shared": "workspace:*",
+    "@agripinaa/shared": "workspace:*",
     "viem": "^2.21.0"
   },
   "devDependencies": {

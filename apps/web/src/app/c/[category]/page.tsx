@@ -1,4 +1,4 @@
-import { CATEGORIES, type Category } from "@foyer/agent-index";
+import { CATEGORIES, type Category } from "@agripinaa/agent-index";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 

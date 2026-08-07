@@ -1,4 +1,4 @@
-import { bscScanAddress } from "@foyer/shared";
+import { bscScanAddress } from "@agripinaa/shared";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 

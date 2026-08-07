@@ -1,4 +1,4 @@
-import { CATEGORIES } from "@foyer/agent-index";
+import { CATEGORIES } from "@agripinaa/agent-index";
 import Link from "next/link";
 import { Suspense } from "react";
 

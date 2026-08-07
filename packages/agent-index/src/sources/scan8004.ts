@@ -1,4 +1,4 @@
-import { ERC8004_REGISTRIES } from '@foyer/shared';
+import { ERC8004_REGISTRIES } from '@agripinaa/shared';
 import { classify } from '../classify';
 import type { AgentIndexSource } from '../source';
 import type {

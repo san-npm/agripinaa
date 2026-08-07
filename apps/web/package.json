@@ -1,5 +1,5 @@
 {
-  "name": "@foyer/web",
+  "name": "@agripinaa/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@foyer/agent-index": "workspace:*",
-    "@foyer/shared": "workspace:*",
+    "@agripinaa/agent-index": "workspace:*",
+    "@agripinaa/shared": "workspace:*",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

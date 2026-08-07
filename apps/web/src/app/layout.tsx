@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Foyer",
+  title: "Agripinaa",
   description:
     "The front door for every agent on BSC. Discover, evaluate, and activate ERC-8004 agents with provable execution quality.",
 };
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-zinc-800">
           <nav className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 text-sm">
             <Link href="/" className="text-base font-semibold tracking-tight">
-              Foyer
+              Agripinaa
             </Link>
             <Link href="/agents" className="text-zinc-400 hover:text-zinc-100">
               All agents
@@ -53,7 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 Ophis
               </a>
               . Trades routed through Ophis carry its standard partner fee (5
-              bps volume, 1 bp on stable pairs). Foyer takes no fee.
+              bps volume, 1 bp on stable pairs). Agripinaa takes no fee.
             </p>
             <p>
               Agent identity and reputation from ERC-8004 registries on BNB
