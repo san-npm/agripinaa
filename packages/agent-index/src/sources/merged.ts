@@ -1,0 +1,143 @@
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import type { AgentIndexSource } from '../source';
+import type {
+  AgentDetail,
+  AgentSummary,
+  Feedback,
+  IndexStats,
+  ListAgentsQuery,
+  Page,
+} from '../types';
+import { readAgentFromRegistry } from './registry-viem';
+import { Scan8004Source } from './scan8004';
+
+const SNAPSHOT_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'data',
+);
+
+interface CacheEntry<T> {
+  value: T;
+  at: number;
+}
+
+/**
+ * Priority: live 8004scan → committed snapshot (lists) or direct registry
+ * read (details) → last-known-good stale cache. Every response is labeled
+ * with its source so the UI can show provenance instead of pretending.
+ */
+export class MergedSource implements AgentIndexSource {
+  readonly name = 'merged';
+  private readonly scan = new Scan8004Source();
+  private readonly staleCache = new Map<string, CacheEntry<unknown>>();
+
+  private remember<T>(key: string, value: T): T {
+    this.staleCache.set(key, { value, at: Date.now() });
+    return value;
+  }
+
+  private stale<T>(key: string): T | null {
+    const hit = this.staleCache.get(key);
+    return hit ? (hit.value as T) : null;
+  }
+
+  private async loadSnapshot(chainId: number): Promise<AgentSummary[] | null> {
+    try {
+      const raw = await readFile(
+        join(SNAPSHOT_DIR, `agents-${chainId}.json`),
+        'utf8',
+      );
+      const parsed = JSON.parse(raw) as { items: AgentSummary[] };
+      return parsed.items;
+    } catch {
+      return null;
+    }
+  }
+
+  async listAgents(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
+    const key = `list:${q.chainId}:${q.category ?? 'all'}:${q.cursor ?? '1'}:${q.limit ?? 24}`;
+    try {
+      return this.remember(key, await this.scan.listAgents(q));
+    } catch {
+      const snapshot = await this.loadSnapshot(q.chainId);
+      if (snapshot) {
+        const filtered = q.category
+          ? snapshot.filter((a) => a.category === q.category)
+          : snapshot;
+        const limit = q.limit ?? 24;
+        const page = q.cursor ? Number.parseInt(q.cursor, 10) : 1;
+        const start = (page - 1) * limit;
+        const items = filtered.slice(start, start + limit);
+        return {
+          items,
+          nextCursor: start + limit < filtered.length ? String(page + 1) : null,
+          total: filtered.length,
+          asOf: new Date().toISOString(),
+          source: 'snapshot',
+        };
+      }
+      const stale = this.stale<Page<AgentSummary>>(key);
+      if (stale) return { ...stale, source: `${stale.source} (stale)` };
+      throw new Error(
+        `agent-index: 8004scan unavailable and no snapshot for chain ${q.chainId}`,
+      );
+    }
+  }
+
+  async getAgent(chainId: number, tokenId: string): Promise<AgentDetail | null> {
+    const key = `agent:${chainId}:${tokenId}`;
+    try {
+      return this.remember(key, await this.scan.getAgent(chainId, tokenId));
+    } catch {
+      const fromRegistry = await readAgentFromRegistry(chainId, tokenId);
+      if (fromRegistry) return this.remember(key, fromRegistry);
+      return this.stale<AgentDetail | null>(key);
+    }
+  }
+
+  async searchAgents(chainId: number, query: string): Promise<AgentSummary[]> {
+    try {
+      return await this.scan.searchAgents(chainId, query);
+    } catch {
+      const snapshot = await this.loadSnapshot(chainId);
+      if (!snapshot) return [];
+      const q = query.toLowerCase();
+      return snapshot.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.description.toLowerCase().includes(q),
+      );
+    }
+  }
+
+  async getFeedback(chainId: number, tokenId: string): Promise<Feedback[]> {
+    const key = `feedback:${chainId}:${tokenId}`;
+    try {
+      return this.remember(key, await this.scan.getFeedback(chainId, tokenId));
+    } catch {
+      return this.stale<Feedback[]>(key) ?? [];
+    }
+  }
+
+  async stats(chainId: number): Promise<IndexStats> {
+    const key = `stats:${chainId}`;
+    try {
+      return this.remember(key, await this.scan.stats(chainId));
+    } catch {
+      const stale = this.stale<IndexStats>(key);
+      if (stale) return { ...stale, source: `${stale.source} (stale)` };
+      const snapshot = await this.loadSnapshot(chainId);
+      return {
+        totalAgents: snapshot?.length ?? null,
+        totalFeedbacks: null,
+        asOf: new Date().toISOString(),
+        source: 'snapshot',
+      };
+    }
+  }
+}
