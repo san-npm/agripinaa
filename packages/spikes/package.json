@@ -1,0 +1,23 @@
+{
+  "name": "@agripinaa/spikes",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "gen-wallet": "tsx scripts/gen-wallet.ts",
+    "spike-a": "tsx scripts/spike-a.ts",
+    "spike-b": "tsx scripts/spike-b.ts"
+  },
+  "dependencies": {
+    "@agripinaa/shared": "workspace:*",
+    "@altananetwork/sdk": "^0.7.0",
+    "@ophis/agent-swap": "^0.3.1",
+    "@ophis/sdk": "^0.3.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
