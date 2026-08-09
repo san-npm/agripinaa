@@ -43,10 +43,17 @@ async function main() {
   const wallet = await client.createWallet({ signer });
   console.log(`   account: ${wallet.address}`);
 
-  console.log('2) granting session (allowlist + spend cap + 1h expiry)…');
+  // KeyStore registration costs ~0.0008 tBNB per key in native value; with an
+  // unfunded account run SPIKE_REGISTER=0 for an account-only session (same
+  // permission enforcement, just invisible to KeyStore readers).
+  const register = process.env.SPIKE_REGISTER !== '0';
+  console.log(
+    `2) granting session (allowlist + spend cap + 1h expiry, register=${register})…`,
+  );
   const session = await client.grantSession({
     wallet,
     signer,
+    register,
     permissions: {
       // Fail-closed: explicit allowlist, never omitted (omitting = unrestricted).
       calls: [{ to: ALLOWED_TARGET }],
