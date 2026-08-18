@@ -373,8 +373,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
     functionName: 'balanceOf',
     args: [ctx.account.address],
   });
-  const want0 = (info.wbnbIsToken0 ? WBNB.address : USDT.address).toLowerCase();
-  const want1 = (info.wbnbIsToken0 ? USDT.address : WBNB.address).toLowerCase();
+  const pair = new Set([WBNB.address.toLowerCase(), USDT.address.toLowerCase()]);
   for (let i = balance - BigInt(1); i >= BigInt(0); i -= BigInt(1)) {
     const tokenId = await ctx.publicClient.readContract({
       address: POSITION_MANAGER,
@@ -389,13 +388,31 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
       args: [tokenId],
     });
     const [, , token0, token1, fee, tickLower, tickUpper, liquidity] = p;
-    if (
-      liquidity > BigInt(0) &&
-      fee === info.fee &&
-      token0.toLowerCase() === want0 &&
-      token1.toLowerCase() === want1
-    ) {
-      ctx.log({ event: 'position-recovered', tokenId: tokenId.toString(), tickLower, tickUpper });
+    // Match on the token PAIR, not the fee tier: a live position from before
+    // a reference-pool change must still be managed (in its own pool) rather
+    // than abandoned. Repoint poolInfo to the position's pool so range-check
+    // and exit use the right tick; new mints still pick the deepest pool.
+    if (liquidity > BigInt(0) && pair.has(token0.toLowerCase()) && pair.has(token1.toLowerCase())) {
+      if (fee !== info.fee) {
+        const pool = await ctx.publicClient.readContract({
+          address: EXPECTED_FACTORY,
+          abi: FACTORY_ABI,
+          functionName: 'getPool',
+          args: [token0, token1, fee],
+        });
+        const tickSpacing = await ctx.publicClient.readContract({
+          address: pool,
+          abi: POOL_ABI,
+          functionName: 'tickSpacing',
+        });
+        ctx.state.set('poolInfo', {
+          pool,
+          fee,
+          tickSpacing,
+          wbnbIsToken0: token0.toLowerCase() === WBNB.address.toLowerCase(),
+        } satisfies PoolInfo);
+      }
+      ctx.log({ event: 'position-recovered', tokenId: tokenId.toString(), fee, tickLower, tickUpper });
       return { tokenId: tokenId.toString(), tickLower, tickUpper, outSince: null };
     }
     if (i === BigInt(0)) break;
@@ -646,7 +663,7 @@ export const lpRangeAgent: AgentModule = {
       ctx.log({ event: 'tick-skipped', reason: 'halted' });
       return;
     }
-    const info = await resolvePool(ctx);
+    let info = await resolvePool(ctx);
     let pos = ctx.state.get<PositionState | null>('position', null);
 
     // Self-heal (like the other agents read their position from chain): if
@@ -654,7 +671,10 @@ export const lpRangeAgent: AgentModule = {
     // pair, adopt it rather than minting a duplicate and stranding the old.
     if (!pos) {
       pos = await recoverPosition(ctx, info);
-      if (pos) ctx.state.set('position', pos);
+      if (pos) {
+        ctx.state.set('position', pos);
+        info = await resolvePool(ctx); // recovery may have repointed the pool
+      }
     }
 
     if (!pos) {
