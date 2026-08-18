@@ -111,18 +111,23 @@ export async function buildContext(name: string): Promise<AgentContext> {
     },
   };
 
-  // Enrollment gate: refuse to construct a tradeable context if the wallet
-  // could trade unindexed. A 5xx from the service halts startup rather than
-  // silently producing invisible history.
+  // Enrollment with the rebate indexer is best-effort: marketplace execution
+  // metrics read the CoW orderbook directly, so a down indexer (observed 530
+  // since 2026-08-08) must not block trading. Orders placed before a
+  // successful enrollment forfeit rebate/XP indexing only; retried each boot
+  // until it lands.
   const reputation = new ReputationClient();
   const enrollment = await reputation.enrollAndGetTier(account.address);
-  if (!enrollment.ok) {
-    throw new Error(
-      `rebate-indexer enrollment failed for ${name} (${account.address}): ` +
-        `${enrollment.error}; refusing to start (history would never index)`,
-    );
+  if (enrollment.ok) {
+    log({ event: 'enrolled', wallet: account.address });
+  } else {
+    log({
+      event: 'enrollment-unavailable',
+      wallet: account.address,
+      error: enrollment.error,
+      consequence: 'rebate/XP indexing deferred; execution metrics unaffected',
+    });
   }
-  log({ event: 'enrolled', wallet: account.address });
 
   return {
     name,
