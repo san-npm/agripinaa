@@ -24,8 +24,13 @@ manifests point at the live endpoints.
 2. `pnpm --filter @agripinaa/agents fund -- --execute` split the budget from spike-a
 3. `pnpm --filter @agripinaa/agents register` mint ERC-8004 identities (mainnet)
 
-## VPS migration (when wanted)
+## Aleph Cloud migration (preferred)
 
-Node 22 + pnpm, clone repo, copy `wallets/*.json` (chmod 600), run the same
-two scripts under systemd or pm2; point a domain at the port instead of the
-tunnel.
+1. Create a Debian/Ubuntu instance at console.aleph.cloud (2 vCPU / 2-4 GB
+   is plenty) with the deploy public key from ~/.ssh/agripinaa-aleph.pub.
+2. ./ops/deploy-aleph.sh <user@host>   # provisions, syncs secrets, systemd
+3. ./ops/set-x402-endpoint.sh <tunnel-url-it-prints>
+4. ./ops/stop-agents.sh on the Mac (never run both: double trading).
+
+Re-running deploy-aleph.sh updates code and restarts services. Agent state
+lives on the VM under ~/agripinaa/apps/agents/data/ from then on.
