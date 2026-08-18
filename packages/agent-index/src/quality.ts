@@ -19,11 +19,21 @@ export function qualityScore(a: AgentSummary): number {
   return score;
 }
 
+/** An agent with no evaluable signal at all (the registry's bulk spam). */
+function isLowSignal(a: AgentSummary): boolean {
+  return qualityScore(a) === 0;
+}
+
 /**
- * Deduplicate true duplicates (same name AND same owner, e.g. an agent
- * re-indexed at several token ids) keeping the highest-quality copy, then
- * sort by quality descending with a stable registration-time tiebreak.
- * Distinct owners are never merged: they are genuinely different agents.
+ * Produce a legible directory from a raw registry sample:
+ *   1. Drop exact duplicates (same name AND owner, e.g. re-indexed token ids),
+ *      keeping the highest-quality copy.
+ *   2. Collapse clusters of indistinguishable low-signal registrations that
+ *      share a name (distinct owners, no category / score / description) into
+ *      one representative card carrying a duplicateCount. This is not hiding
+ *      evaluable data: none of them have any.
+ *   3. Rank by quality descending, registration-time tiebreak.
+ * Agents with any real signal are never collapsed across owners.
  */
 export function rankAndDedupe(agents: AgentSummary[]): AgentSummary[] {
   const byKey = new Map<string, AgentSummary>();
@@ -32,7 +42,25 @@ export function rankAndDedupe(agents: AgentSummary[]): AgentSummary[] {
     const existing = byKey.get(key);
     if (!existing || qualityScore(a) > qualityScore(existing)) byKey.set(key, a);
   }
-  return [...byKey.values()].sort((x, y) => {
+
+  const evaluable: AgentSummary[] = [];
+  const lowByName = new Map<string, AgentSummary[]>();
+  for (const a of byKey.values()) {
+    if (isLowSignal(a)) {
+      const name = a.name.trim().toLowerCase();
+      (lowByName.get(name) ?? lowByName.set(name, []).get(name)!).push(a);
+    } else {
+      evaluable.push(a);
+    }
+  }
+  const collapsed: AgentSummary[] = [...lowByName.values()].map((group) => {
+    const rep = group.reduce((a, b) =>
+      (b.registeredAt ?? '') > (a.registeredAt ?? '') ? b : a,
+    );
+    return group.length > 1 ? { ...rep, duplicateCount: group.length } : rep;
+  });
+
+  return [...evaluable, ...collapsed].sort((x, y) => {
     const dq = qualityScore(y) - qualityScore(x);
     if (dq !== 0) return dq;
     return (y.registeredAt ?? '').localeCompare(x.registeredAt ?? '');
