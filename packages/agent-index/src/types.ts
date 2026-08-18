@@ -42,6 +42,12 @@ export interface AgentSummary {
   x402Supported: boolean;
   registeredAt: string | null;
   trust: TrustData;
+  /**
+   * When >1, this card represents a cluster of indistinguishable low-signal
+   * registrations that share this name (distinct owners, no category / score /
+   * description). Collapsed for a legible directory; the count is shown.
+   */
+  duplicateCount?: number;
 }
 
 export interface AgentDetail extends AgentSummary {

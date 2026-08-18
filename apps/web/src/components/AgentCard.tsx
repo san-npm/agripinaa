@@ -41,7 +41,11 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
             )}
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-2">
-            {cat ? cat.label : "Unclassified"}
+            {cat
+              ? cat.label
+              : agent.duplicateCount && agent.duplicateCount > 1
+                ? `${agent.duplicateCount} registrations, same name`
+                : "Unclassified"}
           </p>
         </div>
       </div>

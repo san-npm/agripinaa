@@ -55,12 +55,21 @@ test('dedupe collapses same name AND owner, keeping the better copy', () => {
   assert.ok(!ranked.some((a) => a.tokenId === '10'));
 });
 
-test('flood of identical bare agents from distinct owners is not merged but sinks below quality', () => {
+test('flood of identical bare agents collapses to one representative with a count', () => {
   const flood = Array.from({ length: 5 }, (_, i) =>
-    agent({ tokenId: `f${i}`, name: 'Spam', owner: `0x${i}` }),
+    agent({ tokenId: `f${i}`, name: 'Spam', owner: `0x${i}`, registeredAt: `2026-08-1${i}` }),
   );
   const real = agent({ tokenId: 'r', name: 'Real', category: 'grid', trust: { totalScore: 9 } });
   const ranked = rankAndDedupe([...flood, real]);
-  assert.equal(ranked[0]!.tokenId, 'r');
-  assert.equal(ranked.length, 6); // distinct owners preserved
+  assert.equal(ranked[0]!.tokenId, 'r'); // evaluable agent leads
+  assert.equal(ranked.length, 2); // 5 bare "Spam" collapse to one card
+  const spam = ranked.find((a) => a.name === 'Spam');
+  assert.equal(spam?.duplicateCount, 5);
+});
+
+test('low-signal agents with distinct names are NOT collapsed', () => {
+  const a1 = agent({ tokenId: '1', name: 'Alpha', owner: '0x1' });
+  const a2 = agent({ tokenId: '2', name: 'Beta', owner: '0x2' });
+  const ranked = rankAndDedupe([a1, a2]);
+  assert.equal(ranked.length, 2);
 });
