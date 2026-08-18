@@ -1,0 +1,49 @@
+[
+  {
+    "blockNumber": 116687812,
+    "logIndex": 114,
+    "orderUid": "0xa2fa52fa97922df8b884345a2959a71209a73957073098c4af76cbd72fa1f02b053fff26d28ff4e94dfe862b184f918a50c6f7066a848e4c",
+    "buyAmount": "12057295806540799277",
+    "sellAmount": "20000000000000000",
+    "sellAmountBeforeFees": "20000000000000000",
+    "owner": "0x053fff26d28ff4e94dfe862b184f918a50c6f706",
+    "buyToken": "0x55d398326f99059ff775485246999027b3197955",
+    "sellToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    "txHash": "0x4c7b847b75ae82337ac28655db861a5cd512e0de77c820f64dc58bbaa50523d1",
+    "executedProtocolFees": [
+      {
+        "policy": {
+          "priceImprovement": {
+            "factor": 0.5,
+            "maxVolumeFactor": 0.0098,
+            "quote": {
+              "sellAmount": "20000000000000000",
+              "buyAmount": "12068828802969446400",
+              "fee": "11860485000000"
+            }
+          }
+        },
+        "amount": "4068923579430114",
+        "token": "0x55d398326f99059ff775485246999027b3197955"
+      },
+      {
+        "policy": {
+          "volume": {
+            "factor": 0.0002
+          }
+        },
+        "amount": "2413148123679919",
+        "token": "0x55d398326f99059ff775485246999027b3197955"
+      },
+      {
+        "policy": {
+          "volume": {
+            "factor": 0.0005
+          }
+        },
+        "amount": "6031663735137965",
+        "token": "0x55d398326f99059ff775485246999027b3197955"
+      }
+    ]
+  }
+]
