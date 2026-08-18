@@ -1,41 +1,73 @@
 import type { AgentSummary } from "@agripinaa/agent-index";
 import Link from "next/link";
 
-import { FreshnessStamp } from "./FreshnessStamp";
+import { CATEGORY_INFO } from "@/lib/categories";
+import { CATEGORY_ICON, VerifiedIcon } from "./icons";
+
+const REFERENCE_IDS = new Set(["269703", "269704", "269705", "269706"]);
 
 export function AgentCard({ agent }: { agent: AgentSummary }) {
+  const cat = agent.category ? CATEGORY_INFO[agent.category] : null;
+  const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
+  const reference = REFERENCE_IDS.has(agent.tokenId);
+
   return (
     <Link
       href={`/agent/${agent.chainId}/${agent.tokenId}`}
-      className="block rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 transition hover:border-zinc-600"
+      className="group relative flex flex-col rounded-xl border border-border bg-surface p-4 transition-all duration-200 hover:border-border-strong hover:bg-surface-2 focus-visible:border-primary"
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium leading-tight">{agent.name}</h3>
-        {agent.trust.isVerified && (
-          <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
-            verified
+      {reference && (
+        <span className="absolute -top-px right-4 rounded-b-md bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
+          Agripinaa
+        </span>
+      )}
+      <div className="flex items-start gap-3">
+        <span
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border ${
+            cat
+              ? "border-primary/30 bg-primary/10 text-primary"
+              : "border-border bg-surface-2 text-muted-2"
+          }`}
+        >
+          {Icon ? <Icon className="h-[18px] w-[18px]" /> : <span className="text-xs">·</span>}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="truncate font-medium leading-tight text-foreground">
+              {agent.name}
+            </h3>
+            {agent.trust.isVerified && (
+              <VerifiedIcon className="h-4 w-4 shrink-0 text-primary" />
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted-2">
+            {cat ? cat.label : "Unclassified"}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-sm text-muted">
+        {agent.description || "No description provided by this agent."}
+      </p>
+
+      <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs">
+        <Stat label="Score" value={agent.trust.totalScore != null ? String(agent.trust.totalScore) : "—"} />
+        <Stat label="Feedback" value={String(agent.trust.totalFeedbacks)} />
+        {agent.x402Supported && (
+          <span className="ml-auto rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+            x402
           </span>
         )}
       </div>
-      <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
-        {agent.description || "No description provided."}
-      </p>
-      <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
-        <div>
-          <dt className="inline">Score: </dt>
-          <dd className="inline text-zinc-300">
-            {agent.trust.totalScore ?? "n/a"}
-          </dd>
-        </div>
-        <div>
-          <dt className="inline">Feedback: </dt>
-          <dd className="inline text-zinc-300">{agent.trust.totalFeedbacks}</dd>
-        </div>
-        {agent.x402Supported && (
-          <div className="text-amber-300/80">x402</div>
-        )}
-      </dl>
-      <FreshnessStamp asOf={agent.trust.asOf} source={agent.trust.source} />
     </Link>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex flex-col">
+      <span className="text-[10px] uppercase tracking-wide text-muted-2">{label}</span>
+      <span className="tabular font-mono text-foreground">{value}</span>
+    </span>
   );
 }

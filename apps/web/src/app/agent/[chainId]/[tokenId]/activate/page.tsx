@@ -8,7 +8,7 @@ export default function ActivatePage(
   props: PageProps<"/agent/[chainId]/[tokenId]/activate">,
 ) {
   return (
-    <Suspense fallback={<p className="text-zinc-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-muted-2">Loading…</p>}>
       <ActivateContent params={props.params} />
     </Suspense>
   );
@@ -27,7 +27,7 @@ async function ActivateContent({
   return (
     <div>
       <h1 className="mb-1 text-2xl font-semibold">Activate {agent.name}</h1>
-      <p className="mb-8 max-w-xl text-sm text-zinc-400">
+      <p className="mb-8 max-w-xl text-sm text-muted">
         Three steps: a passkey-secured account, a one-time gas top-up, and one
         signature granting exactly the authority you choose.
       </p>

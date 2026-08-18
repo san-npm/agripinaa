@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   MergedSource,
+  rankAndDedupe,
   type AgentDetail,
   type AgentSummary,
   type Category,
@@ -32,12 +33,18 @@ export async function listAgents(
 ): Promise<Page<AgentSummary>> {
   'use cache';
   cacheLife('minutes');
-  const page = await source.listAgents({ chainId: CHAIN_ID, category, limit, cursor });
-  if (cursor) return page; // pin only on the first page
+  // Over-fetch so ranking/dedupe has a real sample to work on (the registry
+  // is flooded with low-signal duplicate registrations); then rank by quality
+  // and collapse true duplicates before slicing to the requested page.
+  const raw = await source.listAgents({ chainId: CHAIN_ID, category, limit: 100, cursor });
+  const ranked = rankAndDedupe(raw.items);
 
-  // Always resolve pinned agents through getAgent (which enriches indexer
-  // records from the on-chain manifest), then REPLACE any poorer copies the
-  // list already contains, so hubs never regress to "Agent #NNN" entries.
+  if (cursor) {
+    return { ...raw, items: ranked.slice(0, limit) };
+  }
+
+  // Pinned reference agents resolve through getAgent (enriched from the
+  // on-chain manifest) and always lead, replacing any poorer copy in the list.
   const pinned = (
     await Promise.all(
       PINNED_AGENT_IDS.map((id) => source.getAgent(CHAIN_ID, id).catch(() => null)),
@@ -45,12 +52,9 @@ export async function listAgents(
   )
     .filter((a): a is NonNullable<typeof a> => a != null)
     .filter((a) => (category ? a.category === category : true));
-  if (pinned.length === 0) return page;
   const pinnedIds = new Set(pinned.map((a) => a.tokenId));
-  return {
-    ...page,
-    items: [...pinned, ...page.items.filter((a) => !pinnedIds.has(a.tokenId))],
-  };
+  const items = [...pinned, ...ranked.filter((a) => !pinnedIds.has(a.tokenId))].slice(0, limit);
+  return { ...raw, items };
 }
 
 export async function getAgent(tokenId: string): Promise<AgentDetail | null> {

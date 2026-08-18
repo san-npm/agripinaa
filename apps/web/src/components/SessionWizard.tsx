@@ -136,7 +136,7 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
       {step === 'wallet' && (
         <section className="space-y-3">
           <h2 className="text-lg font-medium">1 · Your agent wallet</h2>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             Sessions are granted from a smart account secured by a passkey
             (Face ID / fingerprint / security key). No seed phrase, and the
             passkey never leaves your device.
@@ -145,24 +145,24 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
             <button
               onClick={() => connectPasskey('create')}
               disabled={busy}
-              className="rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+              className="rounded bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-50"
             >
               Create with passkey
             </button>
             <button
               onClick={() => connectPasskey('recover')}
               disabled={busy}
-              className="rounded border border-zinc-700 px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded border border-border-strong px-4 py-2 text-sm disabled:opacity-50"
             >
               I already have one
             </button>
           </div>
-          <label className="block text-sm text-zinc-400">
+          <label className="block text-sm text-muted">
             Network{' '}
             <select
               value={chainId}
               onChange={(e) => setChainId(Number(e.target.value))}
-              className="ml-2 rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+              className="ml-2 rounded border border-border-strong bg-surface px-2 py-1"
             >
               {SUPPORTED_CHAINS.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -177,16 +177,16 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
       {step === 'fund' && wallet && (
         <section className="space-y-3">
           <h2 className="text-lg font-medium">2 · Gas for key registration</h2>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             Registering the session key on-chain costs a small native fee. Send
             at least 0.002 {chainId === 97 ? 'tBNB' : 'BNB'} to your account:
           </p>
-          <p className="break-all rounded border border-zinc-700 bg-zinc-900 p-3 font-mono text-xs">
+          <p className="break-all rounded border border-border-strong bg-surface p-3 font-mono text-xs">
             {wallet.address}
           </p>
           <p className="text-sm">
             Balance:{' '}
-            <span className={funded ? 'text-emerald-300' : 'text-zinc-400'}>
+            <span className={funded ? 'text-success' : 'text-muted'}>
               {balance == null ? 'checking…' : `${Number(balance) / 1e18} ${chainId === 97 ? 'tBNB' : 'BNB'}`}
             </span>
             {funded && ' ✓'}
@@ -194,7 +194,7 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
           <button
             onClick={() => setStep('scope')}
             disabled={!funded}
-            className="rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+            className="rounded bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-50"
           >
             Continue
           </button>
@@ -204,31 +204,31 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
       {step === 'scope' && (
         <section className="space-y-3">
           <h2 className="text-lg font-medium">3 · What may {agent.name} do?</h2>
-          <label className="block text-sm text-zinc-400">
+          <label className="block text-sm text-muted">
             Contract allowlist (comma-separated; the agent can call ONLY these)
             <textarea
               value={allowlist}
               onChange={(e) => setAllowlist(e.target.value)}
               rows={2}
-              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 p-2 font-mono text-xs"
+              className="mt-1 w-full rounded border border-border-strong bg-surface p-2 font-mono text-xs"
               placeholder="0x…"
             />
           </label>
           <div className="flex gap-4">
-            <label className="text-sm text-zinc-400">
+            <label className="text-sm text-muted">
               Daily spend cap (USDT)
               <input
                 value={cap}
                 onChange={(e) => setCap(e.target.value)}
-                className="mt-1 block w-28 rounded border border-zinc-700 bg-zinc-900 p-2 text-sm"
+                className="mt-1 block w-28 rounded border border-border-strong bg-surface p-2 text-sm"
               />
             </label>
-            <label className="text-sm text-zinc-400">
+            <label className="text-sm text-muted">
               Expires after
               <select
                 value={hours}
                 onChange={(e) => setHours(Number(e.target.value))}
-                className="mt-1 block rounded border border-zinc-700 bg-zinc-900 p-2 text-sm"
+                className="mt-1 block rounded border border-border-strong bg-surface p-2 text-sm"
               >
                 <option value={1}>1 hour</option>
                 <option value={24}>24 hours</option>
@@ -236,14 +236,14 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
               </select>
             </label>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-2">
             One signature grants exactly this authority; you can revoke it at
             any time from your dashboard.
           </p>
           <button
             onClick={grant}
             disabled={busy}
-            className="rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+            className="rounded bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-50"
           >
             {busy ? 'Granting…' : 'Grant session'}
           </button>
@@ -252,16 +252,16 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
 
       {step === 'granted' && (
         <section className="space-y-3">
-          <h2 className="text-lg font-medium text-emerald-300">
+          <h2 className="text-lg font-medium text-success">
             Session active
           </h2>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             {agent.name} now holds a scoped, revocable key. Manage or revoke it
             from your dashboard.
           </p>
           <a
             href="/dashboard"
-            className="inline-block rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900"
+            className="inline-block rounded bg-primary px-4 py-2 text-sm font-medium text-on-primary"
           >
             Open dashboard
           </a>
@@ -269,7 +269,7 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
       )}
 
       {error && (
-        <p className="rounded border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">
+        <p className="rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
           {error}
         </p>
       )}

@@ -1,66 +1,94 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
+});
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "Agripinaa",
+  title: "Agripinaa — the front door for every agent on BSC",
   description:
-    "The front door for every agent on BSC. Discover, evaluate, and activate ERC-8004 agents with provable execution quality.",
+    "Discover, evaluate, and hire ERC-8004 AI agents on BNB Smart Chain, with provable on-chain execution quality.",
 };
+
+function Logo() {
+  return (
+    <span className="flex items-center gap-2">
+      <span
+        aria-hidden
+        className="inline-block h-5 w-5 rounded-sm bg-gradient-to-br from-[var(--primary-050)] to-[var(--primary)] shadow-[0_0_12px_rgba(245,158,11,0.5)]"
+      />
+      <span className="font-display text-base font-semibold tracking-tight">
+        Agripinaa
+      </span>
+    </span>
+  );
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrains.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
-        <header className="border-b border-zinc-800">
-          <nav className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 text-sm">
-            <Link href="/" className="text-base font-semibold tracking-tight">
-              Agripinaa
+      <body className="min-h-full flex flex-col">
+        <header className="sticky top-0 z-40 border-b border-border bg-[color:var(--background)]/80 backdrop-blur-md">
+          <nav className="relative mx-auto flex max-w-6xl items-center gap-6 px-4 py-3.5 text-sm">
+            <Link href="/" className="hover:opacity-90">
+              <Logo />
             </Link>
-            <Link href="/agents" className="text-zinc-400 hover:text-zinc-100">
-              All agents
+            <Link
+              href="/agents"
+              className="text-muted transition-colors hover:text-foreground"
+            >
+              Agents
             </Link>
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-100">
+            <Link
+              href="/dashboard"
+              className="text-muted transition-colors hover:text-foreground"
+            >
               My sessions
             </Link>
-            <span className="ml-auto rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
+            <span className="ml-auto flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
+              <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-success" />
               BNB Smart Chain
             </span>
           </nav>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+        <main className="relative z-10 mx-auto w-full max-w-6xl flex-1 px-4 py-10">
           {children}
         </main>
-        <footer className="border-t border-zinc-800">
-          <div className="mx-auto max-w-6xl space-y-1 px-4 py-6 text-xs text-zinc-500">
+        <footer className="relative z-10 border-t border-border">
+          <div className="mx-auto max-w-6xl space-y-2 px-4 py-8 text-xs text-muted-2">
             <p>
               Execution powered by{" "}
               <a
                 href="https://ophis.fi"
-                className="underline hover:text-zinc-300"
+                className="text-muted underline decoration-border-strong underline-offset-2 hover:text-foreground"
               >
                 Ophis
               </a>
-              . Trades routed through Ophis carry its standard partner fee (5
-              bps volume, 1 bp on stable pairs). Agripinaa takes no fee.
+              . Trades routed through Ophis carry its standard partner fee
+              (5&nbsp;bps volume, 1&nbsp;bp on stable pairs). Agripinaa takes no
+              fee.
             </p>
             <p>
-              Agent identity and reputation from ERC-8004 registries on BNB
-              Smart Chain. Open source under MIT.
+              Identity and reputation from ERC-8004 registries on BNB Smart
+              Chain. Trust is reputation-based: no validation registry is
+              deployed yet. Open source under MIT.
             </p>
           </div>
         </footer>

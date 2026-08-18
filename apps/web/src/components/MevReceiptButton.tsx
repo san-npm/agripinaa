@@ -31,7 +31,7 @@ export function MevReceiptButton({ uid }: { uid: string }) {
     <button
       onClick={download}
       disabled={state === 'loading'}
-      className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+      className="rounded border border-border-strong px-2 py-0.5 text-xs text-muted transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
       title="Download the settlement receipt (order, execution, surplus, fees) as JSON"
     >
       {state === 'loading' ? 'building…' : state === 'error' ? 'retry receipt' : 'receipt ↓'}

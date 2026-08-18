@@ -79,19 +79,19 @@ export function SessionCard({
 
   const badge =
     validity === 'valid'
-      ? { text: 'active on-chain', cls: 'bg-emerald-900/60 text-emerald-300' }
+      ? { text: 'active on-chain', cls: 'bg-success/15 text-success' }
       : validity === 'invalid'
-        ? { text: 'revoked / expired', cls: 'bg-zinc-800 text-zinc-400' }
+        ? { text: 'revoked / expired', cls: 'bg-surface-2 text-muted' }
         : validity === 'checking'
-          ? { text: 'checking…', cls: 'bg-zinc-800 text-zinc-500' }
-          : { text: 'not verifiable', cls: 'bg-amber-900/40 text-amber-300' };
+          ? { text: 'checking…', cls: 'bg-surface-2 text-muted-2' }
+          : { text: 'not verifiable', cls: 'bg-primary/15 text-primary' };
 
   return (
-    <li className="rounded-lg border border-zinc-800 p-4">
+    <li className="rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium">{meta.agent.name}</p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-2">
             {meta.chainId === 97 ? 'BSC Testnet' : 'BNB Chain'} · granted{' '}
             {new Date(meta.grantedAt).toLocaleString()}
           </p>
@@ -100,17 +100,17 @@ export function SessionCard({
           {badge.text}
         </span>
       </div>
-      <dl className="mt-3 space-y-1 text-xs text-zinc-400">
+      <dl className="mt-3 space-y-1 text-xs text-muted">
         <div>
-          <dt className="inline text-zinc-500">Cap: </dt>
+          <dt className="inline text-muted-2">Cap: </dt>
           <dd className="inline">{meta.scope.capFormatted}</dd>
         </div>
         <div>
-          <dt className="inline text-zinc-500">Expires: </dt>
+          <dt className="inline text-muted-2">Expires: </dt>
           <dd className="inline">{new Date(meta.scope.expiresAt).toLocaleString()}</dd>
         </div>
         <div>
-          <dt className="inline text-zinc-500">Allowlist: </dt>
+          <dt className="inline text-muted-2">Allowlist: </dt>
           <dd className="inline break-all font-mono">
             {meta.scope.allowlist.join(', ')}
           </dd>
@@ -121,7 +121,7 @@ export function SessionCard({
           <button
             onClick={revoke}
             disabled={busy}
-            className="rounded border border-red-900 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+            className="rounded border border-danger/40 px-3 py-1 text-xs text-danger hover:bg-danger/10 disabled:opacity-50"
           >
             {busy ? 'Revoking…' : 'Revoke'}
           </button>
@@ -131,12 +131,12 @@ export function SessionCard({
             forgetSession(meta.id);
             onChange();
           }}
-          className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:border-zinc-500"
+          className="rounded border border-border-strong px-3 py-1 text-xs text-muted hover:border-border-strong"
         >
           Forget
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </li>
   );
 }

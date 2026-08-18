@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
+/*
+ * Agripinaa design system: "Bitcoin DeFi" dark-only.
+ * Amber-gold = trust/primary, violet = tech accent (used sparingly),
+ * deep-void surfaces, monospace for on-chain data, ultra-thin borders.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0f1a;      /* deep void */
+  --surface: #111827;         /* card */
+  --surface-2: #0e1422;       /* raised panel on card */
+  --foreground: #f8fafc;
+  --muted: #94a3b8;           /* secondary text */
+  --muted-2: #64748b;         /* tertiary text */
+  --border: #1e293b;          /* ultra-thin hairline */
+  --border-strong: #334155;
+  --primary: #f59e0b;         /* amber-gold */
+  --primary-050: #fbbf24;
+  --on-primary: #0b0f1a;
+  --accent: #8b5cf6;          /* violet, tech accent */
+  --success: #34d399;         /* surplus / active */
+  --danger: #ef4444;
+  --ring: #f59e0b;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle top-of-page gold aura, the DeFi "deep void" treatment. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 30rem at 50% -10rem, rgba(245, 158, 11, 0.06), transparent 70%);
+  z-index: 0;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.font-mono, .tabular {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pulsing "live" status dot. */
+@keyframes agp-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(52, 211, 153, 0); }
+}
+.live-dot {
+  animation: agp-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+  * { transition-duration: 0.01ms !important; }
+}
+
+/* Focus ring for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
