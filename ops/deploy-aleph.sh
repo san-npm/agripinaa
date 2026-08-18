@@ -7,10 +7,11 @@ HOST="$1"
 KEY="${2:-$HOME/.ssh/agripinaa-aleph}"
 [ -z "$HOST" ] && { echo "usage: $0 <user@host> [ssh-key]"; exit 1; }
 # Reject anything that could be read as an ssh/rsync option (e.g. a HOST of
-# "-oProxyCommand=..." would run a local command). Require user@host shape.
+# "-oProxyCommand=..." would run a local command). Accept a user@host or a
+# bare ssh_config alias, but nothing with a leading dash or shell metachars.
 case "$HOST" in -*) echo "refusing HOST starting with '-'"; exit 1;; esac
 case "$KEY"  in -*) echo "refusing KEY starting with '-'"; exit 1;; esac
-echo "$HOST" | grep -qE '^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$' || { echo "HOST must be user@host"; exit 1; }
+echo "$HOST" | grep -qE '^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$' || { echo "HOST has invalid characters"; exit 1; }
 [ -f "$KEY" ] || { echo "key file not found: $KEY"; exit 1; }
 S() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$HOST" "$@"; }
 RUSER=$(S whoami)
