@@ -2,6 +2,7 @@ import { bscScanAddress } from "@agripinaa/shared";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
@@ -158,10 +159,15 @@ async function AgentContent({
         </Suspense>
       </section>
 
-      <section className="mt-8 rounded-lg border border-dashed border-zinc-700 p-4 text-sm text-zinc-500">
-        Execution-quality metrics (Ophis order history, surplus, receipts) and
-        session activation land here next.
-      </section>
+      <div className="mt-8">
+        <Suspense
+          fallback={
+            <p className="text-sm text-zinc-500">Loading execution history…</p>
+          }
+        >
+          <ExecutionQualityPanel wallet={agent.agentWallet ?? agent.owner} />
+        </Suspense>
+      </div>
     </div>
   );
 }
