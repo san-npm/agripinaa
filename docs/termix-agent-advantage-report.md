@@ -52,9 +52,14 @@ Aave V3: up to 5-10% of collateral.
 
 **Agent execution.** The health-factor agent polls every 60s and repays from
 a capped budget when HF < 1.3.
-- Evidence: TODO the live drill: operator borrows extra to push HF down,
-  log shows detection + repay tx within 2 minutes, `evidence/task3-drill.jsonl`
-  + BscScan links
+- Evidence (EXECUTED 2026-08-18 on BSC mainnet, evidence/task3-drill.jsonl):
+  drill borrowed 0.65 extra USDT (tx 0x87024c3c961d8bc0495f9c95b7c45cfd1010f36ad9fe16b37a1e8e560a3c2f49),
+  HF 2.264 -> 1.249 at 18:38:12.901Z; agent detected on its next 60s tick,
+  planned repay 0.318 USDT, executed repay tx
+  0x367cb2dc8ab49a0960077ac0e30b58c2d200bc21ecc2bf184c367050b4b0050a
+  at 18:38:14.618Z (under 2 seconds from detection, ~62s from degradation),
+  HF restored to exactly the 1.600 target. Autonomous, budget-capped,
+  repay-only authority
 
 ## Scoring inputs (TermiX rubric)
 
