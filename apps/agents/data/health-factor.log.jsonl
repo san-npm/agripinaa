@@ -23,3 +23,6 @@
 {"at":"2026-08-18T18:38:14.618Z","agent":"health-factor","event":"repay","txHash":"0x367cb2dc8ab49a0960077ac0e30b58c2d200bc21ecc2bf184c367050b4b0050a"}
 {"at":"2026-08-18T18:38:15.066Z","agent":"health-factor","event":"repair-done","txHash":"0x367cb2dc8ab49a0960077ac0e30b58c2d200bc21ecc2bf184c367050b4b0050a","repaidUsdt":"0.318059646689966885"}
 {"at":"2026-08-18T18:39:12.835Z","agent":"health-factor","event":"hf","hf":1.5996259022069546,"zone":"healthy","collateralBase":"241269137","debtBase":"113121357"}
+{"at":"2026-08-18T18:40:12.911Z","agent":"health-factor","event":"hf","hf":1.5997588284914952,"zone":"healthy","collateralBase":"241289201","debtBase":"113121364"}
+{"at":"2026-08-18T18:41:12.832Z","agent":"health-factor","event":"hf","hf":1.5996579527841825,"zone":"healthy","collateralBase":"241274001","debtBase":"113121371"}
+{"at":"2026-08-18T18:42:12.841Z","agent":"health-factor","event":"hf","hf":1.5995279048846098,"zone":"healthy","collateralBase":"241254401","debtBase":"113121378"}
