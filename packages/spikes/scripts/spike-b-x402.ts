@@ -110,7 +110,7 @@ async function main() {
         ok: true,
         paidBy: result.receipt.payer,
         amount: result.receipt.amount.toString(),
-        settlementTx: result.receipt.transactionHash ?? null,
+        settlementTx: result.receipt.txHash,
       }),
     );
   });
