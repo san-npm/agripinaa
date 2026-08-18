@@ -92,7 +92,13 @@ export class MergedSource implements AgentIndexSource {
   async getAgent(chainId: number, tokenId: string): Promise<AgentDetail | null> {
     const key = `agent:${chainId}:${tokenId}`;
     try {
-      return this.remember(key, await this.scan.getAgent(chainId, tokenId));
+      const fromScan = await this.scan.getAgent(chainId, tokenId);
+      // A null from the indexer is not proof of nonexistence: fresh
+      // registrations lag it (BSC lane is rpc_only). The registry is the
+      // source of truth for existence; only a null THERE is final.
+      if (fromScan) return this.remember(key, fromScan);
+      const fromRegistry = await readAgentFromRegistry(chainId, tokenId);
+      return this.remember(key, fromRegistry);
     } catch {
       const fromRegistry = await readAgentFromRegistry(chainId, tokenId);
       if (fromRegistry) return this.remember(key, fromRegistry);
