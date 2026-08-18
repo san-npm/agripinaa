@@ -52,7 +52,9 @@ for UNIT in runner tunnel; do
   printf '[Unit]\nDescription=%s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nUser=%s\n%s\nExecStart=%s\nRestart=always\nRestartSec=10\n[Install]\nWantedBy=multi-user.target\n' \
     "$DESC" "$RUSER" "$WD" "$EXEC" | S "sudo tee /etc/systemd/system/agripinaa-$UNIT.service > /dev/null"
 done
-S 'sudo systemctl daemon-reload && sudo systemctl enable --now agripinaa-runner agripinaa-tunnel'
+# restart (not just enable --now, which is a no-op on an already-running unit)
+# so new code actually loads; the tunnel stays up to keep its URL stable.
+S 'sudo systemctl daemon-reload && sudo systemctl enable agripinaa-runner agripinaa-tunnel && sudo systemctl restart agripinaa-runner && sudo systemctl start agripinaa-tunnel'
 sleep 10
 S 'sudo systemctl --no-pager -q is-active agripinaa-runner agripinaa-tunnel'
 
