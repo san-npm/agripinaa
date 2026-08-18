@@ -76,6 +76,12 @@ async function AgentContent({
       <p className="mt-3 text-zinc-400">
         {agent.description || "No description provided."}
       </p>
+      <a
+        href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
+        className="mt-4 inline-block rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+      >
+        Activate this agent
+      </a>
 
       <section className="mt-8 grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border border-zinc-800 p-4">

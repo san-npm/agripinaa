@@ -34,6 +34,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/agents" className="text-zinc-400 hover:text-zinc-100">
               All agents
             </Link>
+            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-100">
+              My sessions
+            </Link>
             <span className="ml-auto rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
               BNB Smart Chain
             </span>
