@@ -24,7 +24,9 @@ S 'command -v cloudflared >/dev/null 2>&1 || {
 echo "== syncing repo (git) and secrets (rsync)…"
 S 'test -d ~/agripinaa/.git || git clone https://github.com/san-npm/agripinaa.git ~/agripinaa'
 S 'cd ~/agripinaa && git fetch -q && git reset -q --hard origin/main && pnpm install --frozen-lockfile'
-rsync -e "ssh -i $KEY" -a --chmod=F600 "$(dirname "$0")/../wallets/" "$HOST:agripinaa/wallets/"
+# -a preserves the local 600 modes (macOS rsync lacks modern --chmod syntax).
+rsync -e "ssh -i $KEY" -av "$(dirname "$0")/../wallets/" "$HOST:agripinaa/wallets/"
+S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync did not land"; exit 1; }
 
 echo "== installing systemd services (user: $RUSER)…"
 for UNIT in runner tunnel; do
