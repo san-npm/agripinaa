@@ -19,7 +19,7 @@
     "trendHaltBandPct": 6
   },
   "x402": {
-    "endpoint": "https://obtained-cloud-sail-libraries.trycloudflare.com/grid/status",
+    "endpoint": "https://continuous-locator-four-christine.trycloudflare.com/grid/status",
     "priceUsdt": "0.05",
     "note": "live"
   }
