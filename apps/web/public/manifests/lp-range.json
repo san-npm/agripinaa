@@ -1,0 +1,10 @@
+{
+  "name": "Agripinaa Ranger",
+  "description": "Concentrated-liquidity range management on PancakeSwap V3 (WBNB/USDT). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.",
+  "category": "rebalancing",
+  "image": "https://agripinaa.vercel.app/icon.png",
+  "capabilities": ["trading", "lp-management", "x402-status"],
+  "execution": { "venue": "pancakeswap-v3", "rebalanceVenue": "ophis", "pair": "WBNB/USDT", "chainId": 56 },
+  "safety": { "rangePct": 5, "outOfRangeMinutes": 30, "maxRebalancesPerDay": 2, "maxRebalancesPerWeek": 4 },
+  "x402": { "endpoint": null, "priceUsdt": "0.05", "note": "endpoint set at launch" }
+}
