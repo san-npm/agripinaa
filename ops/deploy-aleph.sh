@@ -8,6 +8,7 @@ KEY="${2:-$HOME/.ssh/agripinaa-aleph}"
 [ -z "$HOST" ] && { echo "usage: $0 <user@host> [ssh-key]"; exit 1; }
 S() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$HOST" "$@"; }
 RUSER=$(S whoami)
+RHOME=$(S 'echo $HOME')
 
 echo "== provisioning node/pnpm/cloudflared (idempotent)…"
 S 'node --version 2>/dev/null | grep -q "^v22" || {
@@ -30,7 +31,7 @@ for UNIT in runner tunnel; do
   if [ "$UNIT" = runner ]; then
     DESC="Agripinaa reference agents"
     EXEC="/usr/bin/env pnpm --filter @agripinaa/agents start"
-    WD="WorkingDirectory=/home/$RUSER/agripinaa"
+    WD="WorkingDirectory=$RHOME/agripinaa"
   else
     DESC="Cloudflare tunnel for agent x402 endpoints"
     EXEC="/usr/bin/cloudflared tunnel --url http://localhost:4410"
