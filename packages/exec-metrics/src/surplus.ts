@@ -15,6 +15,11 @@ import { fromBaseUnits, TOKENS_BSC } from '@agripinaa/shared';
 
 import type { CowOrder } from './cow';
 
+// BigInt() calls instead of literals: consumers typecheck this source at
+// whatever target their toolchain applies (Next.js pins one below ES2020).
+const BIGINT_ZERO = BigInt(0);
+const BIGINT_MILLION = BigInt(1_000_000);
+
 export type SurplusOrder = Pick<
   CowOrder,
   | 'kind'
@@ -28,11 +33,11 @@ export type SurplusOrder = Pick<
 >;
 
 function toBigInt(value: string | undefined): bigint {
-  if (!value) return 0n;
+  if (!value) return BIGINT_ZERO;
   try {
     return BigInt(value);
   } catch {
-    return 0n;
+    return BIGINT_ZERO;
   }
 }
 
@@ -56,12 +61,12 @@ export function calcSurplusRaw(order: SurplusOrder): bigint | null {
   const execBuy = toBigInt(order.executedBuyAmount);
 
   if (order.kind === 'sell') {
-    if (execSell === 0n || sell === 0n) return null;
+    if (execSell === BIGINT_ZERO || sell === BIGINT_ZERO) return null;
     const scaledLimitBuy = (buy * execSell) / sell;
     return execBuy - scaledLimitBuy;
   }
 
-  if (execBuy === 0n || buy === 0n) return null;
+  if (execBuy === BIGINT_ZERO || buy === BIGINT_ZERO) return null;
   const scaledLimitSell = (sell * execBuy) / buy;
   return scaledLimitSell - execSell;
 }
@@ -82,9 +87,9 @@ export function surplusBps(order: SurplusOrder): number | null {
   const execBuy = toBigInt(order.executedBuyAmount);
 
   const limit = order.kind === 'sell' ? (buy * execSell) / sell : (sell * execBuy) / buy;
-  if (limit <= 0n) return null;
+  if (limit <= BIGINT_ZERO) return null;
 
-  return Number((raw * 1_000_000n) / limit) / 100;
+  return Number((raw * BIGINT_MILLION) / limit) / 100;
 }
 
 export interface SurplusSummary {
@@ -110,7 +115,7 @@ export function summarizeSurplus(orders: readonly SurplusOrder[]): SurplusSummar
     const raw = calcSurplusRaw(order);
     if (raw === null) continue;
     const token = surplusToken(order).toLowerCase();
-    totalSurplusRaw[token] = (totalSurplusRaw[token] ?? 0n) + raw;
+    totalSurplusRaw[token] = (totalSurplusRaw[token] ?? BIGINT_ZERO) + raw;
 
     const bps = surplusBps(order);
     if (bps !== null) {
@@ -136,7 +141,7 @@ export function formatSurplusAmount(tokenAddress: string, raw: bigint): string {
   const needle = tokenAddress.toLowerCase();
   const known = Object.values(TOKENS_BSC).find((t) => t.address.toLowerCase() === needle);
   const decimals = known?.decimals ?? 18;
-  const sign = raw < 0n ? '-' : '';
-  const amount = fromBaseUnits(raw < 0n ? -raw : raw, decimals);
+  const sign = raw < BIGINT_ZERO ? '-' : '';
+  const amount = fromBaseUnits(raw < BIGINT_ZERO ? -raw : raw, decimals);
   return known ? `${sign}${amount} ${known.symbol}` : `${sign}${amount}`;
 }

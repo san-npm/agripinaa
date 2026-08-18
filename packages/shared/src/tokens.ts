@@ -30,7 +30,7 @@ export const TOKENS_BSC: Record<string, TokenInfo> = {
   },
 };
 
-/** "12.5" + 18 decimals → 12500000000000000000n. Throws on malformed input. */
+/** "12.5" + 18 decimals → BigInt("12500000000000000000"). Throws on malformed input. */
 export function toBaseUnits(amount: string, decimals: number): bigint {
   const match = /^(\d+)(?:\.(\d+))?$/.exec(amount.trim());
   if (!match) throw new Error(`Invalid decimal amount: "${amount}"`);
