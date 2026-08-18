@@ -12,10 +12,15 @@
   "dependencies": {
     "@agripinaa/agent-index": "workspace:*",
     "@agripinaa/shared": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "viem": "^2.55.11",
+    "wagmi": "^3.7.6",
+    "@agripinaa/exec-metrics": "workspace:*",
+    "@agripinaa/session-kit": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
