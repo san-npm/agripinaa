@@ -28,11 +28,11 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
 
   if (exec.rows.length === 0) {
     return (
-      <section className="rounded-lg border border-zinc-800 p-4">
-        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-500">
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-2">
           Execution quality
         </h2>
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-muted-2">
           No Ophis-routed trades from this agent&apos;s wallet yet. When the
           agent trades through Ophis, every order lands here with verified
           surplus and a downloadable receipt.
@@ -43,54 +43,83 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
 
   const { summary } = exec;
   return (
-    <section className="rounded-lg border border-zinc-800 p-4">
-      <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+    <section className="rounded-xl border border-border bg-surface p-5">
+      <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-2">
         Execution quality
       </h2>
-      <dl className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-        <div>
-          <dt className="inline text-zinc-500">Ophis orders: </dt>
-          <dd className="inline text-zinc-200">
-            {summary.filledOrders}/{summary.totalOrders} filled
-          </dd>
-        </div>
+      <dl className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Metric
+          label="Ophis orders"
+          value={`${summary.filledOrders}/${summary.totalOrders}`}
+          hint="filled"
+        />
         {summary.avgSurplusBps != null && (
-          <div>
-            <dt className="inline text-zinc-500">Avg surplus: </dt>
-            <dd className="inline text-emerald-300">
-              +{summary.avgSurplusBps.toFixed(1)} bps vs signed limit
-            </dd>
-          </div>
+          <Metric
+            label="Avg surplus"
+            value={`+${summary.avgSurplusBps.toFixed(1)}`}
+            hint="bps vs limit"
+            positive
+          />
         )}
-        {Object.entries(summary.totalSurplusRaw).map(([token, raw]) => (
-          <div key={token}>
-            <dt className="inline text-zinc-500">Surplus ({tokenLabel(token)}): </dt>
-            <dd className="inline text-emerald-300">+{formatAmount(raw, token)}</dd>
-          </div>
-        ))}
+        {Object.entries(summary.totalSurplusRaw)
+          .slice(0, 2)
+          .map(([token, raw]) => (
+            <Metric
+              key={token}
+              label={`Surplus ${tokenLabel(token)}`}
+              value={`+${formatAmount(raw, token)}`}
+              positive
+            />
+          ))}
       </dl>
       <ul className="space-y-2">
         {exec.rows.slice(0, 8).map((row) => (
           <li
             key={row.uid}
-            className="flex flex-wrap items-center justify-between gap-2 rounded border border-zinc-800 p-2 text-xs"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 p-2.5 text-xs"
           >
-            <span className="text-zinc-300">
+            <span className="font-mono text-muted">
               {row.kind} {tokenLabel(row.sellToken)} → {tokenLabel(row.buyToken)}
             </span>
-            <span className="text-zinc-500">{row.status}</span>
+            <span className="text-muted-2">{row.status}</span>
             {row.surplusBps != null && (
-              <span className="text-emerald-300">+{row.surplusBps.toFixed(1)} bps</span>
+              <span className="tabular font-mono text-success">
+                +{row.surplusBps.toFixed(1)} bps
+              </span>
             )}
             <MevReceiptButton uid={row.uid} />
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-[10px] text-zinc-600">
+      <p className="mt-3 text-[10px] leading-relaxed text-muted-2">
         Source: CoW orderbook (BSC), Ophis-attributed via appData appCode.
         Surplus = executed vs signed amounts.
       </p>
       <FreshnessStamp asOf={exec.asOf} source="api.cow.fi/bnb" />
     </section>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  hint,
+  positive,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  positive?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface-2 p-3">
+      <div className="text-[10px] uppercase tracking-wide text-muted-2">{label}</div>
+      <div
+        className={`tabular mt-1 font-mono text-lg font-medium ${positive ? "text-success" : "text-foreground"}`}
+      >
+        {value}
+      </div>
+      {hint && <div className="text-[10px] text-muted-2">{hint}</div>}
+    </div>
   );
 }

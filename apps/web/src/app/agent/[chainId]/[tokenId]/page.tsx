@@ -1,35 +1,67 @@
 import { bscScanAddress } from "@agripinaa/shared";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
+import { ArrowIcon, CATEGORY_ICON, VerifiedIcon } from "@/components/icons";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 
+function Panel({
+  title,
+  children,
+  className = "",
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-xl border border-border bg-surface p-5 ${className}`}>
+      <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-2">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Addr({ chainId, address }: { chainId: number; address: string }) {
+  return (
+    <a
+      href={bscScanAddress(chainId, address)}
+      target="_blank"
+      rel="noreferrer"
+      className="font-mono text-xs text-muted transition-colors hover:text-foreground"
+    >
+      {address.slice(0, 10)}…{address.slice(-8)}
+    </a>
+  );
+}
+
 async function FeedbackList({ tokenId }: { tokenId: string }) {
   const feedback = await getFeedback(tokenId);
-  const visible = feedback.filter((f) => !f.revoked).slice(0, 10);
+  const visible = feedback.filter((f) => !f.revoked).slice(0, 8);
   if (visible.length === 0) {
-    return <p className="text-sm text-zinc-500">No on-chain feedback yet.</p>;
+    return <p className="text-sm text-muted-2">No on-chain feedback yet.</p>;
   }
   return (
     <ul className="space-y-2">
       {visible.map((f, i) => (
         <li
           key={f.txHash ?? i}
-          className="rounded border border-zinc-800 p-3 text-sm"
+          className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 p-3 text-sm"
         >
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-xs text-zinc-500">
-              {f.client.slice(0, 10)}…
-            </span>
-            {f.score != null && (
-              <span className="text-zinc-300">score {f.score}</span>
-            )}
-          </div>
+          <span className="font-mono text-xs text-muted-2">
+            {f.client.slice(0, 10)}…
+          </span>
           {f.tags.length > 0 && (
-            <p className="mt-1 text-xs text-zinc-500">{f.tags.join(" · ")}</p>
+            <span className="truncate text-xs text-muted">{f.tags.join(" · ")}</span>
+          )}
+          {f.score != null && (
+            <span className="tabular font-mono text-foreground">{f.score}</span>
           )}
         </li>
       ))}
@@ -39,7 +71,7 @@ async function FeedbackList({ tokenId }: { tokenId: string }) {
 
 export default function AgentPage(props: PageProps<"/agent/[chainId]/[tokenId]">) {
   return (
-    <Suspense fallback={<p className="text-zinc-500">Loading agent…</p>}>
+    <Suspense fallback={<p className="text-muted-2">Loading agent…</p>}>
       <AgentContent params={props.params} />
     </Suspense>
   );
@@ -57,122 +89,124 @@ async function AgentContent({
   if (!agent) notFound();
 
   const category = agent.category ? CATEGORY_INFO[agent.category] : null;
+  const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
 
   return (
-    <div className="max-w-3xl">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">{agent.name}</h1>
-        {category && (
-          <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">
-            {category.label}
-          </span>
-        )}
-        {agent.trust.isVerified && (
-          <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-300">
-            verified
-          </span>
-        )}
-      </div>
-      <p className="mt-3 text-zinc-400">
-        {agent.description || "No description provided."}
-      </p>
-      <a
-        href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
-        className="mt-4 inline-block rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+    <div className="max-w-4xl">
+      <Link
+        href="/agents"
+        className="mb-6 inline-flex items-center gap-1 text-xs text-muted-2 transition-colors hover:text-foreground"
       >
-        Activate this agent
-      </a>
+        <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> All agents
+      </Link>
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-zinc-800 p-4">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Identity
-          </h2>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-zinc-500">Agent ID</dt>
-              <dd className="break-all font-mono text-xs text-zinc-300">
-                {agent.agentId}
-              </dd>
+      <div className="flex flex-wrap items-start gap-4">
+        <span
+          className={`grid h-14 w-14 shrink-0 place-items-center rounded-xl border ${
+            category
+              ? "border-primary/30 bg-primary/10 text-primary"
+              : "border-border bg-surface-2 text-muted-2"
+          }`}
+        >
+          {Icon ? <Icon className="h-7 w-7" /> : <span>·</span>}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-display text-2xl font-semibold">{agent.name}</h1>
+            {agent.trust.isVerified && (
+              <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                <VerifiedIcon className="h-3.5 w-3.5" /> verified
+              </span>
+            )}
+            {category && (
+              <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-muted">
+                {category.label}
+              </span>
+            )}
+          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+            {agent.description || "No description provided by this agent."}
+          </p>
+        </div>
+        <Link
+          href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
+        >
+          Activate agent <ArrowIcon className="h-4 w-4" />
+        </Link>
+      </div>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <Panel title="Identity">
+          <dl className="space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-muted-2">Agent ID</dt>
+              <dd className="truncate font-mono text-xs text-muted">{agent.agentId}</dd>
             </div>
-            <div>
-              <dt className="text-zinc-500">Owner</dt>
-              <dd className="font-mono text-xs">
-                <a
-                  href={bscScanAddress(agent.chainId, agent.owner)}
-                  className="text-zinc-300 underline hover:text-white"
-                >
-                  {agent.owner}
-                </a>
-              </dd>
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-muted-2">Owner</dt>
+              <dd><Addr chainId={agent.chainId} address={agent.owner} /></dd>
             </div>
             {agent.agentWallet && (
-              <div>
-                <dt className="text-zinc-500">Agent wallet</dt>
-                <dd className="font-mono text-xs">
-                  <a
-                    href={bscScanAddress(agent.chainId, agent.agentWallet)}
-                    className="text-zinc-300 underline hover:text-white"
-                  >
-                    {agent.agentWallet}
-                  </a>
-                </dd>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-2">Agent wallet</dt>
+                <dd><Addr chainId={agent.chainId} address={agent.agentWallet} /></dd>
               </div>
             )}
             {agent.supportedProtocols.length > 0 && (
-              <div>
-                <dt className="text-zinc-500">Protocols</dt>
-                <dd className="text-zinc-300">
-                  {agent.supportedProtocols.join(", ")}
-                </dd>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-2">Protocols</dt>
+                <dd className="text-muted">{agent.supportedProtocols.join(", ")}</dd>
               </div>
             )}
           </dl>
-        </div>
+        </Panel>
 
-        <div className="rounded-lg border border-zinc-800 p-4">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Trust
-          </h2>
-          <dl className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-zinc-500">Total score</dt>
-              <dd className="text-zinc-200">{agent.trust.totalScore ?? "n/a"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-zinc-500">Rank</dt>
-              <dd className="text-zinc-200">{agent.trust.rank ?? "n/a"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-zinc-500">Feedback entries</dt>
-              <dd className="text-zinc-200">{agent.trust.totalFeedbacks}</dd>
-            </div>
+        <Panel title="Trust">
+          <dl className="grid grid-cols-3 gap-2 text-center">
+            <TrustStat label="Score" value={agent.trust.totalScore != null ? String(agent.trust.totalScore) : "—"} />
+            <TrustStat label="Rank" value={agent.trust.rank != null ? `#${agent.trust.rank}` : "—"} />
+            <TrustStat label="Feedback" value={String(agent.trust.totalFeedbacks)} />
           </dl>
-          <p className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-600">
-            Validation registry: not yet deployed (ERC-8004 is a draft
-            standard). Trust here is reputation-based.
+          <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-2">
+            Validation registry not yet deployed (ERC-8004 is draft). Trust here
+            is reputation-based.
           </p>
           <FreshnessStamp asOf={agent.trust.asOf} source={agent.trust.source} />
-        </div>
-      </section>
+        </Panel>
+      </div>
 
-      <section className="mt-8">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          On-chain feedback
-        </h2>
-        <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
-          <FeedbackList tokenId={agent.tokenId} />
-        </Suspense>
-      </section>
-
-      <div className="mt-8">
+      <div className="mt-4">
         <Suspense
           fallback={
-            <p className="text-sm text-zinc-500">Loading execution history…</p>
+            <Panel title="Execution quality">
+              <p className="text-sm text-muted-2">Loading execution history…</p>
+            </Panel>
           }
         >
           <ExecutionQualityPanel wallet={agent.agentWallet ?? agent.owner} />
         </Suspense>
+      </div>
+
+      <div className="mt-4">
+        <Panel title="On-chain feedback">
+          <Suspense fallback={<p className="text-sm text-muted-2">Loading…</p>}>
+            <FeedbackList tokenId={agent.tokenId} />
+          </Suspense>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function TrustStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface-2 py-3">
+      <div className="tabular font-mono text-xl font-medium text-foreground">
+        {value}
+      </div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-2">
+        {label}
       </div>
     </div>
   );

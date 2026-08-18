@@ -14,14 +14,14 @@ export default function DashboardPage() {
   return (
     <div className="max-w-2xl">
       <h1 className="mb-2 text-2xl font-semibold">My sessions</h1>
-      <p className="mb-6 text-sm text-zinc-400">
+      <p className="mb-6 text-sm text-muted">
         Every key you have granted, with its live on-chain status read straight
         from the KeyStore registry. Revoking takes one passkey confirmation.
       </p>
       {sessions == null ? (
-        <p className="text-zinc-500">Loading…</p>
+        <p className="text-muted-2">Loading…</p>
       ) : sessions.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-700 p-6 text-sm text-zinc-500">
+        <p className="rounded-lg border border-dashed border-border-strong p-6 text-sm text-muted-2">
           No sessions yet. Pick an agent from a category and activate it; the
           granted session appears here.
         </p>

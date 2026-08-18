@@ -29,3 +29,11 @@ export const CATEGORY_INFO: Record<
       "If you borrow against collateral, a falling health factor can end in liquidation and a penalty. Health-factor agents watch your position around the clock and repay part of the debt from a pre-approved budget before liquidation can happen.",
   },
 };
+
+/** Hub display order: the two categories with the strongest live agents first. */
+export const CATEGORY_ORDER: Category[] = [
+  "grid",
+  "health-factor",
+  "yield",
+  "rebalancing",
+];
