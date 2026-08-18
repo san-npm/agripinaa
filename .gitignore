@@ -9,3 +9,5 @@ dist/
 .vercel/
 .turbo/
 wallets/
+ops/run/
+ops/tunnel-url.txt
