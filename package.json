@@ -11,5 +11,13 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "seed:agents": "pnpm --filter @agripinaa/agent-index seed"
+  },
+  "pnpm": {
+    "overrides": {
+      "@ophis/sdk": "0.3.0"
+    },
+    "patchedDependencies": {
+      "@ophis/agent-swap@0.3.1": "patches/@ophis__agent-swap@0.3.1.patch"
+    }
   }
 }

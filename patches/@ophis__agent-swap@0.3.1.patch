@@ -1,0 +1,13 @@
+diff --git a/dist/swap.js b/dist/swap.js
+index b9faae968a0e0c3827904d6e937501c60b324ef0..eef6fa3ebb3babe63ac6f02a16ee931c0ca47883 100644
+--- a/dist/swap.js
++++ b/dist/swap.js
+@@ -106,7 +106,7 @@ export async function executeOphisSwap(wallet, params, options) {
+         sellAmountBeforeFee: sellAmountAtomic.toString(),
+         from: owner,
+         receiver,
+-        appData: appDataHash,
++        appData: fullAppData,
+         appDataHash,
+         signingScheme: SigningScheme.EIP712,
+     }));
