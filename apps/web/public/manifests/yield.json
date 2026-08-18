@@ -3,8 +3,22 @@
   "description": "Stablecoin yield rotation across BSC lending venues. Compares live supply rates and moves deposits only when the better venue wins by more than 50 bps on two consecutive checks (no churn on noise). Same asset in, same asset out, venue allowlist enforced.",
   "category": "yield",
   "image": "https://agripinaa.vercel.app/icon.png",
-  "capabilities": ["session-keys", "x402-status"],
-  "execution": { "asset": "USDT", "chainId": 56 },
-  "safety": { "maxMovesPerDay": 1, "hysteresisBps": 50, "confirmations": 2 },
-  "x402": { "endpoint": null, "priceUsdt": "0.05", "note": "endpoint set at launch" }
+  "capabilities": [
+    "session-keys",
+    "x402-status"
+  ],
+  "execution": {
+    "asset": "USDT",
+    "chainId": 56
+  },
+  "safety": {
+    "maxMovesPerDay": 1,
+    "hysteresisBps": 50,
+    "confirmations": 2
+  },
+  "x402": {
+    "endpoint": "https://obtained-cloud-sail-libraries.trycloudflare.com/yield/status",
+    "priceUsdt": "0.05",
+    "note": "live"
+  }
 }

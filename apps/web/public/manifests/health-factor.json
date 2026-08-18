@@ -3,9 +3,31 @@
   "description": "Liquidation protection for lending positions. Watches the position's health factor around the clock and repays debt from a pre-approved budget through an Altana session key (contract allowlist, daily spend cap, expiry) before liquidation can trigger. Repay and supply only: it can never borrow or withdraw.",
   "category": "health-factor",
   "image": "https://agripinaa.vercel.app/icon.png",
-  "capabilities": ["session-keys", "monitoring", "x402-status"],
-  "execution": { "protocol": "lending", "chainId": 56 },
-  "safety": { "actions": ["repay", "supply"], "warnHF": 1.5, "actHF": 1.3, "targetHF": 1.6 },
-  "recommendedScope": { "spendCapUsdtPerDay": "25", "expiresHours": 168 },
-  "x402": { "endpoint": null, "priceUsdt": "0.05", "note": "endpoint set at launch" }
+  "capabilities": [
+    "session-keys",
+    "monitoring",
+    "x402-status"
+  ],
+  "execution": {
+    "protocol": "lending",
+    "chainId": 56
+  },
+  "safety": {
+    "actions": [
+      "repay",
+      "supply"
+    ],
+    "warnHF": 1.5,
+    "actHF": 1.3,
+    "targetHF": 1.6
+  },
+  "recommendedScope": {
+    "spendCapUsdtPerDay": "25",
+    "expiresHours": 168
+  },
+  "x402": {
+    "endpoint": "https://obtained-cloud-sail-libraries.trycloudflare.com/health-factor/status",
+    "priceUsdt": "0.05",
+    "note": "live"
+  }
 }

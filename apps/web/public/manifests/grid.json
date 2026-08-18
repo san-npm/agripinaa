@@ -3,13 +3,24 @@
   "description": "Mean-reversion grid trader on the WBNB/USDT pair. Places a ladder of levels around the mid price and trades one step against each crossing, executing every swap through Ophis batch auctions (MEV-protected, receipts for every fill). Halts itself on trend breakouts and daily loss limits.",
   "category": "grid",
   "image": "https://agripinaa.vercel.app/icon.png",
-  "capabilities": ["trading", "x402-status"],
-  "execution": { "venue": "ophis", "pair": "WBNB/USDT", "chainId": 56 },
+  "capabilities": [
+    "trading",
+    "x402-status"
+  ],
+  "execution": {
+    "venue": "ophis",
+    "pair": "WBNB/USDT",
+    "chainId": 56
+  },
   "safety": {
     "maxTradesPerDay": 12,
     "perTradeClipUsd": 2,
     "lossHaltPct": 5,
     "trendHaltBandPct": 6
   },
-  "x402": { "endpoint": null, "priceUsdt": "0.05", "note": "endpoint set at launch" }
+  "x402": {
+    "endpoint": "https://obtained-cloud-sail-libraries.trycloudflare.com/grid/status",
+    "priceUsdt": "0.05",
+    "note": "live"
+  }
 }
