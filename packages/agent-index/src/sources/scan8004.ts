@@ -12,8 +12,14 @@ import type {
 } from '../types';
 
 const BASE_URL = process.env.SCAN8004_BASE_URL ?? 'https://8004scan.io/api/v1/public';
+/**
+ * The keyed API surface (no /public suffix) is a DIFFERENT api: offset/limit
+ * envelope ({items,total,offset,limit}) and, crucially, a chain_id filter
+ * that actually works server-side (verified 2026-08-18: 257,873 BSC agents
+ * vs 740k global). 180 req/min + 20k/day with a key.
+ */
+const KEYED_BASE_URL = process.env.SCAN8004_KEYED_BASE ?? 'https://8004scan.io/api/v1';
 const API_KEY = process.env.SCAN8004_API_KEY;
-/** Observed in the API's CORS allow-list; overridable in case provisioning says otherwise. */
 const KEY_HEADER = process.env.SCAN8004_KEY_HEADER ?? 'X-API-Key';
 
 export class Scan8004Error extends Error {
@@ -141,17 +147,62 @@ function toDetail(a: ScanAgent, expectedChainId: number, asOf: string): AgentDet
   };
 }
 
+async function keyedFetch<T>(
+  path: string,
+  params: Record<string, string | number>,
+): Promise<T> {
+  const url = new URL(`${KEYED_BASE_URL}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  const res = await fetch(url, {
+    headers: { accept: 'application/json', [KEY_HEADER]: API_KEY! },
+  });
+  if (!res.ok) {
+    throw new Scan8004Error(`8004scan keyed ${path} responded ${res.status}`, res.status);
+  }
+  return (await res.json()) as T;
+}
+
 export class Scan8004Source implements AgentIndexSource {
-  readonly name = '8004scan';
+  readonly name = API_KEY ? '8004scan-pro' : '8004scan';
 
   async listAgents(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
+    if (API_KEY) return this.listAgentsKeyed(q);
+    return this.listAgentsPublic(q);
+  }
+
+  /** Keyed surface: server-side chain filter, offset cursor, real per-chain total. */
+  private async listAgentsKeyed(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
+    const limit = q.limit ?? 24;
+    const offset = q.cursor ? Number.parseInt(q.cursor, 10) : 0;
+    const asOf = new Date().toISOString();
+
+    const res = await keyedFetch<{ items: ScanAgent[]; total: number }>('/agents', {
+      chain_id: q.chainId,
+      limit,
+      offset,
+    });
+
+    // Server filters by chain; keep the local filter as defense in depth.
+    let items = res.items
+      .filter((a) => a.chain_id === q.chainId)
+      .map((a) => toSummary(a, asOf));
+    if (q.category) items = items.filter((a) => a.category === q.category);
+
+    return {
+      items,
+      nextCursor: offset + limit < res.total ? String(offset + limit) : null,
+      total: res.total,
+      asOf,
+      source: this.name,
+    };
+  }
+
+  /** Public surface: chain filters ignored upstream; over-fetch + filter locally. */
+  private async listAgentsPublic(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
     const page = q.cursor ? Number.parseInt(q.cursor, 10) : 1;
     const limit = q.limit ?? 24;
     const asOf = new Date().toISOString();
 
-    // Upstream ignores chain filters (see assertChain doc comment): fetch a
-    // full 100-item page and filter locally. The cursor advances upstream
-    // pages, so a page may yield fewer than `limit` chain-matched items.
     const res = await scanFetch<ScanAgent[]>('/agents', {
       chain_id: q.chainId, // kept: harmless today, correct if upstream fixes it
       page,
@@ -168,7 +219,7 @@ export class Scan8004Source implements AgentIndexSource {
     return {
       items,
       nextCursor: pagination?.hasMore ? String(page + 1) : null,
-      // Upstream total is global (all chains); never present it as ours.
+      // Public upstream total is global (all chains); never present it as ours.
       total: null,
       asOf,
       source: this.name,
@@ -177,6 +228,16 @@ export class Scan8004Source implements AgentIndexSource {
 
   async getAgent(chainId: number, tokenId: string): Promise<AgentDetail | null> {
     const asOf = new Date().toISOString();
+    if (API_KEY) {
+      try {
+        // Keyed detail returns the agent object directly (no envelope).
+        const agent = await keyedFetch<ScanAgent>(`/agents/${chainId}/${tokenId}`, {});
+        return toDetail(agent, chainId, asOf);
+      } catch (err) {
+        if (err instanceof Scan8004Error && err.status === 404) return null;
+        throw err;
+      }
+    }
     try {
       const res = await scanFetch<ScanAgent>(`/agents/${chainId}/${tokenId}`, {});
       return toDetail(res.data, chainId, asOf);
