@@ -12,6 +12,10 @@
 
 import type { CowOrder, CowTrade } from '../cow';
 
+// BigInt() call instead of a literal: consumers typecheck this source at
+// whatever target their toolchain applies (Next.js pins one below ES2020).
+const BIGINT_ZERO = BigInt(0);
+
 /**
  * CIP-75 partner-fee config baked into the order's appData. Only the two
  * models Ophis emits are decoded (flat volume, legacy priceImprovement);
@@ -129,7 +133,7 @@ function calcSurplusVsQuote(order: CowOrder): number | null {
   } catch {
     return null;
   }
-  if (lim === 0n) return null;
+  if (lim === BIGINT_ZERO) return null;
   const diff = order.kind === 'sell' ? exec - lim : lim - exec;
   return Number(diff) / Number(lim);
 }
