@@ -1,5 +1,0 @@
-{"at":"2026-08-18T18:25:12.582Z","agent":"yield","event":"enrollment-unavailable","wallet":"0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9","error":"reputation API 530 for https://rebates.ophis.fi/tier/0x344ef980a827e9ff4086ee95b22aed0d95d11ac9","consequence":"rebate/XP indexing deferred; execution metrics unaffected"}
-{"at":"2026-08-18T18:25:12.582Z","agent":"yield","event":"boot","category":"yield","tickMs":21600000}
-{"at":"2026-08-18T18:25:13.075Z","agent":"yield","venue":"none","venusApyBps":202.025763698357,"aaveApyBps":206.77454945112396,"blocksPerYear":70048867,"venusRatePerBlock":"288406897","aaveLiquidityRate":"20677454945112398503207339","walletUsdt":"2.5","venusUsdt":"0","aaveUsdt":"0","event":"tick","decision":"enter","target":"aave","amount":"2.4"}
-{"at":"2026-08-18T18:25:14.100Z","agent":"yield","event":"approve","spender":"0x6807dc923806fE8Fd134338EABCA509979a7e0cB","amount":"2.4","txHash":"0x5794d2f96bf79bf74353166b4ecc1951f7dc4336c2ea3e0d15f53321e82146a7"}
-{"at":"2026-08-18T18:25:14.894Z","agent":"yield","event":"supply","venue":"aave","amount":"2.4","txHash":"0xefa6d0840e9974fdd28700116f152d054e3c5f178417e36d06f85399a30e058f"}

@@ -76,7 +76,15 @@ export function startX402Server(opts: {
         res.end(JSON.stringify(result.body));
         return;
       }
-      const status = await entry.module.status(entry.ctx);
+      // Payment has settled on-chain. From here the buyer MUST get a 200: a
+      // 500 would mean they paid and got nothing. If status() fails, return
+      // the receipt with a null status rather than erroring.
+      let status: Record<string, unknown> | null = null;
+      try {
+        status = await entry.module.status(entry.ctx);
+      } catch {
+        status = null;
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -87,11 +95,10 @@ export function startX402Server(opts: {
           status,
         }),
       );
-    } catch (err) {
+    } catch {
+      // Pre-settlement failure (challenge/verify path): no charge occurred.
       res.writeHead(500, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({ error: err instanceof Error ? err.message : 'internal' }),
-      );
+      res.end(JSON.stringify({ error: 'internal' }));
     }
   });
 

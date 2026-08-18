@@ -1,4 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,16 +38,32 @@ function stateFile(name: string): string {
 }
 
 function loadDisk(name: string): DiskState {
+  const file = stateFile(name);
+  if (!existsSync(file)) return {}; // genuinely first run
   try {
-    return JSON.parse(readFileSync(stateFile(name), 'utf8')) as DiskState;
+    return JSON.parse(readFileSync(file, 'utf8')) as DiskState;
   } catch {
-    return {};
+    // Fail CLOSED: a corrupt/truncated state file (e.g. crash mid-write)
+    // must not silently reset halts and rate limits. Preserve it for a
+    // human and boot in a halted state so the agent monitors but never
+    // trades until the flag is cleared.
+    try {
+      renameSync(file, `${file}.corrupt-${Date.now()}`);
+    } catch {
+      /* best-effort preservation */
+    }
+    return { halted: { reason: 'state-file-corrupt', at: new Date().toISOString() } };
   }
 }
 
 function saveDisk(name: string, state: DiskState): void {
   mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(stateFile(name), JSON.stringify(state, null, 2));
+  // Atomic: write to a temp file then rename, so a crash mid-write cannot
+  // leave a truncated state file that reads as "not halted, caps reset".
+  const file = stateFile(name);
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2));
+  renameSync(tmp, file);
 }
 
 export function loadAgentAccount(name: string): Account {

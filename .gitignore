@@ -11,3 +11,4 @@ dist/
 wallets/
 ops/run/
 ops/tunnel-url.txt
+apps/agents/data/

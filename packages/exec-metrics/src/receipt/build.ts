@@ -11,10 +11,7 @@
  */
 
 import type { CowOrder, CowTrade } from '../cow';
-
-// BigInt() call instead of a literal: consumers typecheck this source at
-// whatever target their toolchain applies (Next.js pins one below ES2020).
-const BIGINT_ZERO = BigInt(0);
+import { calcSurplusRaw } from '../surplus';
 
 /**
  * CIP-75 partner-fee config baked into the order's appData. Only the two
@@ -116,26 +113,32 @@ export function extractPartnerFees(fullAppData: string | null): PartnerFeeInfo[]
 }
 
 /**
- * Fractional surplus versus the signed limit: (executed - limit) / limit in
- * the buy token for sells, (limit - executed) / limit in the sell token for
- * buys. Floats are acceptable here, the field is a display ratio; exact
- * accounting lives in surplus.ts.
+ * Fractional surplus versus the signed limit. Uses surplus.ts's partial-fill
+ * aware raw surplus (scales the signed limit to the filled fraction, so a
+ * half-filled order is not reported as a large loss), divided by the same
+ * scaled limit at full float precision for this display ratio.
  */
 function calcSurplusVsQuote(order: CowOrder): number | null {
-  const executed = order.kind === 'sell' ? order.executedBuyAmount : order.executedSellAmount;
-  const limit = order.kind === 'sell' ? order.buyAmount : order.sellAmount;
-  if (!executed || executed === '0' || !limit || limit === '0') return null;
-  let exec: bigint;
-  let lim: bigint;
+  const raw = calcSurplusRaw(order);
+  if (raw === null) return null;
+  let sell: bigint;
+  let buy: bigint;
+  let execSell: bigint;
+  let execBuy: bigint;
   try {
-    exec = BigInt(executed);
-    lim = BigInt(limit);
+    sell = BigInt(order.sellAmount);
+    buy = BigInt(order.buyAmount);
+    execSell = BigInt(order.executedSellAmount);
+    execBuy = BigInt(order.executedBuyAmount);
   } catch {
     return null;
   }
-  if (lim === BIGINT_ZERO) return null;
-  const diff = order.kind === 'sell' ? exec - lim : lim - exec;
-  return Number(diff) / Number(lim);
+  const scaledLimit =
+    order.kind === 'sell'
+      ? sell === BigInt(0) ? BigInt(0) : (buy * execSell) / sell
+      : buy === BigInt(0) ? BigInt(0) : (sell * execBuy) / buy;
+  if (scaledLimit <= BigInt(0)) return null;
+  return Number(raw) / Number(scaledLimit);
 }
 
 export function buildReceipt({ order, trade, chainId }: BuildReceiptInput): MevProofReceipt {

@@ -98,7 +98,13 @@ export class ReputationClient {
     try {
       // Accept: application/json is load-bearing: /tier and /stats
       // content-negotiate and serve an HTML page to browser Accept headers.
-      const res = await this.fetchImpl(url, { headers: { accept: 'application/json' } });
+      // The timeout is load-bearing too: this call gates agent startup, so a
+      // server that accepts the connection but never responds must not hang
+      // the guardian (see chassis buildContext).
+      const res = await this.fetchImpl(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(8_000),
+      });
       if (!res.ok) {
         return { ok: false, status: res.status, error: `reputation API ${res.status} for ${url}` };
       }

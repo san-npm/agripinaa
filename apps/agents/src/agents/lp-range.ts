@@ -154,7 +154,43 @@ const POOL_ABI = parseAbi([
   'function tickSpacing() view returns (int24)',
   'function token0() view returns (address)',
   'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint32 feeProtocol, bool unlocked)',
+  'function observe(uint32[] secondsAgos) view returns (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128)',
 ]);
+
+/** Coarse min-out floor on mint/exit (concentrated-liquidity consumed
+ * amounts vary with the tick, so this is a backstop; a legitimate revert
+ * just defers the action). The primary sandwich defense is the TWAP gate. */
+const LP_MIN_BPS = BigInt(9000); // accept >= 90% of desired per token
+const TWAP_WINDOW_SECONDS = 60;
+const TWAP_MAX_TICK_DEVIATION = 100; // ~1% price; a sandwich must exceed this
+
+/**
+ * Reject action when the pool's spot tick has been pushed away from its
+ * short TWAP (the signature of a sandwich). Best-effort: if the pool lacks
+ * observation history (observe reverts), returns true so the coarse mins
+ * remain the only guard rather than halting the strategy.
+ */
+async function twapAligned(ctx: AgentContext, pool: `0x${string}`, spotTick: number): Promise<boolean> {
+  try {
+    const [tickCumulatives] = await ctx.publicClient.readContract({
+      address: pool,
+      abi: POOL_ABI,
+      functionName: 'observe',
+      args: [[TWAP_WINDOW_SECONDS, 0]],
+    });
+    const delta = Number(tickCumulatives[1]! - tickCumulatives[0]!);
+    const twapTick = Math.trunc(delta / TWAP_WINDOW_SECONDS);
+    const deviation = Math.abs(spotTick - twapTick);
+    if (deviation > TWAP_MAX_TICK_DEVIATION) {
+      ctx.log({ event: 'twap-guard-skip', spotTick, twapTick, deviation });
+      return false;
+    }
+    return true;
+  } catch {
+    ctx.log({ event: 'twap-unavailable', pool });
+    return true;
+  }
+}
 
 const MAX_UINT128 = BigInt('0xffffffffffffffffffffffffffffffff');
 const USDT_DUST_RESERVE = toBaseUnits('0.1', USDT.decimals);
@@ -234,6 +270,10 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
     throw new Error(`position manager factory mismatch: ${factory}`);
   }
 
+  // Select the DEEPEST pool across fee tiers, not the first with any
+  // liquidity: a shallow reference pool makes the price cheaper to skew
+  // (the mint/exit slippage protection below rides on this pool's tick).
+  let best: { info: PoolInfo; liquidity: bigint } | null = null;
   for (const fee of POOL_FEE_TIERS) {
     const pool = await ctx.publicClient.readContract({
       address: factory,
@@ -264,9 +304,12 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
       tickSpacing,
       wbnbIsToken0: token0.toLowerCase() === WBNB.address.toLowerCase(),
     };
-    ctx.state.set('poolInfo', info);
-    ctx.log({ event: 'pool-selected', ...info, liquidity: liquidity.toString() });
-    return info;
+    if (!best || liquidity > best.liquidity) best = { info, liquidity };
+  }
+  if (best) {
+    ctx.state.set('poolInfo', best.info);
+    ctx.log({ event: 'pool-selected', ...best.info, liquidity: best.liquidity.toString() });
+    return best.info;
   }
   throw new Error('no WBNB/USDT PancakeSwap V3 pool with liquidity found');
 }
@@ -345,6 +388,11 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
     });
     return;
   }
+  // Defeat the sandwich: refuse to mint while spot price is skewed from TWAP.
+  if (!(await twapAligned(ctx, info.pool, slot0.tick))) {
+    ctx.log({ event: 'mint-skipped', reason: 'twap-deviation' });
+    return;
+  }
   if (!ctx.breakers.allowAction('mint', 3)) {
     ctx.log({ event: 'mint-skipped', reason: 'daily-mint-cap' });
     return;
@@ -374,8 +422,8 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
           tickUpper,
           amount0Desired,
           amount1Desired,
-          amount0Min: BigInt(0),
-          amount1Min: BigInt(0),
+          amount0Min: (amount0Desired * LP_MIN_BPS) / BigInt(10000),
+          amount1Min: (amount1Desired * LP_MIN_BPS) / BigInt(10000),
           recipient: ctx.account.address,
           deadline: txDeadline(),
         },
@@ -411,9 +459,17 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
   }
 }
 
-async function exitPosition(ctx: AgentContext, pos: PositionState): Promise<boolean> {
+async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInfo): Promise<boolean> {
   const tokenId = BigInt(pos.tokenId);
   try {
+    // Removing liquidity at a manipulated price lets an attacker skew the
+    // returned token ratio; defer the exit while spot diverges from TWAP.
+    // Deferring is safe: an out-of-range position idles, it does not bleed.
+    const slot0 = await readSlot0(ctx, info.pool);
+    if (!(await twapAligned(ctx, info.pool, slot0.tick))) {
+      ctx.log({ event: 'exit-deferred', reason: 'twap-deviation', tokenId: pos.tokenId });
+      return false;
+    }
     const position = await ctx.publicClient.readContract({
       address: POSITION_MANAGER,
       abi: NPM_ABI,
@@ -589,7 +645,7 @@ export const lpRangeAgent: AgentModule = {
     ctx.state.set('rebalanceTimes', [...weekly, now]);
     ctx.log({ event: 'rebalance-start', tokenId: pos.tokenId, currentTick: slot0.tick });
 
-    const exited = await exitPosition(ctx, pos);
+    const exited = await exitPosition(ctx, pos, info);
     if (!exited) return;
     ctx.state.set('position', null);
 
