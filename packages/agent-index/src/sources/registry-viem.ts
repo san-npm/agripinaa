@@ -3,6 +3,7 @@ import {
   BSC_TESTNET,
   ERC8004_REGISTRIES,
   IDENTITY_REGISTRY_ABI,
+  safeFetchJson,
 } from '@agripinaa/shared';
 import {
   createPublicClient,
@@ -28,27 +29,13 @@ function clientFor(chainId: number): PublicClient {
   return client;
 }
 
-function resolveUri(uri: string): string {
-  if (uri.startsWith('ipfs://')) {
-    return `https://ipfs.io/ipfs/${uri.slice('ipfs://'.length)}`;
-  }
-  return uri;
-}
-
+/**
+ * An agent's tokenURI is attacker-controlled (ERC-8004 registration is
+ * permissionless), so this fetch runs through the SSRF guard: https/ipfs
+ * only, private hosts blocked, redirects re-validated, body capped.
+ */
 async function fetchMetadata(uri: string): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(resolveUri(uri), {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as unknown;
-    return typeof json === 'object' && json !== null
-      ? (json as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
+  return safeFetchJson(uri, { timeoutMs: 5_000 });
 }
 
 /**

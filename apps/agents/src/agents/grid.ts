@@ -239,23 +239,27 @@ export interface GuardInput {
 
 export type GuardResult = { ok: true } | { ok: false; reason: GuardFailure; halt: boolean };
 
-/** Spec-fixed guard order: cooldown, rate limit, trend halt, loss halt,
- * balance sufficiency. halt true means the caller must trip the breaker. */
+/** Guard order: HALTING conditions first (trend breakout, daily loss) so
+ * they always trip regardless of cooldown or a spent rate-limit budget, then
+ * the non-halting gates (cooldown, rate limit, balance). halt true means the
+ * caller must trip the breaker. Note: allowTrade() records a slot, so it is
+ * evaluated only after the halts and cooldown have passed, never burning the
+ * daily budget on a no-op tick. */
 export function evaluateGuards(input: GuardInput): GuardResult {
-  if (isCooldownActive(input.nowMs, input.lastFillAtMs, input.cooldownMs)) {
-    return { ok: false, reason: 'cooldown', halt: false };
-  }
-  if (!input.allowTrade()) {
-    return { ok: false, reason: 'rate-limit', halt: false };
-  }
   if (isTrendBreakout(input.price, input.center, input.maxDeviation)) {
     return { ok: false, reason: 'trend-breakout', halt: true };
   }
   if (isLossBreach(input.inventoryNowUsd, input.inventoryStartUsd, input.lossFloor)) {
     return { ok: false, reason: 'daily-loss', halt: true };
   }
+  if (isCooldownActive(input.nowMs, input.lastFillAtMs, input.cooldownMs)) {
+    return { ok: false, reason: 'cooldown', halt: false };
+  }
   if (input.balanceBaseUnits < input.clipBaseUnits) {
     return { ok: false, reason: 'insufficient-balance', halt: false };
+  }
+  if (!input.allowTrade()) {
+    return { ok: false, reason: 'rate-limit', halt: false };
   }
   return { ok: true };
 }
@@ -443,6 +447,13 @@ export const gridAgent: AgentModule = {
       center,
     });
 
+    // Persist the cooldown anchor and level mark BEFORE submitting: a crash
+    // in the submit window must not lose them, or a restart would re-fire the
+    // same clip with no cooldown. Worst case on a failed submit is one
+    // skipped legitimate clip, the safe direction.
+    ctx.state.set('lastFillAt', Date.now());
+    ctx.state.set('crossedLevels', [...crossed, hit.level.key]);
+
     const wallet = new ChassisOphisWallet(ctx.account, ctx.publicClient, ctx.walletClient);
     const result = await executeOphisSwap(
       wallet,
@@ -474,8 +485,6 @@ export const gridAgent: AgentModule = {
     };
     const fills = [...ctx.state.get<FillRecord[]>('fills', []), fill].slice(-FILL_HISTORY);
     ctx.state.set('fills', fills);
-    ctx.state.set('lastFillAt', Date.now());
-    ctx.state.set('crossedLevels', [...crossed, hit.level.key]);
   },
 
   async status(ctx) {

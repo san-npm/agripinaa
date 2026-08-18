@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { isAddress, keccak256, toBytes } from 'viem';
 import {
   buildReceipt,
   CowOrderbookClient,
@@ -44,6 +45,16 @@ export interface ExecSummary {
 export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
   'use cache';
   cacheLife('minutes');
+  // owner can be an agent's on-chain agentWallet, which is attacker-settable
+  // metadata: validate before it reaches the upstream URL path or cache key.
+  if (!isAddress(owner)) {
+    return {
+      owner,
+      rows: [],
+      summary: { totalOrders: 0, filledOrders: 0, avgSurplusBps: null, totalSurplusRaw: {} },
+      asOf: new Date().toISOString(),
+    };
+  }
   const orders = await cow.getAccountOrders(owner as `0x${string}`, { limit: 100 });
   const ophisOrders = orders.filter((o) => isOphisOrder(o));
   const summary = summarizeSurplus(ophisOrders);
@@ -90,7 +101,19 @@ export async function getReceipt(uid: string): Promise<ReceiptPayload | null> {
   } catch {
     return null;
   }
+  // Only mint an Ophis-branded receipt for an actually-Ophis order, and only
+  // when the full appData JSON hashes to the signed appData field. This binds
+  // the receipt to what the order owner signed, so a hostile order feed
+  // cannot attach appCode:"ophis" to an unrelated order.
+  if (!isOphisOrder(order)) return null;
+  if (order.fullAppData) {
+    const boundHash = keccak256(toBytes(order.fullAppData));
+    if (order.appData && boundHash.toLowerCase() !== order.appData.toLowerCase()) {
+      return null;
+    }
+  }
   const trades = await cow.getTrades({ orderUid: uid }).catch(() => []);
-  const trade = trades[0] ?? null;
+  // A trade for a different order must not be stapled onto this receipt.
+  const trade = trades.find((t) => t.orderUid === uid) ?? null;
   return { receipt: buildReceipt({ order, trade, chainId: 56 }), order, trade };
 }

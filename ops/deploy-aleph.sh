@@ -6,6 +6,12 @@ set -e
 HOST="$1"
 KEY="${2:-$HOME/.ssh/agripinaa-aleph}"
 [ -z "$HOST" ] && { echo "usage: $0 <user@host> [ssh-key]"; exit 1; }
+# Reject anything that could be read as an ssh/rsync option (e.g. a HOST of
+# "-oProxyCommand=..." would run a local command). Require user@host shape.
+case "$HOST" in -*) echo "refusing HOST starting with '-'"; exit 1;; esac
+case "$KEY"  in -*) echo "refusing KEY starting with '-'"; exit 1;; esac
+echo "$HOST" | grep -qE '^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$' || { echo "HOST must be user@host"; exit 1; }
+[ -f "$KEY" ] || { echo "key file not found: $KEY"; exit 1; }
 S() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$HOST" "$@"; }
 RUSER=$(S whoami)
 RHOME=$(S 'echo $HOME')
@@ -27,6 +33,9 @@ S 'cd ~/agripinaa && git fetch -q && git reset -q --hard origin/main && pnpm ins
 # -a preserves the local 600 modes (macOS rsync lacks modern --chmod syntax).
 rsync -e "ssh -i $KEY" -av "$(dirname "$0")/../wallets/" "$HOST:agripinaa/wallets/"
 S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync did not land"; exit 1; }
+# Enforce 0600 on the remote regardless of what the local modes were (some
+# key files predate the chmod-on-write and could be 0644).
+S 'chmod 700 ~/agripinaa/wallets && chmod 600 ~/agripinaa/wallets/*.json'
 
 echo "== installing systemd services (user: $RUSER)…"
 for UNIT in runner tunnel; do

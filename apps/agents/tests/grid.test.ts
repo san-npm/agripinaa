@@ -244,7 +244,9 @@ test('guards: rate limit is consulted after cooldown and blocks without halting'
   assert.equal(allowCalls, 1);
 });
 
-test('guards: trend breakout halts, and is evaluated after the rate limiter', () => {
+test('guards: trend breakout halts and is evaluated BEFORE the rate limiter', () => {
+  // Halting conditions must trip even when the daily rate-limit budget is
+  // spent or cooldown is active, so allowTrade must not be consulted first.
   let allowCalls = 0;
   const res = evaluateGuards(
     guardInput({
@@ -256,7 +258,30 @@ test('guards: trend breakout halts, and is evaluated after the rate limiter', ()
     }),
   );
   assert.deepEqual(res, { ok: false, reason: 'trend-breakout', halt: true });
-  assert.equal(allowCalls, 1);
+  assert.equal(allowCalls, 0);
+});
+
+test('guards: trend breakout halts even during cooldown', () => {
+  const res = evaluateGuards(
+    guardInput({ price: 107, nowMs: 1000, lastFillAtMs: 900, cooldownMs: 600_000 }),
+  );
+  assert.deepEqual(res, { ok: false, reason: 'trend-breakout', halt: true });
+});
+
+test('guards: a short-balance tick does not consume a rate-limit slot', () => {
+  let allowCalls = 0;
+  const res = evaluateGuards(
+    guardInput({
+      balanceBaseUnits: BigInt(0),
+      clipBaseUnits: BigInt(1),
+      allowTrade: () => {
+        allowCalls++;
+        return true;
+      },
+    }),
+  );
+  assert.deepEqual(res, { ok: false, reason: 'insufficient-balance', halt: false });
+  assert.equal(allowCalls, 0);
 });
 
 test('guards: trend breakout outranks daily loss when both are true', () => {

@@ -5,7 +5,7 @@
  *
  * Usage: pnpm --filter @agripinaa/agents start [-- --only grid,yield]
  */
-import { readFileSync } from 'node:fs';
+import { openSync, closeSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,7 +27,50 @@ function selectedModules(): AgentModule[] {
   return ALL.filter((m) => names.includes(m.name));
 }
 
+/**
+ * Exclusive run lock: the agents' overlap guard and rate limits are
+ * process-local, so two runners (e.g. the systemd service AND the local
+ * start script) would double-fire orders and bypass daily caps. Refuse to
+ * start if another live process holds the lock; a stale lock (dead pid) is
+ * reclaimed.
+ */
+function acquireRunLock(): string {
+  const lock = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'runner.lock');
+  try {
+    const fd = openSync(lock, 'wx'); // fails if it exists
+    writeFileSync(fd, String(process.pid));
+    closeSync(fd);
+  } catch {
+    const holder = Number.parseInt(readFileSync(lock, 'utf8').trim(), 10);
+    let alive = false;
+    try {
+      process.kill(holder, 0);
+      alive = true;
+    } catch {
+      alive = false;
+    }
+    if (alive) {
+      throw new Error(
+        `another agent runner is live (pid ${holder}); refusing to start a second (would double-trade)`,
+      );
+    }
+    writeFileSync(lock, String(process.pid));
+  }
+  const release = () => {
+    try {
+      unlinkSync(lock);
+    } catch {
+      /* already gone */
+    }
+  };
+  process.on('exit', release);
+  process.on('SIGINT', () => { release(); process.exit(0); });
+  process.on('SIGTERM', () => { release(); process.exit(0); });
+  return lock;
+}
+
 async function main() {
+  acquireRunLock();
   const modules = selectedModules();
   const agents = new Map<string, { module: AgentModule; ctx: AgentContext }>();
 

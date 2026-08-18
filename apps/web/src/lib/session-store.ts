@@ -25,7 +25,27 @@ const KEY = 'agripinaa.sessions.v1';
 function read(): StoredSessionMeta[] {
   if (typeof window === 'undefined') return [];
   try {
-    return JSON.parse(window.localStorage.getItem(KEY) ?? '[]') as StoredSessionMeta[];
+    const stored = JSON.parse(
+      window.localStorage.getItem(KEY) ?? '[]',
+    ) as StoredSessionMeta[];
+    // Retroactively scrub any signer/_privateKey left by older builds that
+    // serialized the full session; rewrite storage if anything changed.
+    let mutated = false;
+    const scrubbed = stored.map((meta) => {
+      if (meta.raw && meta.raw.includes('_privateKey')) {
+        mutated = true;
+        try {
+          const parsed = JSON.parse(meta.raw) as Record<string, unknown>;
+          delete parsed['signer'];
+          return { ...meta, raw: JSON.stringify(parsed) };
+        } catch {
+          return { ...meta, raw: '' };
+        }
+      }
+      return meta;
+    });
+    if (mutated) window.localStorage.setItem(KEY, JSON.stringify(scrubbed));
+    return scrubbed;
   } catch {
     return [];
   }
@@ -39,13 +59,27 @@ export function listStoredSessions(): StoredSessionMeta[] {
   return read().sort((a, b) => b.grantedAt.localeCompare(a.grantedAt));
 }
 
+/**
+ * The Altana SDK embeds the freshly generated session signer, including its
+ * raw `_privateKey`, on the returned session object. That key must NEVER be
+ * persisted: it has on-chain authority to spend within the session scope,
+ * and nothing here needs it (revoke reads only publicKey; the agent process
+ * signs from its own on-disk session file). Strip the signer before storing.
+ */
+function stripSigner(session: unknown): unknown {
+  if (typeof session !== 'object' || session === null) return session;
+  const { signer: _signer, ...rest } = session as Record<string, unknown>;
+  void _signer;
+  return rest;
+}
+
 export function storeSession(input: {
   session: unknown;
   chainId: number;
   agent: StoredSessionMeta['agent'];
   scope: StoredSessionMeta['scope'];
 }): StoredSessionMeta {
-  const raw = serializeSession(input.session);
+  const raw = serializeSession(stripSigner(input.session));
   const s = input.session as {
     publicKey?: string;
     walletAddress?: string;
