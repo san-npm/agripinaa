@@ -4,6 +4,14 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@ophis/sdk': 0.3.0
+
+patchedDependencies:
+  '@ophis/agent-swap@0.3.1':
+    hash: 91ed22c76683561897721ed43a925297938b3a9c9906bda537c7846a254a5767
+    path: patches/@ophis__agent-swap@0.3.1.patch
+
 importers:
 
   .: {}
@@ -86,9 +94,9 @@ importers:
         version: 0.7.0(@types/react@19.2.18)(@wagmi/core@3.6.4(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)
       '@ophis/agent-swap':
         specifier: ^0.3.1
-        version: 0.3.1(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
+        version: 0.3.1(patch_hash=91ed22c76683561897721ed43a925297938b3a9c9906bda537c7846a254a5767)(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
       '@ophis/sdk':
-        specifier: ^0.3.0
+        specifier: 0.3.0
         version: 0.3.0(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
       viem:
         specifier: ^2.21.0
@@ -842,9 +850,6 @@ packages:
 
   '@ophis/agent-swap@0.3.1':
     resolution: {integrity: sha512-1QpBTCcZ8l1K/VbDiT/+bAji74VGLBxrP3oo0cJ2n27rpvU1LU6Iafqflzs/jBLMwq6zAgeq057Ni2DkMMLBZA==}
-
-  '@ophis/sdk@0.2.3':
-    resolution: {integrity: sha512-QQexNoLocEOYexh0XmGoShYaZi3xtZx/aRdhvoHlitwehub+rqBmlr3s0pK0xfBAf1guJT0WpGY+VK7jiRFh8A==}
 
   '@ophis/sdk@0.3.0':
     resolution: {integrity: sha512-IDNhu0LNdSqnQVeI2LYOj5hLkt2WZdKM4WvHDVO6UV9Vkj/m9Cy9zFdoGPTF8dUut5WcskdRiANeD/N4zjGINg==}
@@ -3943,11 +3948,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@ophis/agent-swap@0.3.1(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)':
+  '@ophis/agent-swap@0.3.1(patch_hash=91ed22c76683561897721ed43a925297938b3a9c9906bda537c7846a254a5767)(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)':
     dependencies:
       '@cowprotocol/app-data': 2.5.1(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
       '@cowprotocol/cow-sdk': 5.10.3(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
-      '@ophis/sdk': 0.2.3
+      '@ophis/sdk': 0.3.0(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
       viem: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     transitivePeerDependencies:
       - bufferutil
@@ -3960,8 +3965,6 @@ snapshots:
       - typescript
       - utf-8-validate
       - zod
-
-  '@ophis/sdk@0.2.3': {}
 
   '@ophis/sdk@0.3.0(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))':
     dependencies:

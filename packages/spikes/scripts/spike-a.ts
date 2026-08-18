@@ -19,7 +19,9 @@ import { TOKENS_BSC } from '@agripinaa/shared';
 import { ViemAgentWallet } from '../src/viem-agent-wallet';
 import { loadWallet } from '../src/wallet-store';
 
-const SELL_USDT = '10';
+/** Sell side: WBNB → USDT (wrapped from the funded BNB; Ophis is the only
+ * venue used for token conversion, per Clément). ~0.02 WBNB ≈ $12. */
+const SELL_WBNB = '0.02';
 const POLL_INTERVAL_MS = 15_000;
 const POLL_TIMEOUT_MS = 10 * 60_000;
 
@@ -33,9 +35,9 @@ async function main() {
   const result = await executeOphisSwap(
     wallet,
     {
-      sellToken: TOKENS_BSC.USDT!.address,
-      buyToken: TOKENS_BSC.WBNB!.address,
-      sellAmount: SELL_USDT,
+      sellToken: TOKENS_BSC.WBNB!.address,
+      buyToken: TOKENS_BSC.USDT!.address,
+      sellAmount: SELL_WBNB,
       slippageBps: 50,
     },
     {},
