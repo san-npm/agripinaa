@@ -26,11 +26,15 @@ manifests point at the live endpoints.
 
 ## Aleph Cloud migration (preferred)
 
+Order matters: agent state (grid center, LP position tokenId, breakers) is
+git-tracked, so the hand-off travels through git and the Mac must stop and
+commit BEFORE the VM starts (running both = double trading).
+
 1. Create a Debian/Ubuntu instance at console.aleph.cloud (2 vCPU / 2-4 GB
    is plenty) with the deploy public key from ~/.ssh/agripinaa-aleph.pub.
-2. ./ops/deploy-aleph.sh <user@host>   # provisions, syncs secrets, systemd
-3. ./ops/set-x402-endpoint.sh <tunnel-url-it-prints>
-4. ./ops/stop-agents.sh on the Mac (never run both: double trading).
+2. On the Mac: `./ops/stop-agents.sh && git add apps/agents/data && git commit -m "state hand-off" && git push`
+3. `./ops/deploy-aleph.sh <user@host>`   # provisions, syncs secrets, systemd
+4. `./ops/set-x402-endpoint.sh <tunnel-url-it-prints>`
 
-Re-running deploy-aleph.sh updates code and restarts services. Agent state
-lives on the VM under ~/agripinaa/apps/agents/data/ from then on.
+Re-running deploy-aleph.sh updates code and restarts services. From then on
+agent state lives on the VM; commit it back from there if migrating again.
