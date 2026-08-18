@@ -26,6 +26,12 @@ interface CacheEntry<T> {
   at: number;
 }
 
+/** An indexer record that has the registration but not the agentURI
+ * document yet: placeholder name and no classifiable category. */
+function isMetadataPoor(agent: AgentDetail): boolean {
+  return /^Agent #\d+$/.test(agent.name) || (!agent.description && agent.category == null);
+}
+
 /**
  * Priority: live 8004scan → committed snapshot (lists) or direct registry
  * read (details) → last-known-good stale cache. Every response is labeled
@@ -96,9 +102,24 @@ export class MergedSource implements AgentIndexSource {
       // A null from the indexer is not proof of nonexistence: fresh
       // registrations lag it (BSC lane is rpc_only). The registry is the
       // source of truth for existence; only a null THERE is final.
-      if (fromScan) return this.remember(key, fromScan);
+      if (fromScan && !isMetadataPoor(fromScan)) return this.remember(key, fromScan);
+      // The indexer often lists a registration before it fetches the
+      // agentURI document (name null, no category). Enrich identity fields
+      // from the chain + manifest; keep the indexer's trust scores.
       const fromRegistry = await readAgentFromRegistry(chainId, tokenId);
-      return this.remember(key, fromRegistry);
+      if (fromScan && fromRegistry) {
+        return this.remember(key, {
+          ...fromScan,
+          name: fromRegistry.name,
+          description: fromRegistry.description || fromScan.description,
+          imageUrl: fromScan.imageUrl ?? fromRegistry.imageUrl,
+          category: fromRegistry.category ?? fromScan.category,
+          agentURI: fromRegistry.agentURI ?? fromScan.agentURI,
+          agentWallet: fromScan.agentWallet ?? fromRegistry.agentWallet,
+          metadata: fromRegistry.metadata ?? fromScan.metadata,
+        });
+      }
+      return this.remember(key, fromScan ?? fromRegistry);
     } catch {
       const fromRegistry = await readAgentFromRegistry(chainId, tokenId);
       if (fromRegistry) return this.remember(key, fromRegistry);
