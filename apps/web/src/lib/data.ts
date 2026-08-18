@@ -16,6 +16,15 @@ export const CHAIN_ID = 56;
 
 const source = new MergedSource();
 
+/**
+ * Agripinaa's own reference agents (ERC-8004 mainnet registrations,
+ * 2026-08-18). Pinned into listings because the upstream indexer's BSC
+ * lane is rpc_only and lags fresh registrations; profiles for these ids
+ * resolve via direct registry reads either way. Provenance stays visible
+ * on each card.
+ */
+const PINNED_AGENT_IDS = ['269703', '269704', '269705', '269706'];
+
 export async function listAgents(
   category?: Category,
   limit = 24,
@@ -23,7 +32,19 @@ export async function listAgents(
 ): Promise<Page<AgentSummary>> {
   'use cache';
   cacheLife('minutes');
-  return source.listAgents({ chainId: CHAIN_ID, category, limit, cursor });
+  const page = await source.listAgents({ chainId: CHAIN_ID, category, limit, cursor });
+  if (cursor) return page; // pin only on the first page
+
+  const missing = await Promise.all(
+    PINNED_AGENT_IDS.filter((id) => !page.items.some((a) => a.tokenId === id)).map(
+      (id) => source.getAgent(CHAIN_ID, id).catch(() => null),
+    ),
+  );
+  const pinned = missing
+    .filter((a): a is NonNullable<typeof a> => a != null)
+    .filter((a) => (category ? a.category === category : true));
+  if (pinned.length === 0) return page;
+  return { ...page, items: [...pinned, ...page.items] };
 }
 
 export async function getAgent(tokenId: string): Promise<AgentDetail | null> {

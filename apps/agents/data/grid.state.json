@@ -1,0 +1,12 @@
+{
+  "kv": {
+    "referencePool": {
+      "address": "0x172fcD41E0913e95784454622d1c3724f546f849",
+      "fee": 100,
+      "wbnbIsToken0": false
+    },
+    "center": 603.4146087938328,
+    "inventoryStartUsd": 7.413658435175331,
+    "lastPrice": 603.4146087938328
+  }
+}

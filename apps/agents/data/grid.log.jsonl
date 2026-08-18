@@ -1,0 +1,7 @@
+{"at":"2026-08-18T18:25:12.418Z","agent":"grid","event":"enrollment-unavailable","wallet":"0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A","error":"reputation API 530 for https://rebates.ophis.fi/tier/0xd6db7ade6ed34d1cf0836d7a1aac5ba3b860c82a","consequence":"rebate/XP indexing deferred; execution metrics unaffected"}
+{"at":"2026-08-18T18:25:12.419Z","agent":"grid","event":"boot","category":"grid","tickMs":120000}
+{"at":"2026-08-18T18:25:12.941Z","agent":"grid","event":"pool-probe","address":"0x172fcD41E0913e95784454622d1c3724f546f849","fee":100,"liquidity":"8967277153562862802707756"}
+{"at":"2026-08-18T18:25:13.214Z","agent":"grid","event":"pool-probe","address":"0x36696169C63e42cd08ce11f5deeBbCeBae652050","fee":500,"liquidity":"1610545003993491286315082"}
+{"at":"2026-08-18T18:25:13.321Z","agent":"grid","event":"pool-probe","address":"0x1401ff943D08a7E098328C1d3a9d388923B115D2","fee":2500,"liquidity":"19993289529169961286485"}
+{"at":"2026-08-18T18:25:13.321Z","agent":"grid","event":"pool-selected","address":"0x172fcD41E0913e95784454622d1c3724f546f849","fee":100,"wbnbIsToken0":false,"liquidity":"8967277153562862802707756"}
+{"at":"2026-08-18T18:25:13.434Z","agent":"grid","event":"grid-init","center":603.4146087938328,"inventoryStartUsd":7.413658435175331,"wbnbWhole":0.004,"usdtWhole":5,"pool":"0x172fcD41E0913e95784454622d1c3724f546f849","feeTier":100}
