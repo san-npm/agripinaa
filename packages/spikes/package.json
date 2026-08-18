@@ -12,6 +12,7 @@
   "dependencies": {
     "@agripinaa/shared": "workspace:*",
     "@altananetwork/sdk": "^0.7.0",
+    "@altananetwork/x402-server": "^0.2.0",
     "@ophis/agent-swap": "^0.3.1",
     "@ophis/sdk": "^0.3.0",
     "viem": "^2.21.0"

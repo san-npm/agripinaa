@@ -92,6 +92,9 @@ importers:
       '@altananetwork/sdk':
         specifier: ^0.7.0
         version: 0.7.0(@types/react@19.2.18)(@wagmi/core@3.6.4(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)
+      '@altananetwork/x402-server':
+        specifier: ^0.2.0
+        version: 0.2.0(@types/react@19.2.18)(@wagmi/core@3.6.4(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)
       '@ophis/agent-swap':
         specifier: ^0.3.1
         version: 0.3.1(patch_hash=91ed22c76683561897721ed43a925297938b3a9c9906bda537c7846a254a5767)(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
@@ -120,6 +123,9 @@ packages:
 
   '@altananetwork/sdk@0.7.0':
     resolution: {integrity: sha512-kZBdj7ZtFkj6rfG6zhKvHSw5qbP9yOhZ3tnMyxMPg9cFQTJ9/ICncEyUTAtRsS/neZiY4U533F6sLm3gYEex9g==}
+
+  '@altananetwork/x402-server@0.2.0':
+    resolution: {integrity: sha512-zjvFJWtetoU7P9ugJuEhQqRgcZrsnjMsJayHY9kyYLK1NcD5I3TBNncFlCEtOOjHVZML+BKcdHbxgal9eDHPPw==}
 
   '@assemblyscript/loader@0.9.4':
     resolution: {integrity: sha512-HazVq9zwTVwGmqdwYzu7WyQ6FQVZ7SwET0KKQuKm55jD0IfUpZgN0OPIiZG3zV1iSrVYcN0bdwLRXI/VNCYsUA==}
@@ -3126,6 +3132,27 @@ snapshots:
     dependencies:
       ox: 0.14.33(typescript@5.9.3)(zod@4.4.3)
       porto: 0.2.37(@types/react@19.2.18)(@wagmi/core@3.6.4(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
+      viem: 2.55.11(typescript@5.9.3)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@tanstack/react-query'
+      - '@types/react'
+      - '@wagmi/core'
+      - bufferutil
+      - expo-auth-session
+      - expo-crypto
+      - expo-web-browser
+      - immer
+      - react
+      - react-native
+      - typescript
+      - use-sync-external-store
+      - utf-8-validate
+      - wagmi
+      - zod
+
+  '@altananetwork/x402-server@0.2.0(@types/react@19.2.18)(@wagmi/core@3.6.4(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)':
+    dependencies:
+      '@altananetwork/sdk': 0.7.0(@types/react@19.2.18)(@wagmi/core@3.6.4(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)
       viem: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     transitivePeerDependencies:
       - '@tanstack/react-query'
