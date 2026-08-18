@@ -2,3 +2,4 @@
 {"at":"2026-08-18T18:25:12.685Z","agent":"lp-range","event":"boot","category":"rebalancing","tickMs":600000}
 {"at":"2026-08-18T18:25:13.050Z","agent":"lp-range","event":"pool-selected","pool":"0x36696169C63e42cd08ce11f5deeBbCeBae652050","fee":500,"tickSpacing":10,"wbnbIsToken0":false,"liquidity":"1610545003993491286315082"}
 {"at":"2026-08-18T18:25:16.414Z","agent":"lp-range","event":"minted","txHash":"0xbf31f52ad114ed64a3fc6c7bfbc52ffc76498321b2a9654eab2272dbd13fda22","tokenId":"7173629","tickLower":-64520,"tickUpper":-63540,"currentTick":-64031,"wbnbUnits":0.0028,"usdtUnits":1.4}
+{"at":"2026-08-18T18:35:12.827Z","agent":"lp-range","event":"range-check","tokenId":"7173629","currentTick":-64034,"tickLower":-64520,"tickUpper":-63540,"inRange":true,"outSinceMs":null}

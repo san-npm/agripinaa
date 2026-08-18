@@ -1,0 +1,2 @@
+{"at":"2026-08-18T18:25:14.100Z","agent":"yield","event":"approve","spender":"0x6807dc923806fE8Fd134338EABCA509979a7e0cB","amount":"2.4","txHash":"0x5794d2f96bf79bf74353166b4ecc1951f7dc4336c2ea3e0d15f53321e82146a7"}
+{"at":"2026-08-18T18:25:14.894Z","agent":"yield","event":"supply","venue":"aave","amount":"2.4","txHash":"0xefa6d0840e9974fdd28700116f152d054e3c5f178417e36d06f85399a30e058f"}

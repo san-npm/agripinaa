@@ -1,0 +1,25 @@
+{
+  "buyAmount": "11998963063678816893",
+  "buyToken": "0x55d398326f99059ff775485246999027b3197955",
+  "chainId": 56,
+  "executedBuyAmount": "12057295806540799277",
+  "executedSellAmount": "20000000000000000",
+  "generatedAt": "2026-08-18T18:38:59.511Z",
+  "orderUid": "0xa2fa52fa97922df8b884345a2959a71209a73957073098c4af76cbd72fa1f02b053fff26d28ff4e94dfe862b184f918a50c6f7066a848e4c",
+  "owner": "0x053fff26d28ff4e94dfe862b184f918a50c6f706",
+  "partnerFee": [
+    {
+      "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8",
+      "type": "volume",
+      "volumeBps": 5
+    }
+  ],
+  "receiptVersion": "3",
+  "sellAmount": "20000000000000000",
+  "sellToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+  "settlementBlock": 116687812,
+  "settlementTxHash": "0x4c7b847b75ae82337ac28655db861a5cd512e0de77c820f64dc58bbaa50523d1",
+  "status": "fulfilled",
+  "surplusVsQuote": 0.00486148199243626,
+  "validTo": 1787072076
+}

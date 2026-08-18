@@ -8,3 +8,7 @@
 {"at":"2026-08-18T18:27:13.061Z","agent":"grid","event":"tick","price":603.862495020772,"center":603.4146087938328,"inventoryNowUsd":7.415449980083088,"crossedCount":0}
 {"at":"2026-08-18T18:29:12.958Z","agent":"grid","event":"tick","price":603.8964552473927,"center":603.4146087938328,"inventoryNowUsd":7.4155858209895715,"crossedCount":0}
 {"at":"2026-08-18T18:31:13.129Z","agent":"grid","event":"tick","price":603.8842205804945,"center":603.4146087938328,"inventoryNowUsd":7.4155368823219785,"crossedCount":0}
+{"at":"2026-08-18T18:33:13.073Z","agent":"grid","event":"tick","price":603.7393564051808,"center":603.4146087938328,"inventoryNowUsd":7.414957425620724,"crossedCount":0}
+{"at":"2026-08-18T18:35:13.013Z","agent":"grid","event":"tick","price":603.628334341236,"center":603.4146087938328,"inventoryNowUsd":7.414513337364944,"crossedCount":0}
+{"at":"2026-08-18T18:37:12.895Z","agent":"grid","event":"tick","price":603.6296199762066,"center":603.4146087938328,"inventoryNowUsd":7.414518479904826,"crossedCount":0}
+{"at":"2026-08-18T18:39:12.888Z","agent":"grid","event":"tick","price":603.6408879923524,"center":603.4146087938328,"inventoryNowUsd":7.41456355196941,"crossedCount":0}

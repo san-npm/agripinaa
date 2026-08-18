@@ -2,9 +2,16 @@
   "actions": {
     "setup": [
       1787077512915
+    ],
+    "repay": [
+      1787078293069
     ]
   },
   "kv": {
-    "setupDone": true
+    "setupDone": true,
+    "hfZone": "healthy",
+    "repayTimes": [
+      1787078295066
+    ]
   }
 }
