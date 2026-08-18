@@ -19,9 +19,19 @@ export function qualityScore(a: AgentSummary): number {
   return score;
 }
 
-/** An agent with no evaluable signal at all (the registry's bulk spam). */
-function isLowSignal(a: AgentSummary): boolean {
-  return qualityScore(a) === 0;
+/**
+ * Whether an agent earns its own card in a list. A category or real
+ * reputation (a score, feedback, or verification) makes it individually
+ * evaluable; a description or an x402 flag alone does not (a publisher can
+ * mint the same described agent dozens of times, as Ave.ai does).
+ */
+function isIndividuallyNotable(a: AgentSummary): boolean {
+  return (
+    a.category != null ||
+    a.trust.isVerified ||
+    (a.trust.totalScore ?? 0) > 0 ||
+    a.trust.totalFeedbacks > 0
+  );
 }
 
 /**
@@ -46,11 +56,11 @@ export function rankAndDedupe(agents: AgentSummary[]): AgentSummary[] {
   const evaluable: AgentSummary[] = [];
   const lowByName = new Map<string, AgentSummary[]>();
   for (const a of byKey.values()) {
-    if (isLowSignal(a)) {
+    if (isIndividuallyNotable(a)) {
+      evaluable.push(a);
+    } else {
       const name = a.name.trim().toLowerCase();
       (lowByName.get(name) ?? lowByName.set(name, []).get(name)!).push(a);
-    } else {
-      evaluable.push(a);
     }
   }
   const collapsed: AgentSummary[] = [...lowByName.values()].map((group) => {
