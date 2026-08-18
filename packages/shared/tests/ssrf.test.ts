@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { assertSafeUrl, BlockedUrlError } from '../src/ssrf';
+import { assertResolvedHostPublic, assertSafeUrl, BlockedUrlError } from '../src/ssrf';
 
 test('https public host is allowed', () => {
   assert.equal(assertSafeUrl('https://agripinaa.vercel.app/manifests/grid.json').hostname, 'agripinaa.vercel.app');
@@ -35,4 +35,23 @@ test('cloud metadata and private ranges are blocked', () => {
 
 test('a public IP literal is allowed', () => {
   assert.equal(assertSafeUrl('https://8.8.8.8/x').hostname, '8.8.8.8');
+});
+
+test('a DNS name resolving to a private address is blocked (rebinding)', async () => {
+  const url = assertSafeUrl('https://totally-innocent.example/x');
+  await assert.rejects(
+    () => assertResolvedHostPublic(url, async () => [{ address: '169.254.169.254' }]),
+    BlockedUrlError,
+  );
+  await assert.rejects(
+    () => assertResolvedHostPublic(url, async () => [{ address: '8.8.8.8' }, { address: '127.0.0.1' }]),
+    BlockedUrlError,
+  );
+});
+
+test('a DNS name resolving only to public addresses is allowed', async () => {
+  const url = assertSafeUrl('https://public.example/x');
+  await assert.doesNotReject(() =>
+    assertResolvedHostPublic(url, async () => [{ address: '93.184.216.34' }]),
+  );
 });

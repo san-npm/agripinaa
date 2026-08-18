@@ -23,7 +23,7 @@ function isPrivateHost(hostname: string): boolean {
   if (/^::ffff:/i.test(v6)) return isPrivateHost(v6.replace(/^::ffff:/i, '')); // v4-mapped
 
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-  if (!m) return false; // a DNS name; the fetch layer still can't reach the metadata IP directly, and we re-check on redirect
+  if (!m) return false; // a DNS name; resolved and re-checked in assertResolvedHostPublic
   const [a, b] = [Number(m[1]), Number(m[2])];
   if (a === 10 || a === 127 || a === 0) return true;
   if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
@@ -31,6 +31,44 @@ function isPrivateHost(hostname: string): boolean {
   if (a === 192 && b === 168) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
   return false;
+}
+
+/** A DNS resolver, injectable for tests. Mirrors node:dns lookup(all:true). */
+export type LookupFn = (hostname: string) => Promise<{ address: string }[]>;
+
+let defaultLookup: LookupFn | null = null;
+async function nodeLookup(hostname: string): Promise<{ address: string }[]> {
+  if (!defaultLookup) {
+    const dns = await import('node:dns/promises');
+    defaultLookup = (h) => dns.lookup(h, { all: true });
+  }
+  return defaultLookup(hostname);
+}
+
+/**
+ * Resolve a DNS hostname and require EVERY resolved address to be public.
+ * IP literals are already validated by assertSafeUrl, so this only runs for
+ * names. Closes the DNS-to-private and (per-hop) DNS-rebinding bypass where a
+ * public-looking hostname resolves to 169.254.169.254 / 127.0.0.1 / RFC1918.
+ */
+export async function assertResolvedHostPublic(
+  url: URL,
+  lookup: LookupFn = nodeLookup,
+): Promise<void> {
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')) return; // IP literal, already checked
+  let addresses: { address: string }[];
+  try {
+    addresses = await lookup(hostname);
+  } catch {
+    throw new BlockedUrlError(`dns resolution failed: ${hostname}`);
+  }
+  if (addresses.length === 0) throw new BlockedUrlError(`no addresses: ${hostname}`);
+  for (const { address } of addresses) {
+    if (isPrivateHost(address)) {
+      throw new BlockedUrlError(`hostname ${hostname} resolves to private ${address}`);
+    }
+  }
 }
 
 /** Normalize + validate a candidate URL. Throws BlockedUrlError if unsafe. */
@@ -64,6 +102,9 @@ export async function safeFetchJson(
   try {
     let url = assertSafeUrl(raw);
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      // Re-resolve+validate every hop so a hostname cannot rebind to a
+      // private address between the literal check and the connection.
+      await assertResolvedHostPublic(url);
       const res = await fetch(url, {
         headers: { accept: 'application/json' },
         redirect: 'manual',
