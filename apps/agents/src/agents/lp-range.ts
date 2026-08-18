@@ -360,6 +360,49 @@ async function findMintedTokenId(ctx: AgentContext, logs: Log[]): Promise<bigint
   });
 }
 
+/**
+ * Adopt an existing on-chain position for this pair when state has none
+ * (e.g. after a host migration wiped local state). Scans the wallet's NPM
+ * tokens, newest first, and returns the first with live liquidity whose
+ * token pair and fee match the reference pool.
+ */
+async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<PositionState | null> {
+  const balance = await ctx.publicClient.readContract({
+    address: POSITION_MANAGER,
+    abi: NPM_ABI,
+    functionName: 'balanceOf',
+    args: [ctx.account.address],
+  });
+  const want0 = (info.wbnbIsToken0 ? WBNB.address : USDT.address).toLowerCase();
+  const want1 = (info.wbnbIsToken0 ? USDT.address : WBNB.address).toLowerCase();
+  for (let i = balance - BigInt(1); i >= BigInt(0); i -= BigInt(1)) {
+    const tokenId = await ctx.publicClient.readContract({
+      address: POSITION_MANAGER,
+      abi: NPM_ABI,
+      functionName: 'tokenOfOwnerByIndex',
+      args: [ctx.account.address, i],
+    });
+    const p = await ctx.publicClient.readContract({
+      address: POSITION_MANAGER,
+      abi: NPM_ABI,
+      functionName: 'positions',
+      args: [tokenId],
+    });
+    const [, , token0, token1, fee, tickLower, tickUpper, liquidity] = p;
+    if (
+      liquidity > BigInt(0) &&
+      fee === info.fee &&
+      token0.toLowerCase() === want0 &&
+      token1.toLowerCase() === want1
+    ) {
+      ctx.log({ event: 'position-recovered', tokenId: tokenId.toString(), tickLower, tickUpper });
+      return { tokenId: tokenId.toString(), tickLower, tickUpper, outSince: null };
+    }
+    if (i === BigInt(0)) break;
+  }
+  return null;
+}
+
 async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
   const pending = await checkPendingOrder(ctx);
   if (pending === 'pending') {
@@ -604,7 +647,15 @@ export const lpRangeAgent: AgentModule = {
       return;
     }
     const info = await resolvePool(ctx);
-    const pos = ctx.state.get<PositionState | null>('position', null);
+    let pos = ctx.state.get<PositionState | null>('position', null);
+
+    // Self-heal (like the other agents read their position from chain): if
+    // state has no position but the wallet already owns a live one for this
+    // pair, adopt it rather than minting a duplicate and stranding the old.
+    if (!pos) {
+      pos = await recoverPosition(ctx, info);
+      if (pos) ctx.state.set('position', pos);
+    }
 
     if (!pos) {
       await tryMint(ctx, info);
