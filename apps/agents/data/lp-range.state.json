@@ -1,0 +1,21 @@
+{
+  "kv": {
+    "poolInfo": {
+      "pool": "0x36696169C63e42cd08ce11f5deeBbCeBae652050",
+      "fee": 500,
+      "tickSpacing": 10,
+      "wbnbIsToken0": false
+    },
+    "position": {
+      "tokenId": "7173629",
+      "tickLower": -64520,
+      "tickUpper": -63540,
+      "outSince": null
+    }
+  },
+  "actions": {
+    "mint": [
+      1787077513113
+    ]
+  }
+}
