@@ -5,7 +5,7 @@
  *
  * Usage: pnpm --filter @agripinaa/agents start [-- --only grid,yield]
  */
-import { openSync, closeSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,12 +35,15 @@ function selectedModules(): AgentModule[] {
  * reclaimed.
  */
 function acquireRunLock(): string {
-  const lock = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'runner.lock');
+  const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
+  mkdirSync(dataDir, { recursive: true });
+  const lock = join(dataDir, 'runner.lock');
   try {
     const fd = openSync(lock, 'wx'); // fails if it exists
     writeFileSync(fd, String(process.pid));
     closeSync(fd);
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
     const holder = Number.parseInt(readFileSync(lock, 'utf8').trim(), 10);
     let alive = false;
     try {
