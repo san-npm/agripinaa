@@ -9,6 +9,7 @@ import { ProofPanel } from "@/components/ProofPanel";
 import { ArrowIcon, CATEGORY_ICON, VerifiedIcon } from "@/components/icons";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
+import { getOnchainAttestation } from "@/lib/onchain-rep";
 import { VERIFIED_AGENTS } from "@/lib/verified";
 
 function Panel({
@@ -93,6 +94,9 @@ async function AgentContent({
   const category = agent.category ? CATEGORY_INFO[agent.category] : null;
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
   const verified = VERIFIED_AGENTS[agent.tokenId];
+  const attestation = verified ? await getOnchainAttestation(agent.tokenId) : null;
+  // Prefer the on-chain attestation count for verified agents (indexer lags).
+  const feedbackCount = attestation ? attestation.count : agent.trust.totalFeedbacks;
 
   return (
     <div className="max-w-4xl">
@@ -171,13 +175,24 @@ async function AgentContent({
 
         <Panel title="Trust">
           <dl className="grid grid-cols-3 gap-2 text-center">
-            <TrustStat label="Score" value={agent.trust.totalScore != null ? String(agent.trust.totalScore) : "—"} />
+            <TrustStat
+              label={attestation ? "Attested" : "Score"}
+              value={
+                attestation
+                  ? String(attestation.value)
+                  : agent.trust.totalScore != null
+                    ? String(agent.trust.totalScore)
+                    : "—"
+              }
+              highlight={!!attestation}
+            />
             <TrustStat label="Rank" value={agent.trust.rank != null ? `#${agent.trust.rank}` : "—"} />
-            <TrustStat label="Feedback" value={String(agent.trust.totalFeedbacks)} />
+            <TrustStat label="Attestations" value={String(feedbackCount)} highlight={!!attestation} />
           </dl>
           <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-2">
-            Validation registry not yet deployed (ERC-8004 is draft). Trust here
-            is reputation-based.
+            {attestation
+              ? "Read live from the ERC-8004 ReputationRegistry on-chain. Validation registry (TEE/zkML) not deployed on BSC yet."
+              : "Validation registry not yet deployed (ERC-8004 is draft). Trust here is reputation-based."}
           </p>
           <FreshnessStamp asOf={agent.trust.asOf} source={agent.trust.source} />
         </Panel>
@@ -201,21 +216,35 @@ async function AgentContent({
         </Suspense>
       </div>
 
-      <div className="mt-4">
-        <Panel title="On-chain feedback">
-          <Suspense fallback={<p className="text-sm text-muted-2">Loading…</p>}>
-            <FeedbackList tokenId={agent.tokenId} />
-          </Suspense>
-        </Panel>
-      </div>
+      {!verified && (
+        <div className="mt-4">
+          <Panel title="On-chain feedback">
+            <Suspense fallback={<p className="text-sm text-muted-2">Loading…</p>}>
+              <FeedbackList tokenId={agent.tokenId} />
+            </Suspense>
+          </Panel>
+        </div>
+      )}
     </div>
   );
 }
 
-function TrustStat({ label, value }: { label: string; value: string }) {
+function TrustStat({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
   return (
-    <div className="rounded-lg border border-border bg-surface-2 py-3">
-      <div className="tabular font-mono text-xl font-medium text-foreground">
+    <div
+      className={`rounded-lg border py-3 ${highlight ? "border-primary/30 bg-primary/5" : "border-border bg-surface-2"}`}
+    >
+      <div
+        className={`tabular font-mono text-xl font-medium ${highlight ? "text-primary" : "text-foreground"}`}
+      >
         {value}
       </div>
       <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-2">
