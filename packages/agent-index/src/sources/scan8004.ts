@@ -260,13 +260,27 @@ export class Scan8004Source implements AgentIndexSource {
   }
 
   async getFeedback(chainId: number, tokenId: string): Promise<Feedback[]> {
-    const registry = ERC8004_REGISTRIES[chainId]?.identity.toLowerCase();
-    if (!registry) throw new Scan8004Error(`No ERC-8004 registry known for chain ${chainId}`);
-    const res = await scanFetch<Record<string, unknown>[]>('/feedbacks', {
-      chain_id: chainId,
-      agent_id: `${chainId}:${registry}:${tokenId}`,
-    });
-    return res.data.map((f) => ({
+    // The /feedbacks endpoint filters by 8004scan's internal agent UUID, NOT
+    // the CAIP id. Passing the CAIP id on the public endpoint silently returns
+    // GLOBAL feedback (unrelated to this agent), so resolve the UUID from the
+    // keyed detail endpoint first and query the keyed feedbacks by UUID. No
+    // key, or no UUID, means we return nothing rather than someone else's data.
+    if (!API_KEY) return [];
+    let uuid: string | null = null;
+    try {
+      const detail = await keyedFetch<ScanAgent & { id?: string }>(`/agents/${chainId}/${tokenId}`, {});
+      uuid = detail.id ?? null;
+    } catch {
+      return [];
+    }
+    if (!uuid) return [];
+
+    const rows = await keyedFetch<Record<string, unknown>[] | { items?: Record<string, unknown>[]; data?: Record<string, unknown>[] }>(
+      '/feedbacks',
+      { agent_id: uuid, limit: 20 },
+    );
+    const list = Array.isArray(rows) ? rows : (rows.items ?? rows.data ?? []);
+    return list.map((f) => ({
       agentRef: String(f['agent_id'] ?? `${chainId}-${tokenId}`),
       client: String(f['user_address'] ?? ''),
       score: typeof f['score'] === 'number' ? f['score'] : null,

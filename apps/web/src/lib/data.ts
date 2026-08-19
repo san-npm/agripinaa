@@ -12,6 +12,8 @@ import {
 } from '@agripinaa/agent-index';
 import { cacheLife } from 'next/cache';
 
+import { getOnchainAttestation } from './onchain-rep';
+
 /** The marketplace currently serves BNB Smart Chain mainnet. */
 export const CHAIN_ID = 56;
 
@@ -50,9 +52,19 @@ export async function listDirectory(category?: Category): Promise<Directory> {
   )
     .filter((a): a is NonNullable<typeof a> => a != null)
     .filter((a) => (category ? a.category === category : true));
-  const verifiedIds = new Set(verified.map((a) => a.tokenId));
+  // Reflect the on-chain ERC-8004 attestation on verified cards (the indexer
+  // lags our writes, so its score/feedback read 0 despite the attestation).
+  const enriched = await Promise.all(
+    verified.map(async (a) => {
+      const att = await getOnchainAttestation(a.tokenId).catch(() => null);
+      return att
+        ? { ...a, trust: { ...a.trust, totalScore: att.value, totalFeedbacks: att.count } }
+        : a;
+    }),
+  );
+  const verifiedIds = new Set(enriched.map((a) => a.tokenId));
   const registry = rankAndDedupe(raw.items).filter((a) => !verifiedIds.has(a.tokenId));
-  return { verified, registry, registrySource: raw.source, asOf: new Date().toISOString() };
+  return { verified: enriched, registry, registrySource: raw.source, asOf: new Date().toISOString() };
 }
 
 export async function listAgents(
