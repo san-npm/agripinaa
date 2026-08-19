@@ -21,7 +21,8 @@ function formatAmount(raw: string, address: string): string {
 
 /**
  * Ophis-attributed execution history for an agent wallet. Server component:
- * data comes from the CoW BSC orderbook, surplus computed executed-vs-signed.
+ * data comes from the Ophis settlement layer on BSC, surplus computed
+ * executed-vs-signed.
  */
 export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
   const exec = await getExecutionSummary(wallet);
@@ -92,10 +93,10 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
         ))}
       </ul>
       <p className="mt-3 text-[10px] leading-relaxed text-muted-2">
-        Source: CoW orderbook (BSC), Ophis-attributed via appData appCode.
-        Surplus = executed vs signed amounts.
+        Ophis settlement on BSC, attributed via appData appCode. Surplus =
+        executed vs signed amounts.
       </p>
-      <FreshnessStamp asOf={exec.asOf} source="api.cow.fi/bnb" />
+      <FreshnessStamp asOf={exec.asOf} source="ophis · BSC" />
     </section>
   );
 }
