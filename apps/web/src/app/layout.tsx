@@ -3,6 +3,8 @@ import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
+import { Toaster } from "@/components/Toaster";
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
@@ -81,17 +83,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               >
                 Ophis
               </a>
-              . Trades routed through Ophis carry its standard partner fee
-              (5&nbsp;bps volume, 1&nbsp;bp on stable pairs). Agripinaa takes no
-              fee.
-            </p>
-            <p>
-              Identity and reputation from ERC-8004 registries on BNB Smart
+              . Identity and reputation from ERC-8004 registries on BNB Smart
               Chain. Trust is reputation-based: no validation registry is
               deployed yet. Open source under MIT.
             </p>
           </div>
         </footer>
+        <Toaster />
       </body>
     </html>
   );

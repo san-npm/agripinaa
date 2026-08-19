@@ -10,6 +10,7 @@ import {
   reviveSession,
   type StoredSessionMeta,
 } from '@/lib/session-store';
+import { toast } from '@/lib/toast';
 
 type Validity = 'checking' | 'valid' | 'invalid' | 'unknown';
 
@@ -70,8 +71,11 @@ export function SessionCard({
       markRevoked(meta.id);
       setValidity('invalid');
       onChange();
+      toast({ title: 'Session revoked', detail: meta.agent.name, kind: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast({ title: 'Revoke failed', detail: msg.slice(0, 80), kind: 'error' });
     } finally {
       setBusy(false);
     }

@@ -10,6 +10,7 @@ import { bsc, bscTestnet } from 'viem/chains';
 
 import { altanaClient, SUPPORTED_CHAINS } from '@/lib/altana';
 import { storeSession } from '@/lib/session-store';
+import { toast } from '@/lib/toast';
 
 type Step = 'wallet' | 'fund' | 'scope' | 'granted';
 
@@ -122,8 +123,11 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
         },
       });
       setStep('granted');
+      toast({ title: 'Session granted', detail: `${agent.name} is now active`, kind: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast({ title: 'Grant failed', detail: msg.slice(0, 80), kind: 'error' });
     } finally {
       setBusy(false);
     }

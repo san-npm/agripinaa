@@ -3,6 +3,8 @@
 import { exportReceiptJson, type MevProofReceipt } from '@agripinaa/exec-metrics';
 import { useState } from 'react';
 
+import { toast } from '@/lib/toast';
+
 export function MevReceiptButton({ uid }: { uid: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
 
@@ -22,8 +24,10 @@ export function MevReceiptButton({ uid }: { uid: string }) {
       a.click();
       URL.revokeObjectURL(url);
       setState('idle');
+      toast({ title: 'Receipt downloaded', detail: filename, kind: 'success' });
     } catch {
       setState('error');
+      toast({ title: 'Could not build receipt', kind: 'error' });
     }
   }
 
