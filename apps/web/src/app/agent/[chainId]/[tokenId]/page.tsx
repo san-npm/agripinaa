@@ -5,9 +5,11 @@ import { Suspense } from "react";
 
 import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
+import { ProofPanel } from "@/components/ProofPanel";
 import { ArrowIcon, CATEGORY_ICON, VerifiedIcon } from "@/components/icons";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
+import { VERIFIED_AGENTS } from "@/lib/verified";
 
 function Panel({
   title,
@@ -90,6 +92,7 @@ async function AgentContent({
 
   const category = agent.category ? CATEGORY_INFO[agent.category] : null;
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
+  const verified = VERIFIED_AGENTS[agent.tokenId];
 
   return (
     <div className="max-w-4xl">
@@ -113,9 +116,13 @@ async function AgentContent({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">{agent.name}</h1>
-            {agent.trust.isVerified && (
-              <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                <VerifiedIcon className="h-3.5 w-3.5" /> verified
+            {verified ? (
+              <span className="flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-on-primary">
+                <VerifiedIcon className="h-3.5 w-3.5" /> Verified by Agripinaa
+              </span>
+            ) : (
+              <span className="rounded-full border border-border-strong bg-surface px-2.5 py-0.5 text-xs text-muted-2">
+                Registry · unverified
               </span>
             )}
             {category && (
@@ -175,6 +182,12 @@ async function AgentContent({
           <FreshnessStamp asOf={agent.trust.asOf} source={agent.trust.source} />
         </Panel>
       </div>
+
+      {verified && (
+        <div className="mt-4">
+          <ProofPanel agent={verified} />
+        </div>
+      )}
 
       <div className="mt-4">
         <Suspense

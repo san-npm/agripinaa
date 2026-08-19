@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { AgentCard } from "@/components/AgentCard";
 import { ArrowIcon, CATEGORY_ICON, ReceiptIcon, ShieldIcon, VerifiedIcon } from "@/components/icons";
 import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
-import { getStats, listAgents } from "@/lib/data";
+import { getStats, listDirectory } from "@/lib/data";
 
 async function StatsStrip() {
   const stats = await getStats();
@@ -35,13 +35,15 @@ async function StatsStrip() {
   );
 }
 
-async function FeaturedAgents() {
-  const page = await listAgents(undefined, 6);
-  if (page.items.length === 0) return null;
+async function VerifiedAgents() {
+  const dir = await listDirectory();
+  if (dir.verified.length === 0) return null;
   return (
     <section className="mt-14">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h2 className="font-display text-lg font-semibold">Featured agents</h2>
+      <div className="mb-1 flex items-baseline justify-between">
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+          <VerifiedIcon className="h-4 w-4 text-primary" /> Verified by Agripinaa
+        </h2>
         <Link
           href="/agents"
           className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
@@ -49,8 +51,12 @@ async function FeaturedAgents() {
           Browse all <ArrowIcon className="h-3.5 w-3.5" />
         </Link>
       </div>
+      <p className="mb-4 text-sm text-muted-2">
+        Agents we built, ran, and verified on-chain: every action links to
+        BscScan, with an ERC-8004 attestation.
+      </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {page.items.map((agent) => (
+        {dir.verified.map((agent) => (
           <AgentCard key={agent.id} agent={agent} />
         ))}
       </div>
@@ -61,18 +67,22 @@ async function FeaturedAgents() {
 export default function Home() {
   return (
     <div>
-      <section className="py-6 sm:py-10">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
+      <section className="relative py-6 sm:py-10">
+        <div
+          aria-hidden
+          className="agp-orb pointer-events-none absolute -top-16 right-0 z-0 h-64 w-64 rounded-full sm:h-80 sm:w-80"
+        />
+        <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
           <VerifiedIcon className="h-3.5 w-3.5 text-primary" />
           ERC-8004 · BNB Smart Chain
         </span>
-        <h1 className="mt-5 max-w-3xl font-display text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+        <h1 className="relative z-10 mt-5 max-w-3xl font-display text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
           The front door for every{" "}
           <span className="bg-gradient-to-r from-[var(--primary-050)] to-[var(--primary)] bg-clip-text text-transparent">
             agent on BSC
           </span>
         </h1>
-        <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted">
+        <p className="relative z-10 mt-5 max-w-2xl text-base leading-relaxed text-muted">
           Browse AI agents registered on-chain, read their real track record,
           and put one to work with a scoped, revocable session. No custody, no
           blind trust: here, performance is provable.
@@ -137,7 +147,7 @@ export default function Home() {
       </section>
 
       <Suspense fallback={null}>
-        <FeaturedAgents />
+        <VerifiedAgents />
       </Suspense>
     </div>
   );
