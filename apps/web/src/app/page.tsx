@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { AgentCard } from "@/components/AgentCard";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ArrowIcon, CATEGORY_ICON, ReceiptIcon, ShieldIcon, VerifiedIcon } from "@/components/icons";
 import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
 import { getStats, listDirectory } from "@/lib/data";
@@ -24,7 +25,7 @@ async function StatsStrip() {
       {items.map((it) => (
         <div key={it.label} className="px-4 py-4 sm:px-6">
           <dt className="tabular font-mono text-lg font-medium text-foreground sm:text-2xl">
-            {it.value}
+            <AnimatedNumber value={it.value} />
           </dt>
           <dd className="mt-0.5 text-[11px] leading-tight text-muted-2 sm:text-xs">
             {it.label}
@@ -68,9 +69,14 @@ export default function Home() {
   return (
     <div>
       <section className="relative py-6 sm:py-10">
+        <div aria-hidden className="agp-dotgrid pointer-events-none absolute -inset-x-4 -top-10 z-0 h-96" />
         <div
           aria-hidden
-          className="agp-orb pointer-events-none absolute -top-16 right-0 z-0 h-64 w-64 rounded-full sm:h-80 sm:w-80"
+          className="agp-orb pointer-events-none absolute -top-16 right-0 z-0 h-64 w-64 rounded-full sm:h-96 sm:w-96"
+        />
+        <div
+          aria-hidden
+          className="agp-orb-2 pointer-events-none absolute -top-24 right-40 z-0 h-56 w-56 rounded-full sm:h-72 sm:w-72"
         />
         <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
           <VerifiedIcon className="h-3.5 w-3.5 text-primary" />
@@ -78,9 +84,7 @@ export default function Home() {
         </span>
         <h1 className="relative z-10 mt-5 max-w-3xl font-display text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
           The front door for every{" "}
-          <span className="bg-gradient-to-r from-[var(--primary-050)] to-[var(--primary)] bg-clip-text text-transparent">
-            agent on BSC
-          </span>
+          <span className="agp-gradient-text">agent on BSC</span>
         </h1>
         <p className="relative z-10 mt-5 max-w-2xl text-base leading-relaxed text-muted">
           Browse AI agents registered on-chain, read their real track record,
@@ -108,15 +112,15 @@ export default function Home() {
               <Link
                 key={category}
                 href={`/c/${category}`}
-                className="group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200 hover:border-primary/40 hover:bg-surface-2"
+                className="agp-sheen group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_30px_-12px_rgba(245,158,11,0.25)]"
               >
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
-                  <Icon className="h-5 w-5" />
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-[inset_0_0_16px_rgba(245,158,11,0.1)] transition-transform group-hover:scale-105">
+                  <Icon className="h-6 w-6" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 font-medium">
                     {info.label}
-                    <ArrowIcon className="h-3.5 w-3.5 text-muted-2 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                    <ArrowIcon className="h-4 w-4 text-muted-2 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
                   </span>
                   <span className="mt-0.5 block text-sm text-muted-2">
                     {info.blurb}

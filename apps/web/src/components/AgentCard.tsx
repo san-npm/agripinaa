@@ -13,9 +13,9 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
   return (
     <Link
       href={`/agent/${agent.chainId}/${agent.tokenId}`}
-      className={`agp-reveal group relative flex flex-col rounded-xl border p-4 transition-all duration-200 focus-visible:border-primary ${
+      className={`agp-reveal agp-sheen group relative flex flex-col rounded-xl border p-4 transition-all duration-200 focus-visible:border-primary ${
         verified
-          ? "border-primary/30 bg-[linear-gradient(180deg,rgba(245,158,11,0.04),transparent_50%)] hover:border-primary/50"
+          ? "border-primary/30 bg-[linear-gradient(180deg,rgba(245,158,11,0.05),transparent_55%)] hover:border-primary/50 hover:shadow-[0_10px_30px_-12px_rgba(245,158,11,0.3)]"
           : "border-border bg-surface hover:border-border-strong hover:bg-surface-2"
       }`}
     >

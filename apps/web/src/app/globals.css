@@ -116,22 +116,77 @@ h1, h2, h3 {
   animation: agp-pulse 2s ease-in-out infinite;
 }
 
-/* Hero orb: a slow-drifting amber glow sphere behind the headline. */
+/* Hero orbs: slow-drifting glow spheres behind the headline (orbs.jakubantalik). */
 @keyframes agp-orb-drift {
   0%, 100% { transform: translate(0, 0) scale(1); }
   33% { transform: translate(6%, -4%) scale(1.06); }
   66% { transform: translate(-4%, 3%) scale(0.97); }
 }
+@keyframes agp-orb-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-8%, 6%) scale(1.1); }
+}
 .agp-orb {
-  background: radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.55), rgba(139, 92, 246, 0.18) 55%, transparent 72%);
-  filter: blur(38px);
-  animation: agp-orb-drift 14s ease-in-out infinite;
+  background: radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.6), rgba(245, 158, 11, 0.12) 55%, transparent 72%);
+  filter: blur(44px);
+  animation: agp-orb-drift 16s ease-in-out infinite;
+  will-change: transform;
+}
+.agp-orb-2 {
+  background: radial-gradient(circle at 60% 40%, rgba(139, 92, 246, 0.42), transparent 68%);
+  filter: blur(56px);
+  animation: agp-orb-drift-2 22s ease-in-out infinite;
   will-change: transform;
 }
 
+/* Animated gradient sweep on gradient text. */
+@keyframes agp-sweep {
+  to { background-position: 200% center; }
+}
+.agp-gradient-text {
+  background: linear-gradient(100deg, var(--primary) 20%, var(--primary-050) 40%, #fff 50%, var(--primary-050) 60%, var(--primary) 80%);
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: agp-sweep 5s linear infinite;
+}
+
+/* Faint dot-grid backdrop for depth. */
+.agp-dotgrid {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(60% 60% at 50% 0%, #000, transparent);
+  mask-image: radial-gradient(60% 60% at 50% 0%, #000, transparent);
+}
+
+/* Toast: slide up + fade + blur in (transitions.dev). */
+@keyframes agp-toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+.agp-toast {
+  animation: agp-toast-in 0.35s var(--ease-spring) both;
+}
+
+/* Card sheen on hover: a soft moving highlight. */
+.agp-sheen { position: relative; overflow: hidden; }
+.agp-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 40%, rgba(245, 158, 11, 0.06) 50%, transparent 60%);
+  transform: translateX(-100%);
+  transition: transform 0.7s var(--ease-out);
+  pointer-events: none;
+}
+.agp-sheen:hover::after { transform: translateX(100%); }
+
 @media (prefers-reduced-motion: reduce) {
-  .live-dot, .agp-orb { animation: none; }
+  .live-dot, .agp-orb, .agp-orb-2, .agp-gradient-text, .agp-toast { animation: none; }
   .agp-reveal { animation: none; }
+  .agp-gradient-text { background-position: center; }
+  .agp-sheen:hover::after { transform: translateX(-100%); }
   * { transition-duration: 0.01ms !important; }
 }
 
