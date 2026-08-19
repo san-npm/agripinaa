@@ -26,6 +26,35 @@ const source = new MergedSource();
  */
 const PINNED_AGENT_IDS = ['269703', '269704', '269705', '269706'];
 
+export interface Directory {
+  verified: AgentSummary[];
+  registry: AgentSummary[];
+  registrySource: string;
+  asOf: string;
+}
+
+/**
+ * The marketplace split: our proven agents ("verified", with on-chain
+ * execution + attestation) kept separate from the unverified ERC-8004
+ * registry long tail. We list the registry for discovery (the brief is a
+ * front door for every agent) but never imply we vouch for it.
+ */
+export async function listDirectory(category?: Category): Promise<Directory> {
+  'use cache';
+  cacheLife('minutes');
+  const raw = await source.listAgents({ chainId: CHAIN_ID, category, limit: 100 });
+  const verified = (
+    await Promise.all(
+      PINNED_AGENT_IDS.map((id) => source.getAgent(CHAIN_ID, id).catch(() => null)),
+    )
+  )
+    .filter((a): a is NonNullable<typeof a> => a != null)
+    .filter((a) => (category ? a.category === category : true));
+  const verifiedIds = new Set(verified.map((a) => a.tokenId));
+  const registry = rankAndDedupe(raw.items).filter((a) => !verifiedIds.has(a.tokenId));
+  return { verified, registry, registrySource: raw.source, asOf: new Date().toISOString() };
+}
+
 export async function listAgents(
   category?: Category,
   limit = 24,

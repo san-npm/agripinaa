@@ -2,23 +2,26 @@ import type { AgentSummary } from "@agripinaa/agent-index";
 import Link from "next/link";
 
 import { CATEGORY_INFO } from "@/lib/categories";
+import { isVerified } from "@/lib/verified";
 import { CATEGORY_ICON, VerifiedIcon } from "./icons";
-
-const REFERENCE_IDS = new Set(["269703", "269704", "269705", "269706"]);
 
 export function AgentCard({ agent }: { agent: AgentSummary }) {
   const cat = agent.category ? CATEGORY_INFO[agent.category] : null;
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
-  const reference = REFERENCE_IDS.has(agent.tokenId);
+  const verified = isVerified(agent.tokenId);
 
   return (
     <Link
       href={`/agent/${agent.chainId}/${agent.tokenId}`}
-      className="group relative flex flex-col rounded-xl border border-border bg-surface p-4 transition-all duration-200 hover:border-border-strong hover:bg-surface-2 focus-visible:border-primary"
+      className={`agp-reveal group relative flex flex-col rounded-xl border p-4 transition-all duration-200 focus-visible:border-primary ${
+        verified
+          ? "border-primary/30 bg-[linear-gradient(180deg,rgba(245,158,11,0.04),transparent_50%)] hover:border-primary/50"
+          : "border-border bg-surface hover:border-border-strong hover:bg-surface-2"
+      }`}
     >
-      {reference && (
-        <span className="absolute -top-px right-4 rounded-b-md bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
-          Agripinaa
+      {verified && (
+        <span className="absolute -top-px right-4 flex items-center gap-1 rounded-b-md bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
+          <VerifiedIcon className="h-3 w-3" /> Verified
         </span>
       )}
       <div className="flex items-start gap-3">

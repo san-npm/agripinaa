@@ -71,6 +71,42 @@ h1, h2, h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Motion system (transitions.dev principles): combine fade + translate +
+   blur for reveals, spring-ish easing, staggered list entrances. */
+:root {
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes agp-reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+.agp-reveal {
+  animation: agp-reveal-in 0.45s var(--ease-out) both;
+}
+/* Stagger cards inside a grid: each child enters slightly later. */
+.agp-reveal:nth-child(1) { animation-delay: 0.02s; }
+.agp-reveal:nth-child(2) { animation-delay: 0.06s; }
+.agp-reveal:nth-child(3) { animation-delay: 0.10s; }
+.agp-reveal:nth-child(4) { animation-delay: 0.14s; }
+.agp-reveal:nth-child(5) { animation-delay: 0.18s; }
+.agp-reveal:nth-child(6) { animation-delay: 0.22s; }
+
+/* Card hover lift, spring easing. */
+.agp-reveal:hover {
+  transform: translateY(-2px);
+  transition: transform 0.25s var(--ease-spring), border-color 0.2s ease;
+}
+
 /* Pulsing "live" status dot. */
 @keyframes agp-pulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
@@ -80,8 +116,22 @@ h1, h2, h3 {
   animation: agp-pulse 2s ease-in-out infinite;
 }
 
+/* Hero orb: a slow-drifting amber glow sphere behind the headline. */
+@keyframes agp-orb-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(6%, -4%) scale(1.06); }
+  66% { transform: translate(-4%, 3%) scale(0.97); }
+}
+.agp-orb {
+  background: radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.55), rgba(139, 92, 246, 0.18) 55%, transparent 72%);
+  filter: blur(38px);
+  animation: agp-orb-drift 14s ease-in-out infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .live-dot { animation: none; }
+  .live-dot, .agp-orb { animation: none; }
+  .agp-reveal { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
 
