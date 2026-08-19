@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { SessionWizard } from "@/components/SessionWizard";
+import { ArrowIcon } from "@/components/icons";
 import { CHAIN_ID, getAgent } from "@/lib/data";
 
 export default function ActivatePage(
@@ -25,9 +27,21 @@ async function ActivateContent({
   if (!agent) notFound();
 
   return (
-    <div>
-      <h1 className="mb-1 text-2xl font-semibold">Activate {agent.name}</h1>
-      <p className="mb-8 max-w-xl text-sm text-muted">
+    <div className="relative">
+      <div
+        aria-hidden
+        className="agp-orb pointer-events-none absolute -top-16 right-0 z-0 h-56 w-56 rounded-full opacity-60"
+      />
+      <Link
+        href={`/agent/${agent.chainId}/${agent.tokenId}`}
+        className="relative z-10 mb-6 inline-flex items-center gap-1 text-xs text-muted-2 transition-colors hover:text-foreground"
+      >
+        <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> Back to {agent.name}
+      </Link>
+      <h1 className="relative z-10 mb-1 font-display text-2xl font-semibold">
+        Activate {agent.name}
+      </h1>
+      <p className="relative z-10 mb-8 max-w-xl text-sm text-muted">
         Three steps: a passkey-secured account, a one-time gas top-up, and one
         signature granting exactly the authority you choose.
       </p>
