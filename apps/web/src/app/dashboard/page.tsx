@@ -3,9 +3,19 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { YIELD_ROUTER_BSC } from '@agripinaa/shared/contracts';
+
+import { ManagedPositionCard } from '@/components/ManagedPositionCard';
 import { SessionCard } from '@/components/SessionCard';
 import { ArrowIcon, CoinsIcon, LightningIcon, ShieldIcon } from '@/components/icons';
 import { listStoredSessions, type StoredSessionMeta } from '@/lib/session-store';
+
+/** A managed-yield session is scoped to the router address. */
+function isManaged(meta: StoredSessionMeta): boolean {
+  return meta.scope.allowlist.some(
+    (a) => a.toLowerCase() === YIELD_ROUTER_BSC.address.toLowerCase(),
+  );
+}
 
 export default function DashboardPage() {
   const [sessions, setSessions] = useState<StoredSessionMeta[] | null>(null);
@@ -33,9 +43,13 @@ export default function DashboardPage() {
             {active} active · {sessions.length} total
           </p>
           <ul className="mt-3 space-y-3">
-            {sessions.map((meta) => (
-              <SessionCard key={meta.id} meta={meta} onChange={refresh} />
-            ))}
+            {sessions.map((meta) =>
+              isManaged(meta) ? (
+                <ManagedPositionCard key={meta.id} meta={meta} onChange={refresh} />
+              ) : (
+                <SessionCard key={meta.id} meta={meta} onChange={refresh} />
+              ),
+            )}
           </ul>
         </>
       )}
