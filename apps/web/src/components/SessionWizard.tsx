@@ -3,7 +3,7 @@
 import {
   buildSessionScope,
   describeScope,
-} from '@agripinaa/session-kit';
+} from '@agripinaa/session-kit/scope';
 import { useCallback, useEffect, useState } from 'react';
 import { createPublicClient, http, isAddress } from 'viem';
 import { bsc, bscTestnet } from 'viem/chains';

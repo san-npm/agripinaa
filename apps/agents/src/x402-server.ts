@@ -5,6 +5,7 @@ import { createX402Merchant } from '@altananetwork/x402-server';
 import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
+import { collectProofEvents } from './proof';
 import type { AgentContext, AgentModule } from './types';
 
 /** 0.05 USDT per status call. */
@@ -12,8 +13,9 @@ const PRICE = toBaseUnits('0.05', TOKENS_BSC.USDT!.decimals);
 
 /**
  * One HTTP server for all agents: GET /:agent/status behind an x402
- * permit2-exact paywall (USDT on BSC). The facilitator key broadcasts
- * settlements and pays gas; payTo is each agent's own wallet.
+ * permit2-exact paywall (USDT on BSC), plus the public GET /proof feed. The
+ * facilitator key broadcasts settlements and pays gas; payTo is each agent's
+ * own wallet.
  */
 export function startX402Server(opts: {
   port: number;
@@ -51,14 +53,47 @@ export function startX402Server(opts: {
     ]),
   );
 
+  let proofCache: { expiresAt: number; value: Promise<Awaited<ReturnType<typeof collectProofEvents>>> } | null = null;
+  const getProofEvents = () => {
+    const now = Date.now();
+    if (proofCache && proofCache.expiresAt > now) return proofCache.value;
+    const value = collectProofEvents([...opts.agents.keys()], 40);
+    proofCache = { expiresAt: now + 15_000, value };
+    return value;
+  };
+
   const server = createServer(async (req, res) => {
-    const match = /^\/([a-z-]+)\/status$/.exec(req.url ?? '');
+    const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+    const match = /^\/([a-z-]+)\/status$/.exec(pathname);
     const entry = match ? opts.agents.get(match[1]!) : undefined;
     const merchant = match ? merchants.get(match[1]!) : undefined;
 
-    if (req.url === '/healthz') {
+    if (pathname === '/healthz') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, agents: [...opts.agents.keys()] }));
+      return;
+    }
+    if (pathname === '/proof') {
+      if (req.method !== 'GET') {
+        res.writeHead(405, {
+          allow: 'GET',
+          'content-type': 'application/json',
+        });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      try {
+        const events = await getProofEvents();
+        res.writeHead(200, {
+          'cache-control': 'public, max-age=15, stale-while-revalidate=30',
+          'content-type': 'application/json',
+        });
+        res.end(JSON.stringify({ events, asOf: new Date().toISOString() }));
+      } catch {
+        proofCache = null;
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'proof feed unavailable' }));
+      }
       return;
     }
     if (!entry || !merchant) {

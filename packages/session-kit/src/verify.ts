@@ -13,7 +13,7 @@
  */
 
 import { createPublicClient, http, keccak256, type Hex } from 'viem';
-import { BSC_MAINNET, BSC_TESTNET } from '@agripinaa/shared';
+import { BSC_MAINNET, BSC_TESTNET } from '@agripinaa/shared/chains';
 import type { Address } from './scope';
 
 export const KEYSTORE_ADDRESSES: Record<number, Address> = {
