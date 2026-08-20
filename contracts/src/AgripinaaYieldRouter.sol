@@ -67,6 +67,7 @@ contract AgripinaaYieldRouter {
     error VenusMintFailed(uint256 code);
     error VenusRedeemFailed(uint256 code);
     error TransferFailed();
+    error ApproveFailed();
 
     modifier nonReentrant() {
         if (_locked != 1) revert Reentrancy();
@@ -98,11 +99,14 @@ contract AgripinaaYieldRouter {
         uint256 amount = _unwindAllToUsdt(msg.sender);
         if (amount > 0) {
             _approve(USDT, address(VUSDT), amount);
+            // Snapshot after unwind (which redeemed any of the caller's own
+            // vTokens), so `minted` excludes any stray vToken balance.
+            uint256 preMint = VUSDT.balanceOf(address(this));
             uint256 code = VUSDT.mint(amount); // vTokens are minted to this router...
             if (code != 0) revert VenusMintFailed(code);
-            // ...so hand them straight back to the user's account.
-            uint256 vBal = VUSDT.balanceOf(address(this));
-            if (!VUSDT.transfer(msg.sender, vBal)) revert TransferFailed();
+            // ...so hand exactly this call's newly minted vTokens back to the user.
+            uint256 minted = VUSDT.balanceOf(address(this)) - preMint;
+            if (!VUSDT.transfer(msg.sender, minted)) revert TransferFailed();
         }
         emit Rotated(msg.sender, this.toVenus.selector, amount);
     }
@@ -118,12 +122,19 @@ contract AgripinaaYieldRouter {
 
     /**
      * @dev Pull every USDT-equivalent the account holds (Venus vTokens, Aave
-     * aTokens, idle USDT) into this router as plain USDT, and return the total.
-     * Recipients on the way out are set below in each caller; here everything
-     * is pulled FROM `account` TO this router only.
+     * aTokens, idle USDT) into this router as plain USDT, and return ONLY the
+     * amount this call brought in. Everything is pulled FROM `account` TO this
+     * router; each step touches only the caller's own position, so any balance
+     * stranded in the router beforehand (a stray transfer/donation) is ignored
+     * and can never be swept by a caller. This makes the "holds nothing between
+     * calls / only your own funds" invariants hold by construction, not by the
+     * router happening to be empty.
      */
     function _unwindAllToUsdt(address account) private returns (uint256) {
-        // 1. Venus: pull vTokens, redeem to USDT (USDT comes back to this router).
+        // Ignore any pre-existing (stranded) USDT: we distribute the delta only.
+        uint256 entryUsdt = USDT.balanceOf(address(this));
+
+        // 1. Venus: pull ONLY the caller's vTokens and redeem exactly those.
         uint256 vBal = VUSDT.balanceOf(account);
         if (vBal > 0) {
             if (!VUSDT.transferFrom(account, address(this), vBal)) revert TransferFailed();
@@ -131,11 +142,12 @@ contract AgripinaaYieldRouter {
             if (code != 0) revert VenusRedeemFailed(code);
         }
 
-        // 2. Aave: pull aTokens, withdraw the router's full aToken balance to this router.
+        // 2. Aave: pull the caller's aTokens and withdraw EXACTLY that amount
+        //    (not type(max)), so a stray aToken balance is left untouched.
         uint256 aBal = AUSDT.balanceOf(account);
         if (aBal > 0) {
             if (!AUSDT.transferFrom(account, address(this), aBal)) revert TransferFailed();
-            AAVE.withdraw(address(USDT), type(uint256).max, address(this));
+            AAVE.withdraw(address(USDT), aBal, address(this));
         }
 
         // 3. Idle USDT sitting in the account.
@@ -144,12 +156,14 @@ contract AgripinaaYieldRouter {
             if (!USDT.transferFrom(account, address(this), idle)) revert TransferFailed();
         }
 
-        return USDT.balanceOf(address(this));
+        // Only what THIS call brought in — never pre-existing stranded balance.
+        return USDT.balanceOf(address(this)) - entryUsdt;
     }
 
-    /// @dev Set an exact allowance, tolerating tokens that require a reset to zero first.
+    /// @dev Set an exact allowance, checking the return so a non-standard token
+    /// can't silently leave a stale allowance.
     function _approve(IERC20 token, address spender, uint256 amount) private {
-        token.approve(spender, 0);
-        token.approve(spender, amount);
+        if (!token.approve(spender, 0)) revert ApproveFailed();
+        if (!token.approve(spender, amount)) revert ApproveFailed();
     }
 }

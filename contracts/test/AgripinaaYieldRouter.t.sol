@@ -118,4 +118,51 @@ contract AgripinaaYieldRouterForkTest is Test {
         assertEq(_bal(USDT, attacker), 0);
         _assertRouterEmpty();
     }
+
+    // --- Delta accounting: stranded funds are never distributed (audit L-1) ---
+
+    /// USDT mis-sent to the router cannot be swept by a zero-balance caller.
+    function test_attackerCannotSweepStrayUsdt() public {
+        deal(USDT, address(router), 500e18);
+        vm.prank(attacker);
+        router.toIdle();
+        assertEq(_bal(USDT, attacker), 0, "attacker swept stray USDT");
+        assertEq(_bal(USDT, address(router)), 500e18, "stray USDT left the router");
+    }
+
+    /// A legit user gets back EXACTLY their principal, never principal + stray,
+    /// and the stray stays stranded (proves I2/I3 hold with a dirty router).
+    function test_strayUsdtIsNotDistributedToUser() public {
+        deal(USDT, address(router), 500e18);
+
+        vm.prank(user);
+        router.toAave();
+        assertApproxEqAbs(_bal(AUSDT, user), PRINCIPAL, DUST, "user credited the stray on deposit");
+
+        vm.prank(user);
+        router.toIdle();
+        assertApproxEqAbs(_bal(USDT, user), PRINCIPAL, DUST, "user swept the stray on withdraw");
+        assertEq(_bal(USDT, address(router)), 500e18, "stray USDT was moved");
+    }
+
+    /// The vToken hand-back returns only THIS call's mint, not any stray vToken.
+    function test_strayVusdtIsNotHandedToUser() public {
+        // Seed the router with vUSDT by supplying from the attacker, then
+        // parking those vTokens in the router.
+        deal(USDT, attacker, 100e18);
+        vm.startPrank(attacker);
+        IERC20(USDT).approve(VUSDT, type(uint256).max);
+        (bool ok, ) = VUSDT.call(abi.encodeWithSignature("mint(uint256)", uint256(100e18)));
+        require(ok, "seed mint failed");
+        uint256 strayV = IERC20(VUSDT).balanceOf(attacker);
+        IERC20(VUSDT).transfer(address(router), strayV);
+        vm.stopPrank();
+        assertGt(_bal(VUSDT, address(router)), 0, "router not seeded with stray vUSDT");
+
+        // User rotates into Venus; must receive only their own minted vTokens.
+        vm.prank(user);
+        router.toVenus();
+        assertGt(_bal(VUSDT, user), 0, "user got no vUSDT");
+        assertApproxEqAbs(_bal(VUSDT, address(router)), strayV, 1, "stray vUSDT handed to user");
+    }
 }

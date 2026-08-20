@@ -19,10 +19,15 @@ export interface RouterDeployment {
   vUsdt: `0x${string}`;
 }
 
-/** BNB Chain mainnet (56) deployment. Deployed 2026-08-20, tx nonce 0 of the facilitator. */
+/**
+ * BNB Chain mainnet (56) deployment. Deployed 2026-08-20. This is the
+ * delta-accounting build (audit L-1 fix): the router distributes only the
+ * funds each call brings in, never any stranded balance. Supersedes the first
+ * cut at 0x841CF14D…b260 (which paid out its whole balance).
+ */
 export const YIELD_ROUTER_BSC: RouterDeployment = {
   chainId: 56,
-  address: '0x841CF14Dfc0A315115EC5C9714c918210447b260',
+  address: '0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb',
   usdt: '0x55d398326f99059fF775485246999027B3197955',
   aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
