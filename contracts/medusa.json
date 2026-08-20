@@ -1,0 +1,26 @@
+{
+  "fuzzing": {
+    "workers": 6,
+    "testLimit": 60000,
+    "callSequenceLength": 60,
+    "targetContracts": ["RouterFuzz"],
+    "corpusDirectory": ".medusa-corpus",
+    "transactionGasLimit": 12500000
+  },
+  "compilation": {
+    "platform": "crytic-compile",
+    "platformConfig": {
+      "target": "test/fuzz/RouterFuzz.sol"
+    }
+  },
+  "testing": {
+    "stopOnFailedTest": true,
+    "propertyTesting": {
+      "enabled": true,
+      "testPrefixes": ["echidna_"]
+    },
+    "assertionTesting": {
+      "enabled": false
+    }
+  }
+}

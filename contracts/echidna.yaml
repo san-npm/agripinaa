@@ -1,0 +1,5 @@
+testMode: property
+testLimit: 60000
+seqLen: 60
+shrinkLimit: 5000
+corpusDir: .echidna-corpus
