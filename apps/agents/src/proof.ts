@@ -18,6 +18,7 @@ import { CowOrderbookClient, surplusBps } from '@agripinaa/exec-metrics';
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const MAX_TAIL_BYTES = 256 * 1024;
 const MAX_LINES_PER_AGENT = 2_000;
+const VERIFICATION_BATCH_SIZE = 12;
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const HEX_VALUE = /^0x[0-9a-fA-F]+$/;
 
@@ -190,7 +191,6 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
 /** Map the deliberately small allowlist of public, meaningful log events. */
 export function mapProofLogEntries(
   entries: readonly LogEntry[],
-  limit = 40,
 ): ProofEvent[] {
   const mapped = entries
     .map((entry) => mapLogEntry(entry, entries))
@@ -206,7 +206,7 @@ export function mapProofLogEntries(
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, Math.max(0, limit));
+  });
 }
 
 function readTail(file: string): LogEntry[] {
@@ -240,44 +240,48 @@ type OphisTradeLookup = Pick<CowOrderbookClient, 'getOrder' | 'getTrades'>;
 
 export async function enrichOphisTrades(
   events: ProofCandidate[],
-  lookup?: OphisTradeLookup,
+  options: { limit?: number; lookup?: OphisTradeLookup } = {},
 ): Promise<ProofEvent[]> {
   const timedFetch: typeof fetch = (input, init) => fetch(input, {
     ...init,
     signal: AbortSignal.timeout(3_000),
   });
-  const client = lookup ?? new CowOrderbookClient({ fetch: timedFetch });
-  const orderUids = [...new Set(events.flatMap((event) => event.orderUid ? [event.orderUid] : []))].slice(0, 12);
-  const enriched = new Map<string, { txHash?: `0x${string}`; surplusBps?: number }>();
+  const client = options.lookup ?? new CowOrderbookClient({ fetch: timedFetch });
+  const limit = Math.max(0, Math.floor(options.limit ?? events.length));
 
-  await Promise.all(orderUids.map(async (orderUid) => {
+  const verify = async (event: ProofCandidate): Promise<ProofEvent | null> => {
+    const { fulfilledSummary, ...publicEvent } = event;
+    if (!event.orderUid) return publicEvent;
     try {
-      const [order, trades] = await Promise.all([
-        client.getOrder(orderUid),
-        client.getTrades({ orderUid }),
-      ]);
-      if (order.status !== 'fulfilled') return;
-      const trade = trades.find((candidate) => candidate.orderUid === orderUid);
+      const order = await client.getOrder(event.orderUid);
+      if (order.status !== 'fulfilled') return null;
+      const trades = await client.getTrades({ orderUid: event.orderUid }).catch(() => []);
+      const trade = trades.find((candidate) => candidate.orderUid === event.orderUid);
       const txHash = txValue(trade?.txHash);
       const bps = surplusBps(order);
-      enriched.set(orderUid, {
+      return {
+        ...publicEvent,
+        summary: fulfilledSummary ?? publicEvent.summary,
         ...(txHash ? { txHash } : {}),
         ...(bps !== null ? { surplusBps: bps } : {}),
-      });
+      };
     } catch {
       // Without a fulfilled orderbook lookup, a submission is not proof of an
       // execution. Omit it until a later cached read can verify settlement.
+      return null;
     }
-  }));
+  };
 
-  return events.flatMap((event): ProofEvent[] => {
-    const { fulfilledSummary, ...publicEvent } = event;
-    if (!event.orderUid) return [publicEvent];
-    const settlement = enriched.get(event.orderUid);
-    return settlement
-      ? [{ ...publicEvent, summary: fulfilledSummary ?? publicEvent.summary, ...settlement }]
-      : [];
-  });
+  const verified: ProofEvent[] = [];
+  // Twelve is a concurrency window, not a total lookup cap. Keep walking the
+  // sorted candidates until the requested number of verified rows is found.
+  for (let offset = 0; offset < events.length && verified.length < limit; offset += VERIFICATION_BATCH_SIZE) {
+    const batch = await Promise.all(
+      events.slice(offset, offset + VERIFICATION_BATCH_SIZE).map(verify),
+    );
+    verified.push(...batch.filter((event): event is ProofEvent => event !== null));
+  }
+  return verified.slice(0, limit);
 }
 
 export async function collectProofEvents(
@@ -291,5 +295,5 @@ export async function collectProofEvents(
       agent: name,
     }));
   });
-  return enrichOphisTrades(mapProofLogEntries(entries, limit));
+  return enrichOphisTrades(mapProofLogEntries(entries), { limit });
 }
