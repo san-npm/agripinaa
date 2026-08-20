@@ -16,7 +16,11 @@ import { cacheLife } from 'next/cache';
 
 import gridManifest from '../../public/manifests/grid.json';
 
-const cow = new CowOrderbookClient();
+const timedCowFetch: typeof fetch = (input, init) => fetch(input, {
+  ...init,
+  signal: AbortSignal.timeout(3_000),
+});
+const cow = new CowOrderbookClient({ fetch: timedCowFetch });
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const ORDER_UID = /^0x[0-9a-fA-F]{112}$/;
 const KINDS = new Set<ProofKind>(['trade', 'repair', 'rotate', 'rebalance', 'mint']);
@@ -63,6 +67,7 @@ export function normalizeProofEvents(value: unknown): ProofEvent[] {
     const orderUid = typeof row.orderUid === 'string' && ORDER_UID.test(row.orderUid)
       ? row.orderUid as `0x${string}`
       : undefined;
+    if (!txHash && !orderUid) return [];
     const surplus = optionalNumber(row.surplusBps);
     const hf = optionalNumber(row.hf);
     const id = typeof row.id === 'string' && row.id.length > 0
