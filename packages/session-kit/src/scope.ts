@@ -186,8 +186,13 @@ export function describeScope(scope: SessionScope): ScopeSummary {
   } else if (spend) {
     capFormatted = `${fromBaseUnits(spend.limit, 18)} BNB per ${spend.period}`;
   }
+  // Count DISTINCT target contracts, not call entries: a managed session scopes
+  // three selectors onto one router, which is one allowlisted contract, not three.
+  const distinctTargets = new Set(
+    scope.permissions.calls.map((c) => c.to.toLowerCase()),
+  ).size;
   return {
-    allowlistCount: scope.permissions.calls.length,
+    allowlistCount: distinctTargets,
     capFormatted,
     expiresAt: new Date(scope.expiry * 1000).toISOString(),
   };

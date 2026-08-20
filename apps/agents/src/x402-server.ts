@@ -62,6 +62,12 @@ async function validateManageRequest(
     sessionPublicKey: session.publicKey as Hex,
   });
   if (!live) return 'session key is not registered/valid on-chain for this account';
+  // NOTE (audit lead, defense-in-depth): the selector-scope check above reads
+  // the CLIENT-supplied permissions, not the on-chain grant. That is safe here
+  // because the account contract enforces the ACTUAL granted scope at execute
+  // time — a registration lying about its permissions cannot widen what the
+  // agent key can actually do on-chain. This check only keeps the registry to
+  // sessions we can act on; the drain-proof guarantee rests on the router.
   return null;
 }
 
