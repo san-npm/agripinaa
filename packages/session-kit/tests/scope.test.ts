@@ -239,3 +239,41 @@ test('nativeGasCap adds a token-less native spend entry alongside the USDT cap',
   assert.equal(scope.permissions.spend[1]?.token, undefined);
   assert.equal(scope.permissions.spend[1]?.limit, 2n * 10n ** 16n); // 0.02 BNB
 });
+
+// --- Porto wildcard sentinels must never produce a scope (codex finding) ---
+
+const ANY_TARGET = '0x3232323232323232323232323232323232323232' as Address;
+const SELF_TARGET = '0x2323232323232323232323232323232323232323' as Address;
+
+test('allowlist with Porto anyTarget wildcard throws', () => {
+  assert.throws(
+    () => buildSessionScope(validInput({ allowlist: [ANY_TARGET] })),
+    /no-wildcard-target/,
+  );
+});
+
+test('allowlist with Porto selfAddress sentinel throws', () => {
+  assert.throws(
+    () => buildSessionScope(validInput({ allowlist: [SELF_TARGET] })),
+    /no-wildcard-target/,
+  );
+});
+
+test('callScopes targeting the anyTarget wildcard throws', () => {
+  assert.throws(
+    () =>
+      buildSessionScope({
+        callScopes: [{ to: ANY_TARGET, signatures: ['toAave()'] }],
+        spendCap: { token: 'USDT', amount: '50', period: 'day' },
+        expiresInSeconds: 3600,
+      }),
+    /no-wildcard-target/,
+  );
+});
+
+test('a mixed allowlist with one wildcard entry is rejected wholesale', () => {
+  assert.throws(
+    () => buildSessionScope(validInput({ allowlist: [TARGET, ANY_TARGET] })),
+    /no-wildcard-target/,
+  );
+});
