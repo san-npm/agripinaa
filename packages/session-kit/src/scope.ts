@@ -1,6 +1,19 @@
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared/tokens';
+import { toFunctionSelector } from 'viem';
 
 export type Address = `0x${string}`;
+
+/**
+ * Porto reserved wildcard sentinels (porto/core/internal/call.ts). A call
+ * permission whose target is `anyTarget`/`selfAddress`, or whose selector is
+ * `anySelector`, authorizes EVERY target/selector — the exact opposite of a
+ * scoped session. buildSessionScope must never emit one, or a "scoped" grant
+ * silently becomes an unrestricted one.
+ */
+const PORTO_ANY_TARGET = '0x3232323232323232323232323232323232323232';
+const PORTO_SELF_TARGET = '0x2323232323232323232323232323232323232323';
+const PORTO_ANY_SELECTOR = '0x32323232';
+const FORBIDDEN_TARGETS = new Set([PORTO_ANY_TARGET, PORTO_SELF_TARGET]);
 
 export const MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
 
@@ -87,6 +100,12 @@ export function buildSessionScope(input: SessionScopeInput): SessionScope {
           'a malformed entry cannot be trusted to restrict anything',
       );
     }
+    if (FORBIDDEN_TARGETS.has(to.toLowerCase())) {
+      throw new Error(
+        `buildSessionScope rule "no-wildcard-target": "${to}" is a Porto wildcard/self sentinel that ` +
+          'authorizes every contract; a scoped session must name a concrete target',
+      );
+    }
   }
   if (hasCallScopes) {
     for (const cs of callScopes!) {
@@ -103,6 +122,13 @@ export function buildSessionScope(input: SessionScopeInput): SessionScope {
         if (typeof sig !== 'string' || !/^[a-zA-Z_$][\w$]*\((.*)\)$/.test(sig)) {
           throw new Error(
             `buildSessionScope rule "call-scope-signature-shape": "${String(sig)}" is not a function signature like "toAave()"`,
+          );
+        }
+        // A signature whose 4-byte selector collides with Porto's anySelector
+        // would widen this scope to every function on the target.
+        if (toFunctionSelector(sig).toLowerCase() === PORTO_ANY_SELECTOR) {
+          throw new Error(
+            `buildSessionScope rule "no-wildcard-selector": signature "${sig}" hashes to the Porto anySelector wildcard`,
           );
         }
       }
