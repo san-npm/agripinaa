@@ -16,8 +16,15 @@ export async function GET(
     const upstream = await fetch(agentsUrl(`/${agent}/manager-key`), {
       signal: AbortSignal.timeout(5_000),
     });
-    const body = await upstream.json();
-    return Response.json(body, { status: upstream.status });
+    // Treat the tunnel as untrusted: bound the response before parsing.
+    const text = await upstream.text();
+    if (text.length > 8_192) {
+      return Response.json({ error: 'oversized upstream response' }, { status: 502 });
+    }
+    return new Response(text, {
+      status: upstream.status,
+      headers: { 'content-type': 'application/json' },
+    });
   } catch {
     return Response.json({ error: 'agent runner unreachable' }, { status: 502 });
   }
