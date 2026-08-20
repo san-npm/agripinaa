@@ -212,11 +212,15 @@ test('applies the output limit after unsettled candidates are rejected', async (
   ]);
   let orderLookups = 0;
   let tradeLookups = 0;
+  let clock = 0;
   const events = await enrichOphisTrades(candidates, {
+    budgetMs: 2,
     limit: 1,
+    now: () => clock,
     lookup: {
       async getOrder(uid) {
         orderLookups += 1;
+        clock += 1;
         return order(uid, 'open');
       },
       async getTrades() {
@@ -228,8 +232,38 @@ test('applies the output limit after unsettled candidates are rejected', async (
 
   assert.equal(events.length, 1);
   assert.equal(events[0]?.kind, 'rotate');
-  assert.equal(orderLookups, 40);
+  assert.equal(orderLookups, 2);
   assert.equal(tradeLookups, 0);
+});
+
+test('bounds total order verification work when the upstream remains unavailable', async () => {
+  const candidates = mapProofLogEntries(Array.from({ length: 200 }, (_, index) => ({
+    at: new Date(Date.UTC(2026, 7, 18, 20, 0, index)).toISOString(),
+    agent: 'grid',
+    event: 'trade-submitted',
+    orderUid: orderUid(index + 1_000),
+    side: 'sell',
+  })));
+  let clock = 0;
+  let orderLookups = 0;
+  const events = await enrichOphisTrades(candidates, {
+    budgetMs: 5,
+    limit: 40,
+    now: () => clock,
+    lookup: {
+      async getOrder() {
+        orderLookups += 1;
+        clock += 1;
+        throw new Error('orderbook timeout');
+      },
+      async getTrades() {
+        throw new Error('must not be called');
+      },
+    },
+  });
+
+  assert.deepEqual(events, []);
+  assert.equal(orderLookups, 5);
 });
 
 test('ignores heartbeats, malformed receipts, and unknown agents', () => {

@@ -57,9 +57,22 @@ export function startX402Server(opts: {
   const getProofEvents = () => {
     const now = Date.now();
     if (proofCache && proofCache.expiresAt > now) return proofCache.value;
-    const value = collectProofEvents([...opts.agents.keys()], 40);
-    proofCache = { expiresAt: now + 15_000, value };
-    return value;
+    const entry = {
+      // Keep concurrent requests coalesced for the entire in-flight scan. The
+      // normal 15-second freshness window starts only after it settles.
+      expiresAt: Number.POSITIVE_INFINITY,
+      value: collectProofEvents([...opts.agents.keys()], 40),
+    };
+    proofCache = entry;
+    void entry.value.then(
+      () => {
+        if (proofCache === entry) entry.expiresAt = Date.now() + 15_000;
+      },
+      () => {
+        if (proofCache === entry) proofCache = null;
+      },
+    );
+    return entry.value;
   };
 
   const server = createServer(async (req, res) => {
