@@ -19,6 +19,7 @@ const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const MAX_TAIL_BYTES = 256 * 1024;
 const MAX_LINES_PER_AGENT = 2_000;
 const VERIFICATION_BATCH_SIZE = 12;
+const VERIFICATION_BUDGET_MS = 2_500;
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const HEX_VALUE = /^0x[0-9a-fA-F]+$/;
 
@@ -240,11 +241,21 @@ type OphisTradeLookup = Pick<CowOrderbookClient, 'getOrder' | 'getTrades'>;
 
 export async function enrichOphisTrades(
   events: ProofCandidate[],
-  options: { limit?: number; lookup?: OphisTradeLookup } = {},
+  options: {
+    budgetMs?: number;
+    limit?: number;
+    lookup?: OphisTradeLookup;
+    now?: () => number;
+  } = {},
 ): Promise<ProofEvent[]> {
+  const now = options.now ?? Date.now;
+  const budgetMs = Math.max(0, Math.floor(options.budgetMs ?? VERIFICATION_BUDGET_MS));
+  const deadline = now() + budgetMs;
   const timedFetch: typeof fetch = (input, init) => fetch(input, {
     ...init,
-    signal: AbortSignal.timeout(3_000),
+    // Every request shares one absolute deadline, so sequential batches can
+    // never multiply the timeout into minutes of blocked /proof latency.
+    signal: AbortSignal.timeout(Math.max(1, Math.ceil(deadline - now()))),
   });
   const client = options.lookup ?? new CowOrderbookClient({ fetch: timedFetch });
   const limit = Math.max(0, Math.floor(options.limit ?? events.length));
@@ -252,10 +263,13 @@ export async function enrichOphisTrades(
   const verify = async (event: ProofCandidate): Promise<ProofEvent | null> => {
     const { fulfilledSummary, ...publicEvent } = event;
     if (!event.orderUid) return publicEvent;
+    if (now() >= deadline) return null;
     try {
       const order = await client.getOrder(event.orderUid);
       if (order.status !== 'fulfilled') return null;
-      const trades = await client.getTrades({ orderUid: event.orderUid }).catch(() => []);
+      const trades = now() < deadline
+        ? await client.getTrades({ orderUid: event.orderUid }).catch(() => [])
+        : [];
       const trade = trades.find((candidate) => candidate.orderUid === event.orderUid);
       const txHash = txValue(trade?.txHash);
       const bps = surplusBps(order);
@@ -275,6 +289,8 @@ export async function enrichOphisTrades(
   const verified: ProofEvent[] = [];
   // Twelve is a concurrency window, not a total lookup cap. Keep walking the
   // sorted candidates until the requested number of verified rows is found.
+  // Once the shared network deadline expires, order candidates fail closed
+  // immediately while older receipt-bearing, non-order events still flow.
   for (let offset = 0; offset < events.length && verified.length < limit; offset += VERIFICATION_BATCH_SIZE) {
     const batch = await Promise.all(
       events.slice(offset, offset + VERIFICATION_BATCH_SIZE).map(verify),
