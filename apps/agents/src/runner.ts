@@ -10,7 +10,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildContext } from './chassis';
-import { startX402Server } from './x402-server';
+import { createAltanaClient } from './executor';
+import { loadManagerKey } from './manager-key';
+import { tickManagedYield } from './managed-runner';
+import { startX402Server, type ManagerIdentity } from './x402-server';
 import type { AgentContext, AgentModule } from './types';
 import { gridAgent } from './agents/grid';
 import { healthFactorAgent } from './agents/health-factor';
@@ -18,7 +21,11 @@ import { yieldAgent } from './agents/yield';
 import { lpRangeAgent } from './agents/lp-range';
 
 const ALL: AgentModule[] = [gridAgent, healthFactorAgent, yieldAgent, lpRangeAgent];
+/** Agents that can manage user funds (grant a scoped session to their manager key). */
+const MANAGED_AGENTS = ['yield'] as const;
 const PORT = Number(process.env.AGENTS_PORT ?? 4410);
+/** Managed accounts are serviced faster than own-capital (6h) so deposits deploy promptly. */
+const MANAGED_TICK_MS = Number(process.env.AGENTS_MANAGED_TICK_MS ?? 5 * 60_000);
 
 function selectedModules(): AgentModule[] {
   const i = process.argv.indexOf('--only');
@@ -90,8 +97,59 @@ async function main() {
   const { privateKey } = JSON.parse(readFileSync(facilitatorFile, 'utf8')) as {
     privateKey: `0x${string}`;
   };
-  startX402Server({ port: PORT, facilitatorKey: privateKey, agents });
+
+  // Managed mode: for each managed-capable agent that is running AND has a
+  // manager key, publish its public identity (so the browser can grant to it)
+  // and drive a per-account router tick loop.
+  const managers = new Map<string, ManagerIdentity>();
+  const managerKeys = new Map<string, `0x${string}`>();
+  for (const name of MANAGED_AGENTS) {
+    if (!agents.has(name)) continue;
+    const key = loadManagerKey(name);
+    if (!key) {
+      agents.get(name)!.ctx.log({
+        event: 'managed-disabled',
+        reason: `no wallets/agent-${name}-session.json; run fund --gen`,
+      });
+      continue;
+    }
+    managers.set(name, { publicKey: key.publicKey, address: key.address });
+    managerKeys.set(name, key.privateKey);
+  }
+
+  startX402Server({ port: PORT, facilitatorKey: privateKey, agents, managers });
   console.log(`x402 status server on :${PORT} (${[...agents.keys()].join(', ')})`);
+  if (managers.size > 0) {
+    console.log(`managed mode: ${[...managers.keys()].join(', ')}`);
+  }
+
+  if (managerKeys.size > 0) {
+    const client = createAltanaClient();
+    for (const [name, managerKey] of managerKeys) {
+      const ctx = agents.get(name)!.ctx;
+      let running = false;
+      const loop = async () => {
+        if (running) return;
+        if (ctx.breakers.isHalted().halted) return;
+        running = true;
+        try {
+          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKey });
+          if (serviced > 0 || errors > 0) {
+            ctx.log({ event: 'managed-sweep', serviced, errors });
+          }
+        } catch (err) {
+          ctx.log({
+            event: 'managed-sweep-error',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          running = false;
+        }
+      };
+      void loop();
+      setInterval(loop, MANAGED_TICK_MS);
+    }
+  }
 
   for (const { module, ctx } of agents.values()) {
     let running = false;

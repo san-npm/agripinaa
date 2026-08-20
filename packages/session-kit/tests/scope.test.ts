@@ -157,3 +157,85 @@ test('describeScope falls back to base units for an unknown token address', () =
     '7 base units of 0x0000000000000000000000000000000000000001 per day',
   );
 });
+
+// --- Managed per-selector scopes + native gas cap (drain-proof yield sessions) ---
+
+const ROUTER: Address = '0x841CF14Dfc0A315115EC5C9714c918210447b260';
+
+test('callScopes emit one {signature,to} per selector', () => {
+  const scope = buildSessionScope({
+    callScopes: [{ to: ROUTER, signatures: ['toAave()', 'toVenus()', 'toIdle()'] }],
+    spendCap: { token: 'USDT', amount: '50', period: 'day' },
+    expiresInSeconds: 3600,
+  });
+  assert.deepEqual(scope.permissions.calls, [
+    { signature: 'toAave()', to: ROUTER },
+    { signature: 'toVenus()', to: ROUTER },
+    { signature: 'toIdle()', to: ROUTER },
+  ]);
+});
+
+test('providing both allowlist and callScopes throws', () => {
+  assert.throws(
+    () =>
+      buildSessionScope({
+        allowlist: [ROUTER],
+        callScopes: [{ to: ROUTER, signatures: ['toAave()'] }],
+        spendCap: { token: 'USDT', amount: '50', period: 'day' },
+        expiresInSeconds: 3600,
+      }),
+    /one-call-shape/,
+  );
+});
+
+test('empty signatures list throws (would widen to every selector)', () => {
+  assert.throws(
+    () =>
+      buildSessionScope({
+        callScopes: [{ to: ROUTER, signatures: [] }],
+        spendCap: { token: 'USDT', amount: '50', period: 'day' },
+        expiresInSeconds: 3600,
+      }),
+    /call-scope-nonempty/,
+  );
+});
+
+test('a bare selector or function name (not a signature) throws', () => {
+  for (const bad of ['toAave', '0xdb1a4d6d', 'toAave(']) {
+    assert.throws(
+      () =>
+        buildSessionScope({
+          callScopes: [{ to: ROUTER, signatures: [bad] }],
+          spendCap: { token: 'USDT', amount: '50', period: 'day' },
+          expiresInSeconds: 3600,
+        }),
+      /call-scope-signature-shape/,
+      `expected "${bad}" to be rejected`,
+    );
+  }
+});
+
+test('a malformed router address in callScopes throws', () => {
+  assert.throws(
+    () =>
+      buildSessionScope({
+        callScopes: [{ to: '0xabc' as Address, signatures: ['toAave()'] }],
+        spendCap: { token: 'USDT', amount: '50', period: 'day' },
+        expiresInSeconds: 3600,
+      }),
+    /allowlist-address-shape/,
+  );
+});
+
+test('nativeGasCap adds a token-less native spend entry alongside the USDT cap', () => {
+  const scope = buildSessionScope({
+    callScopes: [{ to: ROUTER, signatures: ['toAave()'] }],
+    spendCap: { token: 'USDT', amount: '50', period: 'day' },
+    nativeGasCap: { amount: '0.02', period: 'day' },
+    expiresInSeconds: 3600,
+  });
+  assert.equal(scope.permissions.spend.length, 2);
+  assert.equal(scope.permissions.spend[0]?.token, TOKENS_BSC.USDT?.address);
+  assert.equal(scope.permissions.spend[1]?.token, undefined);
+  assert.equal(scope.permissions.spend[1]?.limit, 2n * 10n ** 16n); // 0.02 BNB
+});
