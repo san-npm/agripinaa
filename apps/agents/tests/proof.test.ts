@@ -1,7 +1,43 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mapProofLogEntries } from '../src/proof';
+import type { CowOrder, CowTrade } from '@agripinaa/exec-metrics';
+
+import { enrichOphisTrades, mapProofLogEntries } from '../src/proof';
+
+const orderUid = (digit: string) => `0x${digit.repeat(112)}`;
+
+function order(uid: string, status: string): CowOrder {
+  return {
+    uid,
+    owner: `0x${'1'.repeat(40)}`,
+    status,
+    kind: 'sell',
+    sellToken: `0x${'2'.repeat(40)}`,
+    buyToken: `0x${'3'.repeat(40)}`,
+    sellAmount: '100',
+    buyAmount: '100',
+    executedSellAmount: status === 'fulfilled' ? '100' : '0',
+    executedBuyAmount: status === 'fulfilled' ? '110' : '0',
+    validTo: 1_800_000_000,
+    appData: `0x${'4'.repeat(64)}`,
+    fullAppData: '{"appCode":"ophis"}',
+    creationDate: '2026-08-18T18:25:00.000Z',
+  };
+}
+
+function trade(uid: string): CowTrade {
+  return {
+    orderUid: uid,
+    owner: `0x${'1'.repeat(40)}`,
+    txHash: `0x${'a'.repeat(64)}`,
+    blockNumber: 70_000_000,
+    sellAmount: '100',
+    buyAmount: '110',
+    sellToken: `0x${'2'.repeat(40)}`,
+    buyToken: `0x${'3'.repeat(40)}`,
+  };
+}
 
 test('maps receipt-bearing agent actions into public proof events', () => {
   const events = mapProofLogEntries([
@@ -38,7 +74,7 @@ test('maps receipt-bearing agent actions into public proof events', () => {
   assert.match(events[1]?.summary ?? '', /2\.4 USDT to Aave/);
 });
 
-test('collapses repetitive range telemetry without hiding action events', () => {
+test('omits receiptless range telemetry without hiding receipt-bearing actions', () => {
   const entries = [0, 1, 2].map((minutes) => ({
     at: `2026-08-18T18:${35 + minutes * 10}:12.000Z`,
     agent: 'lp-range',
@@ -49,6 +85,12 @@ test('collapses repetitive range telemetry without hiding action events', () => 
   const events = mapProofLogEntries([
     ...entries,
     {
+      at: '2026-08-18T18:24:16.414Z',
+      agent: 'lp-range',
+      event: 'rebalance-start',
+      tokenId: '7173629',
+    },
+    {
       at: '2026-08-18T18:25:16.414Z',
       agent: 'lp-range',
       event: 'minted',
@@ -57,8 +99,67 @@ test('collapses repetitive range telemetry without hiding action events', () => 
     },
   ]);
 
-  assert.equal(events.filter((event) => event.summary.includes('remains in range')).length, 1);
-  assert.equal(events.some((event) => event.kind === 'mint'), true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.kind, 'mint');
+  assert.equal(events.every((event) => Boolean(event.txHash || event.orderUid)), true);
+});
+
+test('publishes Ophis submissions only after the orderbook confirms fulfillment', async () => {
+  const fulfilledGrid = orderUid('1');
+  const openGrid = orderUid('2');
+  const fulfilledLp = orderUid('3');
+  const cancelledLp = orderUid('4');
+  const lookupError = orderUid('5');
+  const candidates = mapProofLogEntries([
+    ...[
+      [fulfilledGrid, '2026-08-18T18:25:00.000Z'],
+      [openGrid, '2026-08-18T18:26:00.000Z'],
+    ].map(([uid, at]) => ({
+      at,
+      agent: 'grid',
+      event: 'trade-submitted',
+      orderUid: uid,
+      side: 'sell',
+      clipAmount: '0.01',
+    })),
+    ...[
+      [fulfilledLp, '2026-08-18T18:27:00.000Z'],
+      [cancelledLp, '2026-08-18T18:28:00.000Z'],
+      [lookupError, '2026-08-18T18:29:00.000Z'],
+    ].map(([uid, at]) => ({
+      at,
+      agent: 'lp-range',
+      event: 'ophis-swap-submitted',
+      orderUid: uid,
+      sellToken: 'WBNB',
+      buyToken: 'USDT',
+      sellAmount: '0.01',
+    })),
+  ]);
+  assert.equal(candidates.every((event) => /^Submitted/.test(event.summary)), true);
+
+  const statuses = new Map([
+    [fulfilledGrid, 'fulfilled'],
+    [openGrid, 'open'],
+    [fulfilledLp, 'fulfilled'],
+    [cancelledLp, 'cancelled'],
+  ]);
+  const events = await enrichOphisTrades(candidates, {
+    async getOrder(uid) {
+      const status = statuses.get(uid);
+      if (!status) throw new Error('orderbook unavailable');
+      return order(uid, status);
+    },
+    async getTrades({ orderUid: uid }) {
+      return uid && statuses.get(uid) === 'fulfilled' ? [trade(uid)] : [];
+    },
+  });
+
+  assert.deepEqual(events.map((event) => event.orderUid).sort(), [fulfilledGrid, fulfilledLp]);
+  assert.equal(events.every((event) => event.txHash !== undefined), true);
+  assert.equal(events.every((event) => event.surplusBps === 1_000), true);
+  assert.equal(events.some((event) => /^Filled/.test(event.summary)), true);
+  assert.equal(events.some((event) => /^Rebalanced/.test(event.summary)), true);
 });
 
 test('ignores heartbeats, malformed receipts, and unknown agents', () => {

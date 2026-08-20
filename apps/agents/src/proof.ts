@@ -22,6 +22,7 @@ const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const HEX_VALUE = /^0x[0-9a-fA-F]+$/;
 
 type LogEntry = Record<string, unknown>;
+type ProofCandidate = ProofEvent & { fulfilledSummary?: string };
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -66,7 +67,7 @@ function firstHealthFactorAfter(entries: readonly LogEntry[], at: string): numbe
   return match?.hf;
 }
 
-function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofEvent | null {
+function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandidate | null {
   const slug = stringValue(entry.agent) as ProofAgentSlug | undefined;
   const meta = slug ? PROOF_AGENTS[slug] : undefined;
   const event = stringValue(entry.event);
@@ -91,7 +92,8 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofEvent 
       ...base,
       id: eventId(meta.tokenId, event, at, orderUid),
       kind: 'trade',
-      summary: `Filled${amount ? ` ${amount}` : ''} ${from} → ${to} through Ophis`,
+      summary: `Submitted${amount ? ` ${amount}` : ''} ${from} → ${to} to Ophis`,
+      fulfilledSummary: `Filled${amount ? ` ${amount}` : ''} ${from} → ${to} through Ophis`,
       orderUid,
     };
   }
@@ -151,29 +153,6 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofEvent 
     };
   }
 
-  if (slug === 'lp-range' && event === 'range-check') {
-    const tokenId = stringValue(entry.tokenId);
-    if (!tokenId || typeof entry.inRange !== 'boolean') return null;
-    return {
-      ...base,
-      id: eventId(meta.tokenId, event, at, `${tokenId}:${entry.inRange}`),
-      kind: 'rebalance',
-      summary: entry.inRange
-        ? `Confirmed liquidity position #${tokenId} remains in range`
-        : `Detected liquidity position #${tokenId} outside its range`,
-    };
-  }
-
-  if (slug === 'lp-range' && event === 'rebalance-start') {
-    const tokenId = stringValue(entry.tokenId);
-    return {
-      ...base,
-      id: eventId(meta.tokenId, event, at, tokenId),
-      kind: 'rebalance',
-      summary: `Started${tokenId ? ` position #${tokenId}` : ''} rebalance after the range moved`,
-    };
-  }
-
   if (slug === 'lp-range' && (event === 'decrease-liquidity' || event === 'collected')) {
     const txHash = txValue(entry.txHash);
     const tokenId = stringValue(entry.tokenId);
@@ -199,7 +178,8 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofEvent 
       ...base,
       id: eventId(meta.tokenId, event, at, orderUid),
       kind: 'trade',
-      summary: `Rebalanced${amount ? ` ${amount}` : ''} ${from} → ${to} through Ophis`,
+      summary: `Submitted${amount ? ` ${amount}` : ''} ${from} → ${to} rebalance to Ophis`,
+      fulfilledSummary: `Rebalanced${amount ? ` ${amount}` : ''} ${from} → ${to} through Ophis`,
       orderUid,
     };
   }
@@ -214,16 +194,15 @@ export function mapProofLogEntries(
 ): ProofEvent[] {
   const mapped = entries
     .map((entry) => mapLogEntry(entry, entries))
-    .filter((entry): entry is ProofEvent => entry !== null)
+    // The public feed promises a receipt for every row. Fail closed for
+    // telemetry and for any future mapped event without an on-chain anchor.
+    .filter((entry): entry is ProofCandidate =>
+      entry !== null && (entry.txHash !== undefined || entry.orderUid !== undefined))
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
   const seen = new Set<string>();
   return mapped.filter((entry) => {
-    // Range checks are telemetry every ten minutes. Keep only the newest
-    // state so they cannot bury scarce, receipt-bearing actions.
-    const key = entry.id.includes(':range-check:')
-      ? `${entry.agent}:range-check:${entry.summary.includes('remains in range')}`
-      : entry.orderUid ?? entry.txHash ?? entry.id;
+    const key = entry.orderUid ?? entry.txHash ?? entry.id;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -257,12 +236,17 @@ function readTail(file: string): LogEntry[] {
   }
 }
 
-async function enrichOphisTrades(events: ProofEvent[]): Promise<ProofEvent[]> {
+type OphisTradeLookup = Pick<CowOrderbookClient, 'getOrder' | 'getTrades'>;
+
+export async function enrichOphisTrades(
+  events: ProofCandidate[],
+  lookup?: OphisTradeLookup,
+): Promise<ProofEvent[]> {
   const timedFetch: typeof fetch = (input, init) => fetch(input, {
     ...init,
     signal: AbortSignal.timeout(3_000),
   });
-  const client = new CowOrderbookClient({ fetch: timedFetch });
+  const client = lookup ?? new CowOrderbookClient({ fetch: timedFetch });
   const orderUids = [...new Set(events.flatMap((event) => event.orderUid ? [event.orderUid] : []))].slice(0, 12);
   const enriched = new Map<string, { txHash?: `0x${string}`; surplusBps?: number }>();
 
@@ -272,22 +256,28 @@ async function enrichOphisTrades(events: ProofEvent[]): Promise<ProofEvent[]> {
         client.getOrder(orderUid),
         client.getTrades({ orderUid }),
       ]);
+      if (order.status !== 'fulfilled') return;
       const trade = trades.find((candidate) => candidate.orderUid === orderUid);
       const txHash = txValue(trade?.txHash);
-      const bps = order.status === 'fulfilled' ? surplusBps(order) : null;
+      const bps = surplusBps(order);
       enriched.set(orderUid, {
         ...(txHash ? { txHash } : {}),
         ...(bps !== null ? { surplusBps: bps } : {}),
       });
     } catch {
-      // Submission is still a valid public event while settlement is pending
-      // or the orderbook is unavailable. The next cached read enriches it.
+      // Without a fulfilled orderbook lookup, a submission is not proof of an
+      // execution. Omit it until a later cached read can verify settlement.
     }
   }));
 
-  return events.map((event) => event.orderUid
-    ? { ...event, ...(enriched.get(event.orderUid) ?? {}) }
-    : event);
+  return events.flatMap((event): ProofEvent[] => {
+    const { fulfilledSummary, ...publicEvent } = event;
+    if (!event.orderUid) return [publicEvent];
+    const settlement = enriched.get(event.orderUid);
+    return settlement
+      ? [{ ...publicEvent, summary: fulfilledSummary ?? publicEvent.summary, ...settlement }]
+      : [];
+  });
 }
 
 export async function collectProofEvents(
