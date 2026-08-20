@@ -1,12 +1,87 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 
-import { TOKENS_BSC, toBaseUnits } from '@agripinaa/shared';
+import { ROUTER_ACTIONS, TOKENS_BSC, routerFor, toBaseUnits } from '@agripinaa/shared';
+import { deserializeSession } from '@agripinaa/session-kit/persist';
+import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
 import { createX402Merchant } from '@altananetwork/x402-server';
+import type { Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { collectProofEvents } from './proof';
+import { loadManaged, upsertManaged, type ManagedAccount } from './managed';
 import type { AgentContext, AgentModule } from './types';
+
+/** Public identity of an agent's manager session key (private half stays on the VM). */
+export interface ManagerIdentity {
+  publicKey: Hex;
+  address: Hex;
+}
+
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const ROUTER_SIGNATURES = new Set<string>(Object.values(ROUTER_ACTIONS).map((a) => a.signature));
+
+/**
+ * Reject any manage request that isn't a real, on-chain, router-scoped session
+ * granted to our own manager key. Returns a human-readable problem, or null if
+ * the request is safe to store. The security does not rest on this check (the
+ * router is drain-proof regardless), but it keeps the registry to sessions we
+ * can actually act on and that can only touch the router.
+ */
+async function validateManageRequest(
+  body: { account?: string; chainId?: number; session?: ManagedAccount['session'] },
+  identity: ManagerIdentity,
+): Promise<string | null> {
+  const { account, chainId, session } = body;
+  if (typeof account !== 'string' || !ADDRESS_RE.test(account)) return 'account is not a 20-byte address';
+  if (chainId !== 56 && chainId !== 97) return 'chainId must be 56 or 97';
+  const router = routerFor(chainId);
+  if (!router) return `no YieldRouter deployed on chain ${chainId}`;
+  if (!session || typeof session !== 'object') return 'missing session';
+  if (typeof session.walletAddress !== 'string' || session.walletAddress.toLowerCase() !== account.toLowerCase())
+    return 'session.walletAddress must equal account';
+  if (typeof session.publicKey !== 'string' || session.publicKey.toLowerCase() !== identity.publicKey.toLowerCase())
+    return 'session is not granted to this agent manager key';
+  if (typeof session.expiry !== 'number' || session.expiry * 1000 <= Date.now())
+    return 'session is missing or already expired';
+
+  const calls = session.permissions?.calls ?? [];
+  if (calls.length === 0) return 'session has no scoped calls (would be unrestricted)';
+  for (const call of calls) {
+    const to = 'to' in call ? call.to : undefined;
+    const signature = 'signature' in call ? call.signature : undefined;
+    if (!to || to.toLowerCase() !== router.address.toLowerCase())
+      return 'session scopes a call to a non-router target';
+    if (!signature || !ROUTER_SIGNATURES.has(signature))
+      return 'session scopes a non-router selector';
+  }
+
+  const live = await isSessionKeyValid({
+    chainId,
+    account: account as Hex,
+    sessionPublicKey: session.publicKey as Hex,
+  });
+  if (!live) return 'session key is not registered/valid on-chain for this account';
+  return null;
+}
+
+async function readBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > maxBytes) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
 
 /** 0.05 USDT per status call. */
 const PRICE = toBaseUnits('0.05', TOKENS_BSC.USDT!.decimals);
@@ -21,9 +96,12 @@ export function startX402Server(opts: {
   port: number;
   facilitatorKey: `0x${string}`;
   agents: Map<string, { module: AgentModule; ctx: AgentContext }>;
+  /** Public manager-key identities per managed-capable agent (e.g. yield). */
+  managers?: Map<string, ManagerIdentity>;
   rpcUrl?: string;
 }): Server {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
+  const managers = opts.managers ?? new Map<string, ManagerIdentity>();
 
   const merchants = new Map(
     [...opts.agents.entries()].map(([name, { ctx }]) => [
@@ -109,6 +187,75 @@ export function startX402Server(opts: {
       }
       return;
     }
+    // GET /:agent/manager-key — the agent's public session key. The browser
+    // grants a router-scoped session to THIS key (via a verify-only stub) so
+    // the agent can manage the user's funds without the private key ever
+    // leaving the VM.
+    const keyMatch = /^\/([a-z-]+)\/manager-key$/.exec(pathname);
+    if (keyMatch) {
+      const agent = keyMatch[1]!;
+      const identity = managers.get(agent);
+      if (req.method !== 'GET') {
+        res.writeHead(405, { allow: 'GET', 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      if (!identity) {
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'agent does not support managed mode' }));
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ agent, publicKey: identity.publicKey, address: identity.address }));
+      return;
+    }
+
+    // POST /:agent/manage — register a user account for the agent to manage.
+    // No shared secret: the session is the authorization, and we verify on
+    // chain that it is real, granted to OUR manager key, unexpired/unrevoked,
+    // and scoped to nothing but this chain's drain-proof router selectors.
+    const manageMatch = /^\/([a-z-]+)\/manage$/.exec(pathname);
+    if (manageMatch) {
+      const agent = manageMatch[1]!;
+      const identity = managers.get(agent);
+      if (req.method !== 'POST') {
+        res.writeHead(405, { allow: 'POST', 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      if (!identity) {
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'agent does not support managed mode' }));
+        return;
+      }
+      try {
+        const body = deserializeSession(await readBody(req)) as {
+          account?: string;
+          chainId?: number;
+          session?: ManagedAccount['session'];
+        };
+        const problem = await validateManageRequest(body, identity);
+        if (problem) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: problem }));
+          return;
+        }
+        const entry: ManagedAccount = {
+          account: body.account as Hex,
+          chainId: body.chainId!,
+          session: body.session!,
+          registeredAt: new Date().toISOString(),
+        };
+        const all = upsertManaged(agent, entry);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, account: entry.account, managedCount: all.length }));
+      } catch (err) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'bad request' }));
+      }
+      return;
+    }
+
     if (!entry || !merchant) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'unknown agent' }));

@@ -1,6 +1,7 @@
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits, type TokenInfo } from '@agripinaa/shared';
-import { erc20Abi, maxUint256, parseAbi } from 'viem';
+import { erc20Abi, maxUint256, parseAbi, type PublicClient } from 'viem';
 
+import type { ManagedExecutor } from '../executor';
 import type { AgentContext, AgentModule } from '../types';
 
 export type Venue = 'none' | 'venus' | 'aave';
@@ -164,21 +165,23 @@ interface Rates {
   aaveLiquidityRate: string;
 }
 
-async function readRates(ctx: AgentContext): Promise<Rates> {
-  const latest = await ctx.publicClient.getBlock();
+type Reader = Pick<PublicClient, 'getBlock' | 'readContract'>;
+
+async function readRates(client: Reader): Promise<Rates> {
+  const latest = await client.getBlock();
   const span = 5000;
-  const older = await ctx.publicClient.getBlock({
+  const older = await client.getBlock({
     blockNumber: latest.number - BigInt(span),
   });
   const blocksPerYear = deriveBlocksPerYear(latest.timestamp, older.timestamp, span);
 
   const [venusRate, reserve] = await Promise.all([
-    ctx.publicClient.readContract({
+    client.readContract({
       address: VENUS_VUSDT,
       abi: vTokenAbi,
       functionName: 'supplyRatePerBlock',
     }),
-    ctx.publicClient.readContract({
+    client.readContract({
       address: AAVE_POOL,
       abi: aavePoolAbi,
       functionName: 'getReserveData',
@@ -202,29 +205,28 @@ interface Position {
   chainVenue: Venue;
 }
 
-async function readPosition(ctx: AgentContext): Promise<Position> {
-  const self = ctx.account.address;
+async function readPosition(client: Reader, self: `0x${string}`): Promise<Position> {
   const [walletUsdtWei, venusUnderlyingWei, reserve] = await Promise.all([
-    ctx.publicClient.readContract({
+    client.readContract({
       address: USDT.address,
       abi: erc20Abi,
       functionName: 'balanceOf',
       args: [self],
     }),
-    ctx.publicClient.readContract({
+    client.readContract({
       address: VENUS_VUSDT,
       abi: vTokenReadAbi,
       functionName: 'balanceOfUnderlying',
       args: [self],
     }),
-    ctx.publicClient.readContract({
+    client.readContract({
       address: AAVE_POOL,
       abi: aavePoolAbi,
       functionName: 'getReserveData',
       args: [USDT.address],
     }),
   ]);
-  const aaveATokenWei = await ctx.publicClient.readContract({
+  const aaveATokenWei = await client.readContract({
     address: reserve.aTokenAddress,
     abi: erc20Abi,
     functionName: 'balanceOf',
@@ -384,8 +386,8 @@ export const yieldAgent: AgentModule = {
       return;
     }
 
-    const rates = await readRates(ctx);
-    const position = await readPosition(ctx);
+    const rates = await readRates(ctx.publicClient);
+    const position = await readPosition(ctx.publicClient, ctx.account.address);
 
     const storedVenue = ctx.state.get<Venue>('venue', 'none');
     const venue = position.chainVenue;
@@ -468,7 +470,10 @@ export const yieldAgent: AgentModule = {
   },
 
   async status(ctx) {
-    const [rates, position] = await Promise.all([readRates(ctx), readPosition(ctx)]);
+    const [rates, position] = await Promise.all([
+      readRates(ctx.publicClient),
+      readPosition(ctx.publicClient, ctx.account.address),
+    ]);
     const venue = position.chainVenue;
     const positionWei =
       venue === 'venus' ? position.venusUnderlyingWei
@@ -490,3 +495,88 @@ export const yieldAgent: AgentModule = {
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// Managed mode: run the SAME decision logic against a USER's account, moving
+// their funds through the drain-proof YieldRouter instead of the agent's own
+// wallet. Reads are account-scoped; the only write is one router selector.
+// State/rate-limits are namespaced per managed account so many users share one
+// agent process without cross-talk.
+// ---------------------------------------------------------------------------
+
+export async function managedYieldTick(
+  ctx: AgentContext,
+  executor: ManagedExecutor,
+): Promise<void> {
+  const acct = executor.account;
+  const ns = (k: string) => `managed:${acct.toLowerCase()}:${k}`;
+
+  const halted = ctx.breakers.isHalted();
+  if (halted.halted) {
+    ctx.log({ event: 'managed-skip', account: acct, reason: `halted: ${halted.reason}` });
+    return;
+  }
+
+  const rates = await readRates(ctx.publicClient);
+  const position = await readPosition(ctx.publicClient, acct);
+  const venue = position.chainVenue;
+
+  const storedVenue = ctx.state.get<Venue>(ns('venue'), 'none');
+  if (venue !== storedVenue) {
+    ctx.log({ event: 'managed-venue-reconciled', account: acct, stored: storedVenue, chain: venue });
+    ctx.state.set(ns('venue'), venue);
+  }
+
+  const base = {
+    account: acct,
+    venue,
+    venusApyBps: rates.venusBps,
+    aaveApyBps: rates.aaveBps,
+    walletUsdt: fromBaseUnits(position.walletUsdtWei, USDT.decimals),
+    venusUsdt: fromBaseUnits(position.venusUnderlyingWei, USDT.decimals),
+    aaveUsdt: fromBaseUnits(position.aaveATokenWei, USDT.decimals),
+  };
+
+  if (venue === 'none') {
+    // Managed funds deploy in full: the router moves the account's entire USDT
+    // balance, so there is no reserve/partial-deploy split as in own-capital mode.
+    if (position.walletUsdtWei <= DUST_WEI) {
+      ctx.log({ ...base, event: 'managed-tick', decision: 'unfunded' });
+      return;
+    }
+    const target = chooseFirstVenue(rates.venusBps, rates.aaveBps);
+    if (!ctx.breakers.allowAction(ns('enter'), 2)) {
+      ctx.log({ ...base, event: 'managed-tick', decision: 'enter-capped', target });
+      return;
+    }
+    const action = target === 'venus' ? 'toVenus' : 'toAave';
+    const res = await executor.execute(action);
+    ctx.state.set(ns('venue'), target);
+    ctx.state.set(ns('betterStreak'), 0);
+    ctx.log({ ...base, event: 'managed-tick', decision: 'enter', target, action, txHash: res.txHash, status: res.status });
+    return;
+  }
+
+  const decision = decideRotation({
+    venue,
+    venusBps: rates.venusBps,
+    aaveBps: rates.aaveBps,
+    betterStreak: ctx.state.get<number>(ns('betterStreak'), 0),
+  });
+  ctx.state.set(ns('betterStreak'), decision.nextStreak);
+
+  if (decision.action === 'hold') {
+    ctx.log({ ...base, event: 'managed-tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak });
+    return;
+  }
+  if (!ctx.breakers.allowAction(ns('rotate'), 1)) {
+    ctx.log({ ...base, event: 'managed-tick', decision: 'rotate-capped', target: decision.target, edgeBps: decision.edgeBps });
+    return;
+  }
+  // One router call rotates: it unwinds the current venue and supplies the
+  // target in a single tx, leaving the position token in the user's account.
+  const action = decision.target === 'venus' ? 'toVenus' : 'toAave';
+  const res = await executor.execute(action);
+  ctx.state.set(ns('venue'), decision.target);
+  ctx.log({ ...base, event: 'managed-tick', decision: 'rotate', from: venue, to: decision.target, action, edgeBps: decision.edgeBps, txHash: res.txHash, status: res.status });
+}

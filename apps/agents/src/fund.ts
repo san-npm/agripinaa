@@ -34,6 +34,13 @@ const WALLET_NAMES = [
   'facilitator',
 ] as const;
 
+/**
+ * Manager session keys for managed-capable agents. Users grant a router-scoped
+ * session to this key's public half; the agent signs router calls with it. It
+ * needs no funding of its own (the user's account pays gas).
+ */
+const SESSION_NAMES = ['agent-yield-session'] as const;
+
 /** The split of the real budget. Native gas per agent covers registration
  * (~0.0003), approvals, and protocol calls at BSC 1-gwei prices. */
 const PLAN = {
@@ -56,7 +63,7 @@ async function main() {
 
   if (mode === '--gen') {
     await mkdir(WALLETS_DIR, { recursive: true });
-    for (const name of WALLET_NAMES) {
+    for (const name of [...WALLET_NAMES, ...SESSION_NAMES]) {
       const file = join(WALLETS_DIR, `${name}.json`);
       if (existsSync(file)) {
         console.log(`${name}: exists`);
