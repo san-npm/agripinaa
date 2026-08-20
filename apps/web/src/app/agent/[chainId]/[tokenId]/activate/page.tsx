@@ -2,9 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { ManagedWizard } from "@/components/ManagedWizard";
 import { SessionWizard } from "@/components/SessionWizard";
 import { ArrowIcon } from "@/components/icons";
 import { CHAIN_ID, getAgent } from "@/lib/data";
+
+/** Agent categories that manage real user funds (map to a runner agent name). */
+const MANAGED_AGENTS: Record<string, string> = { yield: "yield" };
 
 export default function ActivatePage(
   props: PageProps<"/agent/[chainId]/[tokenId]/activate">,
@@ -26,6 +30,8 @@ async function ActivateContent({
   const agent = await getAgent(tokenId);
   if (!agent) notFound();
 
+  const managedAgent = agent.category ? MANAGED_AGENTS[agent.category] : undefined;
+
   return (
     <div className="relative">
       <div
@@ -39,20 +45,33 @@ async function ActivateContent({
         <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> Back to {agent.name}
       </Link>
       <h1 className="relative z-10 mb-1 font-display text-2xl font-semibold">
-        Activate {agent.name}
+        {managedAgent ? "Put funds under " : "Activate "}
+        {agent.name}
       </h1>
       <p className="relative z-10 mb-8 max-w-xl text-sm text-muted">
-        Three steps: a passkey-secured account, a one-time gas top-up, and one
-        signature granting exactly the authority you choose.
+        {managedAgent
+          ? "A passkey-secured account, a USDT deposit, and one grant that lets the agent rotate your funds between lending venues, never anywhere else."
+          : "Three steps: a passkey-secured account, a one-time gas top-up, and one signature granting exactly the authority you choose."}
       </p>
-      <SessionWizard
-        agent={{
-          chainId: agent.chainId,
-          tokenId: agent.tokenId,
-          name: agent.name,
-          agentWallet: agent.agentWallet,
-        }}
-      />
+      {managedAgent ? (
+        <ManagedWizard
+          agent={{
+            chainId: agent.chainId,
+            tokenId: agent.tokenId,
+            name: agent.name,
+            managedAgent,
+          }}
+        />
+      ) : (
+        <SessionWizard
+          agent={{
+            chainId: agent.chainId,
+            tokenId: agent.tokenId,
+            name: agent.name,
+            agentWallet: agent.agentWallet,
+          }}
+        />
+      )}
     </div>
   );
 }

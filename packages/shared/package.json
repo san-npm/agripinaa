@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./chains": "./src/chains.ts",
+    "./contracts": "./src/contracts.ts",
     "./proof": "./src/proof.ts",
     "./ssrf": "./src/ssrf.ts",
     "./tokens": "./src/tokens.ts"

@@ -1,0 +1,24 @@
+import { agentsUrl } from '@/lib/agents-endpoint';
+
+/**
+ * Proxy the agent's public manager-key so the browser never needs the tunnel
+ * URL or CORS. Returns { agent, publicKey, address }. Read-only, public.
+ */
+export async function GET(
+  _request: Request,
+  ctx: { params: Promise<{ agent: string }> },
+): Promise<Response> {
+  const { agent } = await ctx.params;
+  if (!/^[a-z-]+$/.test(agent)) {
+    return Response.json({ error: 'invalid agent' }, { status: 400 });
+  }
+  try {
+    const upstream = await fetch(agentsUrl(`/${agent}/manager-key`), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body = await upstream.json();
+    return Response.json(body, { status: upstream.status });
+  } catch {
+    return Response.json({ error: 'agent runner unreachable' }, { status: 502 });
+  }
+}
