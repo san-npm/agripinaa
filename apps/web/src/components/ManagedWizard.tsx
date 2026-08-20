@@ -20,8 +20,10 @@ import { CoinsIcon, LightningIcon, ShieldIcon, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
 
-/** Native balance needed before activation (approvals + key registration + margin). */
-const MIN_NATIVE = 3_000_000_000_000_000n; // 0.003 BNB
+/** Native balance needed before activation (approvals + key registration + margin).
+ *  BSC gas is ~0.05-0.1 gwei, so the two activation txs cost well under 0.0002 BNB;
+ *  0.0005 keeps a healthy margin without demanding an unrealistic top-up. */
+const MIN_NATIVE = 500_000_000_000_000n; // 0.0005 BNB
 
 interface ManagedAgentProps {
   chainId: number;
