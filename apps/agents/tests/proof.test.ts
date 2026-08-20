@@ -5,7 +5,7 @@ import type { CowOrder, CowTrade } from '@agripinaa/exec-metrics';
 
 import { enrichOphisTrades, mapProofLogEntries } from '../src/proof';
 
-const orderUid = (digit: string) => `0x${digit.repeat(112)}`;
+const orderUid = (value: number) => `0x${value.toString(16).padStart(112, '0')}`;
 
 function order(uid: string, status: string): CowOrder {
   return {
@@ -105,11 +105,11 @@ test('omits receiptless range telemetry without hiding receipt-bearing actions',
 });
 
 test('publishes Ophis submissions only after the orderbook confirms fulfillment', async () => {
-  const fulfilledGrid = orderUid('1');
-  const openGrid = orderUid('2');
-  const fulfilledLp = orderUid('3');
-  const cancelledLp = orderUid('4');
-  const lookupError = orderUid('5');
+  const fulfilledGrid = orderUid(1);
+  const openGrid = orderUid(2);
+  const fulfilledLp = orderUid(3);
+  const cancelledLp = orderUid(4);
+  const lookupError = orderUid(5);
   const candidates = mapProofLogEntries([
     ...[
       [fulfilledGrid, '2026-08-18T18:25:00.000Z'],
@@ -145,21 +145,91 @@ test('publishes Ophis submissions only after the orderbook confirms fulfillment'
     [cancelledLp, 'cancelled'],
   ]);
   const events = await enrichOphisTrades(candidates, {
-    async getOrder(uid) {
-      const status = statuses.get(uid);
-      if (!status) throw new Error('orderbook unavailable');
-      return order(uid, status);
-    },
-    async getTrades({ orderUid: uid }) {
-      return uid && statuses.get(uid) === 'fulfilled' ? [trade(uid)] : [];
+    lookup: {
+      async getOrder(uid) {
+        const status = statuses.get(uid);
+        if (!status) throw new Error('orderbook unavailable');
+        return order(uid, status);
+      },
+      async getTrades({ orderUid: uid }) {
+        if (uid === fulfilledLp) throw new Error('trade details unavailable');
+        return uid && statuses.get(uid) === 'fulfilled' ? [trade(uid)] : [];
+      },
     },
   });
 
   assert.deepEqual(events.map((event) => event.orderUid).sort(), [fulfilledGrid, fulfilledLp]);
-  assert.equal(events.every((event) => event.txHash !== undefined), true);
+  assert.equal(events.find((event) => event.orderUid === fulfilledGrid)?.txHash, trade(fulfilledGrid).txHash);
+  assert.equal(events.find((event) => event.orderUid === fulfilledLp)?.txHash, undefined);
   assert.equal(events.every((event) => event.surplusBps === 1_000), true);
   assert.equal(events.some((event) => /^Filled/.test(event.summary)), true);
   assert.equal(events.some((event) => /^Rebalanced/.test(event.summary)), true);
+});
+
+test('verifies more than one lookup batch when the feed has over 12 fulfilled orders', async () => {
+  const candidates = mapProofLogEntries(Array.from({ length: 20 }, (_, index) => ({
+    at: new Date(Date.UTC(2026, 7, 18, 18, 25, index)).toISOString(),
+    agent: 'grid',
+    event: 'trade-submitted',
+    orderUid: orderUid(index + 10),
+    side: 'sell',
+  })));
+  const lookedUp: string[] = [];
+  const events = await enrichOphisTrades(candidates, {
+    limit: 40,
+    lookup: {
+      async getOrder(uid) {
+        lookedUp.push(uid);
+        return order(uid, 'fulfilled');
+      },
+      async getTrades() {
+        return [];
+      },
+    },
+  });
+
+  assert.equal(events.length, 20);
+  assert.equal(lookedUp.length, 20);
+});
+
+test('applies the output limit after unsettled candidates are rejected', async () => {
+  const openOrders = Array.from({ length: 40 }, (_, index) => ({
+    at: new Date(Date.UTC(2026, 7, 18, 19, 0, index)).toISOString(),
+    agent: 'grid',
+    event: 'trade-submitted',
+    orderUid: orderUid(index + 100),
+    side: 'sell',
+  }));
+  const candidates = mapProofLogEntries([
+    ...openOrders,
+    {
+      at: '2026-08-18T18:00:00.000Z',
+      agent: 'yield',
+      event: 'supply',
+      venue: 'aave',
+      txHash: `0x${'e'.repeat(64)}`,
+    },
+  ]);
+  let orderLookups = 0;
+  let tradeLookups = 0;
+  const events = await enrichOphisTrades(candidates, {
+    limit: 1,
+    lookup: {
+      async getOrder(uid) {
+        orderLookups += 1;
+        return order(uid, 'open');
+      },
+      async getTrades() {
+        tradeLookups += 1;
+        return [];
+      },
+    },
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.kind, 'rotate');
+  assert.equal(orderLookups, 40);
+  assert.equal(tradeLookups, 0);
 });
 
 test('ignores heartbeats, malformed receipts, and unknown agents', () => {
