@@ -1,6 +1,6 @@
 'use client';
 
-import { isSessionKeyValid } from '@agripinaa/session-kit';
+import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
 import { useEffect, useState } from 'react';
 
 import { altanaClient } from '@/lib/altana';

@@ -1,4 +1,4 @@
-import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
+import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared/tokens';
 
 export type Address = `0x${string}`;
 

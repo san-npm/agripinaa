@@ -1,6 +1,6 @@
 'use client';
 
-import { deserializeSession, serializeSession } from '@agripinaa/session-kit';
+import { deserializeSession, serializeSession } from '@agripinaa/session-kit/codec';
 
 /**
  * Local registry of sessions this browser has granted. The session payload is
