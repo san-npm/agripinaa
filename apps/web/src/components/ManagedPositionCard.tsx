@@ -1,21 +1,35 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
+import { routerFor } from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
+import type { Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
-import { readManagedPosition, withdrawToIdle, type ManagedPosition } from '@/lib/managed';
+import {
+  destinationProblem,
+  readManagedPosition,
+  sendNativeOut,
+  sendTokenOut,
+  withdrawToIdle,
+  WITHDRAW_GAS_RESERVE_WEI,
+  type ManagedPosition,
+} from '@/lib/managed';
 import { forgetSession, markRevoked, reviveSession, type StoredSessionMeta } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
 import { CoinsIcon } from './icons';
 
 type Validity = 'checking' | 'valid' | 'invalid' | 'unknown';
+type Busy = null | 'unwind' | 'usdt' | 'bnb' | 'revoke';
 
 const VENUE_LABEL: Record<ManagedPosition['venue'], string> = {
   idle: 'Idle (not deployed)',
   venus: 'Venus',
   aave: 'Aave V3',
 };
+
+/** Below this, a USDT balance is rounding dust, not a real position. */
+const USDT_DUST_WEI = 10n ** 16n; // 0.01 USDT
 
 export function ManagedPositionCard({
   meta,
@@ -26,8 +40,9 @@ export function ManagedPositionCard({
 }) {
   const [pos, setPos] = useState<ManagedPosition | null>(null);
   const [validity, setValidity] = useState<Validity>('checking');
-  const [busy, setBusy] = useState<null | 'withdraw' | 'revoke'>(null);
+  const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dest, setDest] = useState<string>('');
 
   const refreshPosition = useCallback(async () => {
     try {
@@ -71,14 +86,84 @@ export function ManagedPositionCard({
     return wallet;
   }
 
-  async function withdraw() {
-    setBusy('withdraw');
+  const destProblem = dest ? destinationProblem(dest, meta.account, meta.chainId) : null;
+  const destValid = dest !== '' && destProblem === null;
+  const hasUsdt = pos != null && pos.idleWei + pos.deployedWei > USDT_DUST_WEI;
+
+  // Revoke the agent's session, marking it revoked ONLY if the bundle
+  // confirmed on-chain (a FAILED/PENDING revoke must not read as "stopped").
+  async function doRevoke(wallet: Awaited<ReturnType<typeof reauth>>) {
+    const session = reviveSession(meta);
+    const r = await altanaClient().revokeSession({
+      wallet,
+      signer: wallet.signer,
+      chainId: meta.chainId,
+      session: session as Parameters<ReturnType<typeof altanaClient>['revokeSession']>[0]['session'],
+    });
+    if (r.status !== 'CONFIRMED') {
+      throw new Error(
+        r.status === 'PENDING'
+          ? 'Stopping the agent is still pending on-chain — retry shortly.'
+          : 'Stopping the agent did not go through (reverted on-chain).',
+      );
+    }
+    markRevoked(meta.id);
+    setValidity('invalid');
+  }
+
+  // Full exit to an external wallet: stop the agent first (so it can't
+  // re-deploy mid-withdrawal), unwind any venue position, then send all USDT.
+  async function withdrawUsdtOut() {
+    if (!destValid) {
+      setError(destProblem ?? 'Enter a valid destination address.');
+      return;
+    }
+    setBusy('usdt');
     setError(null);
     try {
       const wallet = await reauth();
-      await withdrawToIdle(wallet as never, meta.chainId);
+      if (validity === 'valid') await doRevoke(wallet);
+      const cur = await readManagedPosition(meta.account as Hex, meta.chainId);
+      if (cur.deployedWei > 0n) {
+        await withdrawToIdle(wallet as never, meta.chainId);
+      }
+      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId);
+      if (fresh.idleWei <= 0n) throw new Error('No USDT available to withdraw.');
+      const router = routerFor(meta.chainId);
+      if (!router) throw new Error('No router on this chain.');
+      await sendTokenOut(wallet as never, meta.chainId, router.usdt, dest as Hex, fresh.idleWei);
       await refreshPosition();
-      toast({ title: 'Unwound to USDT', detail: 'Funds are idle in your account', kind: 'success' });
+      onChange();
+      toast({ title: 'USDT withdrawn', detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast({ title: 'Withdraw failed', detail: msg.slice(0, 80), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Sweep BNB to an external wallet, keeping a reserve so this tx can pay its
+  // own gas. Blocked while USDT remains, so gas is never stranded under funds.
+  async function withdrawBnbOut() {
+    if (!destValid) {
+      setError(destProblem ?? 'Enter a valid destination address.');
+      return;
+    }
+    setBusy('bnb');
+    setError(null);
+    try {
+      const wallet = await reauth();
+      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId);
+      if (fresh.idleWei + fresh.deployedWei > USDT_DUST_WEI) {
+        throw new Error('Withdraw your USDT first — sweeping BNB now could leave too little gas to move it.');
+      }
+      const amount = fresh.nativeWei - WITHDRAW_GAS_RESERVE_WEI;
+      if (amount <= 0n) throw new Error('Not enough BNB to withdraw after keeping a gas reserve.');
+      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount);
+      await refreshPosition();
+      toast({ title: 'BNB withdrawn', detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -93,15 +178,7 @@ export function ManagedPositionCard({
     setError(null);
     try {
       const wallet = await reauth();
-      const session = reviveSession(meta);
-      await altanaClient().revokeSession({
-        wallet,
-        signer: wallet.signer,
-        chainId: meta.chainId,
-        session: session as Parameters<ReturnType<typeof altanaClient>['revokeSession']>[0]['session'],
-      });
-      markRevoked(meta.id);
-      setValidity('invalid');
+      await doRevoke(wallet);
       onChange();
       toast({ title: 'Agent stopped', detail: 'Session revoked', kind: 'success' });
     } catch (e) {
@@ -161,14 +238,43 @@ export function ManagedPositionCard({
         </dl>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          onClick={withdraw}
-          disabled={busy !== null}
-          className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
-        >
-          {busy === 'withdraw' ? 'Unwinding…' : 'Withdraw to USDT'}
-        </button>
+      <div className="mt-4 rounded-lg border border-border bg-surface-2 p-3">
+        <p className="text-xs uppercase tracking-wide text-muted-2">Withdraw to your wallet</p>
+        <input
+          value={dest}
+          onChange={(e) => setDest(e.target.value.trim())}
+          spellCheck={false}
+          placeholder="0x… destination address"
+          className={`mt-2 w-full rounded-lg border bg-surface p-2.5 font-mono text-xs focus:outline-none ${
+            dest && destProblem ? 'border-danger focus:border-danger' : 'border-border-strong focus:border-primary'
+          }`}
+        />
+        {dest && destProblem && <p className="mt-1 text-xs text-danger">{destProblem}</p>}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={withdrawUsdtOut}
+            disabled={busy !== null || !destValid || (pos != null && pos.idleWei === 0n && pos.deployedWei === 0n)}
+            className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            {busy === 'usdt' ? 'Withdrawing…' : `Withdraw USDT${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
+          </button>
+          <button
+            onClick={withdrawBnbOut}
+            disabled={busy !== null || !destValid || hasUsdt || (pos != null && pos.nativeWei <= WITHDRAW_GAS_RESERVE_WEI)}
+            title={hasUsdt ? 'Withdraw your USDT first' : undefined}
+            className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            {busy === 'bnb' ? 'Withdrawing…' : `Withdraw BNB${pos ? ` (${Number(pos.nativeBnb).toFixed(4)})` : ''}`}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-muted-2">
+          Withdraw USDT stops the agent, unwinds any venue position, then sends
+          everything to your address. Withdraw BNB (available once USDT is out)
+          keeps a small reserve so the transaction can pay its own gas.
+        </p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
         {active && (
           <button
             onClick={revoke}
@@ -190,8 +296,8 @@ export function ManagedPositionCard({
         </button>
       </div>
       <p className="mt-2 text-xs text-muted-2">
-        Withdraw unwinds everything to plain USDT in your account (funds stay
-        yours the whole time). Stop revokes the agent&apos;s key.
+        Funds stay in your account the whole time. Stop revokes the agent&apos;s
+        key; your funds remain and can still be withdrawn above.
       </p>
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </li>
