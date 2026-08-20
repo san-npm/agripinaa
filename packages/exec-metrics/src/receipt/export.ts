@@ -5,6 +5,8 @@
 
 import type { MevProofReceipt } from './build';
 
+export type { MevProofReceipt } from './build';
+
 export interface ReceiptExport {
   filename: string;
   json: string;

@@ -59,6 +59,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               Agents
             </Link>
             <Link
+              href="/proof"
+              className="text-muted transition-colors hover:text-foreground"
+            >
+              Proof
+            </Link>
+            <Link
               href="/dashboard"
               className="text-muted transition-colors hover:text-foreground"
             >

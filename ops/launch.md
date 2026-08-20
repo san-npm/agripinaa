@@ -14,6 +14,11 @@ process is host-agnostic: any Linux VPS runs the same two commands.
 tail -f apps/agents/data/*.log.jsonl
 ```
 
+The same tunnel also exposes the public, bounded `GET /proof` JSON feed. The
+web app derives that URL from the grid manifest's x402 endpoint, so the normal
+manifest update after a tunnel rotation updates both surfaces. `AGENTS_BASE_URL`
+is available as an optional deployment override.
+
 After the tunnel URL changes (each cold start), update the `x402.endpoint`
 field in `apps/web/public/manifests/*.json` and redeploy the web app so the
 manifests point at the live endpoints.
