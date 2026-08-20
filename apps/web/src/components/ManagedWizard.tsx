@@ -47,6 +47,8 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<string>('');
 
+  // Managed mode only works where the YieldRouter (and real Venus/Aave) exist.
+  const managedChains = SUPPORTED_CHAINS.filter((c) => routerFor(c.id));
   const usdtAddress = routerFor(chainId)?.usdt;
 
   const publicClient = useCallback(
@@ -180,7 +182,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             <div>
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Network</p>
               <div className="inline-flex rounded-lg border border-border-strong p-0.5">
-                {SUPPORTED_CHAINS.map((c) => (
+                {managedChains.map((c) => (
                   <button
                     key={c.id}
                     onClick={() => setChainId(c.id)}
@@ -192,6 +194,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                   </button>
                 ))}
               </div>
+              <p className="mt-2 text-xs text-muted-2">
+                Live venue management runs on BNB Chain mainnet. Try it with a
+                few dollars of USDT.
+              </p>
             </div>
             <div className="flex flex-wrap gap-3 pt-1">
               <button onClick={() => connectPasskey('create')} disabled={busy} className={primaryBtn}>
