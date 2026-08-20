@@ -169,6 +169,12 @@ h1, h2, h3 {
   animation: agp-toast-in 0.35s var(--ease-spring) both;
 }
 
+/* New proof rows arrive with the same bottom-up, fade + blur motion as toasts. */
+.agp-proof-event {
+  animation: agp-toast-in 0.4s var(--ease-spring) both;
+  animation-delay: var(--agp-delay, 0ms);
+}
+
 /* Card sheen on hover: a soft moving highlight. */
 .agp-sheen { position: relative; overflow: hidden; }
 .agp-sheen::after {
@@ -183,7 +189,7 @@ h1, h2, h3 {
 .agp-sheen:hover::after { transform: translateX(100%); }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-dot, .agp-orb, .agp-orb-2, .agp-gradient-text, .agp-toast { animation: none; }
+  .live-dot, .agp-orb, .agp-orb-2, .agp-gradient-text, .agp-toast, .agp-proof-event { animation: none; }
   .agp-reveal { animation: none; }
   .agp-gradient-text { background-position: center; }
   .agp-sheen:hover::after { transform: translateX(-100%); }

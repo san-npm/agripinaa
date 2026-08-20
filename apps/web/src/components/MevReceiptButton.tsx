@@ -1,6 +1,9 @@
 'use client';
 
-import { exportReceiptJson, type MevProofReceipt } from '@agripinaa/exec-metrics';
+import {
+  exportReceiptJson,
+  type MevProofReceipt,
+} from '@agripinaa/exec-metrics/receipt/export';
 import { useState } from 'react';
 
 import { toast } from '@/lib/toast';

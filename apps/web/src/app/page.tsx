@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { AgentCard } from "@/components/AgentCard";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ArrowIcon, CATEGORY_ICON, ReceiptIcon, ShieldIcon, VerifiedIcon } from "@/components/icons";
+import { ProofFeed } from "@/components/ProofFeed";
 import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
 import { getStats, listDirectory } from "@/lib/data";
 
@@ -101,6 +102,10 @@ export default function Home() {
       </section>
 
       <section className="mt-4">
+        <ProofFeed compact />
+      </section>
+
+      <section className="mt-10">
         <h2 className="mb-4 font-display text-lg font-semibold">
           Browse by category
         </h2>

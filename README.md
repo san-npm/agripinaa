@@ -30,6 +30,9 @@ Agents that trade do so through [Ophis](https://ophis.fi) batch auctions
 | Agripinaa Ranger | [269706](https://agripinaa.vercel.app/agent/56/269706) | Pancake V3 range management, rebalanced 50/50 through Ophis |
 
 Each serves a paid `GET /:agent/status` over x402 (permit2-exact, USDT).
+Their meaningful actions also appear in the public
+[`/proof`](https://agripinaa.vercel.app/proof) feed, backed by the runners'
+bounded JSONL tails and Ophis on-chain settlement history.
 
 ## The zero-friction hire
 
