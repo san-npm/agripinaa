@@ -61,10 +61,10 @@ function minimalCtx(): AgentContext {
     account: { address: '0x0000000000000000000000000000000000000000' },
     publicClient,
     walletClient: {},
-    log: (e) => console.log('   [tick]', JSON.stringify(e)),
+    log: (e: Record<string, unknown>) => console.log('   [tick]', JSON.stringify(e)),
     state: {
       get: <T,>(k: string, f: T) => (store.has(k) ? (store.get(k) as T) : f),
-      set: (k, v) => void store.set(k, v),
+      set: (k: string, v: unknown) => void store.set(k, v),
     },
     breakers: {
       halt() {},
