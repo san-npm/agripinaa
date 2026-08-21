@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { TOKENS_BSC } from '@agripinaa/shared';
+import { TOKENS_BSC, YIELD_ROUTER_BSC } from '@agripinaa/shared';
 
 import { managedYieldTick } from '../src/agents/yield';
 import type { ManagedExecutor } from '../src/executor';
@@ -105,6 +105,7 @@ function fakeExecutor(): ManagedExecutor & { calls: string[] } {
     calls,
     account: ACCOUNT,
     chainId: 56,
+    deployment: YIELD_ROUTER_BSC,
     async execute(action) {
       calls.push(action);
       return { txHash: '0xdead', status: 'CONFIRMED' };
