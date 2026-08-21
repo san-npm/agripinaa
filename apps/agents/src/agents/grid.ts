@@ -386,7 +386,7 @@ export const gridAgent: AgentModule = {
     // Fail SAFE on a corrupt/abnormal read: a non-finite or non-positive price
     // or inventory would silently make the breakout/loss comparisons false or
     // poison the stored center. Skip the tick (transient) rather than trade.
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(inventoryNowUsd)) {
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(inventoryNowUsd) || inventoryNowUsd <= 0) {
       ctx.log({ event: 'bad-read', price, inventoryNowUsd });
       return;
     }
