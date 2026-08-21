@@ -521,7 +521,9 @@ export async function managedYieldTick(
   executor: ManagedExecutor,
 ): Promise<void> {
   const acct = executor.account;
-  const ns = (k: string) => `managed:${acct.toLowerCase()}:${k}`;
+  // Namespace strategy state by (account, token) so a USDT mandate's hysteresis
+  // and rate-limit state can never bleed into a USDC mandate on the same account.
+  const ns = (k: string) => `managed:${acct.toLowerCase()}:${executor.deployment.symbol}:${k}`;
 
   const halted = ctx.breakers.isHalted();
   if (halted.halted) {

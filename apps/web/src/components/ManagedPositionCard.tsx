@@ -124,7 +124,7 @@ export function ManagedPositionCard({
     return wallet;
   }
 
-  const destProblem = dest ? destinationProblem(dest, meta.account, meta.chainId, token) : null;
+  const destProblem = dest ? destinationProblem(dest, meta.account, meta.chainId) : null;
   const destValid = dest !== '' && destProblem === null;
   const hasUsdt = pos != null && pos.idleWei + pos.deployedWei > USDT_DUST_WEI;
 
