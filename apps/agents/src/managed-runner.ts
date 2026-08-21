@@ -7,16 +7,16 @@
 import type { Client } from '@altananetwork/sdk';
 
 import { managedYieldTick } from './agents/yield';
-import { managedExecutor } from './executor';
+import { deploymentForEntry, managedExecutor } from './executor';
 import { loadManaged } from './managed';
-import type { ManagerKey } from './manager-key';
+import type { ManagerKeySet } from './manager-key';
 import type { AgentContext } from './types';
 
 export async function tickManagedYield(opts: {
   ctx: AgentContext;
   client: Client;
-  /** Every candidate manager key by lowercase public key (one per token). */
-  managerKeys: Map<string, ManagerKey>;
+  /** The agent's manager keys (one per token, keyed by symbol). */
+  managerKeys: ManagerKeySet;
 }): Promise<{ serviced: number; errors: number }> {
   const { ctx, client, managerKeys } = opts;
   const entries = loadManaged(ctx.name);
@@ -24,18 +24,20 @@ export async function tickManagedYield(opts: {
   let errors = 0;
   for (const entry of entries) {
     try {
-      // Sign with the manager key the session was actually granted to (which
-      // pins the token). If no candidate key matches the stored public key,
-      // fail closed for this entry rather than signing with the wrong token's
-      // key: the executor also re-checks this, this is the first gate.
-      const pub = entry.session.publicKey?.toLowerCase();
-      const managerKey = pub ? managerKeys.get(pub) : undefined;
+      // Pick the manager key for the entry's TOKEN, resolved from its scoped
+      // router — NOT from the session's own claimed public key. This binds
+      // signing to the router's token: the executor then asserts the chosen key
+      // also matches the granted session, so a stale entry granted to the wrong
+      // token's key (e.g. a pre-fix USDC grant issued against the USDT key) is
+      // rejected here instead of being serviced with the wrong key.
+      const dep = deploymentForEntry(entry);
+      const managerKey = dep ? managerKeys.byToken.get(dep.symbol) : undefined;
       if (!managerKey) {
         errors += 1;
         ctx.log({
           event: 'managed-error',
           account: entry.account,
-          error: 'no manager key matches the granted session public key (stale or foreign grant)',
+          error: 'no manager key for the entry\'s scoped router token (stale or foreign grant)',
         });
         continue;
       }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { TOKENS_BSC, YIELD_ROUTER_BSC } from '@agripinaa/shared';
+import { TOKENS_BSC, YIELD_ROUTER_BSC, YIELD_ROUTER_BSC_USDC } from '@agripinaa/shared';
 
 import { managedYieldTick } from '../src/agents/yield';
 import type { ManagedExecutor } from '../src/executor';
@@ -83,6 +83,40 @@ test('managedExecutor rejects a manager key that does not match the granted sess
   // Correct key: constructs and resolves the token from the scoped router.
   const ok = managedExecutor({ client: {} as never, managerKey: grantedPk, entry: entry as never });
   assert.equal(ok.deployment.symbol, 'USDT');
+});
+
+test('token-driven selection rejects a USDC entry that was granted to the USDT key', async () => {
+  // Simulates a STALE pre-fix grant: a USDC-router-scoped session that was
+  // (wrongly) authorized against the USDT master key. Runner selection is
+  // token-driven, so it picks the USDC key; the executor assert then rejects it
+  // because the USDC key's public key != the session's (USDT) public key.
+  const { managedExecutor, deploymentForEntry } = await import('../src/executor');
+  const { deriveManagerKey } = await import('../src/manager-key');
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const masterPk = `0x${'44'.repeat(32)}` as const;
+  const master = privateKeyToAccount(masterPk);
+  const usdcKey = deriveManagerKey(
+    { privateKey: masterPk, address: master.address, publicKey: master.publicKey },
+    'USDC',
+  );
+  const staleEntry = {
+    account: ACCOUNT,
+    chainId: 56,
+    session: {
+      walletAddress: ACCOUNT,
+      publicKey: master.publicKey, // granted to the WRONG (USDT/master) key
+      permissions: { calls: [{ signature: 'toVenus()', to: YIELD_ROUTER_BSC_USDC.address }] },
+      expiry: 1893456000,
+    },
+    registeredAt: '2026-08-20T00:00:00.000Z',
+  };
+  // The entry's token resolves to USDC from its scoped router.
+  assert.equal(deploymentForEntry(staleEntry as never)?.symbol, 'USDC');
+  // Selecting the USDC key (token-driven) and executing must fail closed.
+  assert.throws(
+    () => managedExecutor({ client: {} as never, managerKey: usdcKey.privateKey, entry: staleEntry as never }),
+    /does not match/,
+  );
 });
 
 // --- managedYieldTick decision -> router action ---------------------------
