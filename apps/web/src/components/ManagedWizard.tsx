@@ -11,8 +11,10 @@ import {
   buildManagedScope,
   describeScope,
   fetchManagerKey,
+  readVenueApys,
   registerManaged,
   verifyOnlyStub,
+  type VenueApys,
 } from '@/lib/managed';
 import { storeSession } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
@@ -48,6 +50,20 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<string>('');
+  const [apys, setApys] = useState<VenueApys | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    readVenueApys(chainId)
+      .then((a) => !cancelled && setApys(a))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId]);
+
+  const bestApyPct = apys ? Math.max(apys.venusApyBps, apys.aaveApyBps) / 100 : null;
+  const bestVenue = apys ? (apys.venusApyBps >= apys.aaveApyBps ? 'Venus' : 'Aave') : null;
 
   // Managed mode only works where the YieldRouter (and real Venus/Aave) exist.
   const managedChains = SUPPORTED_CHAINS.filter((c) => routerFor(c.id));
@@ -170,6 +186,14 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
       <div className="rounded-2xl border border-border bg-surface p-6">
+        {bestApyPct != null && bestVenue && (
+          <div className="mb-5 flex items-center justify-between rounded-lg border border-success/20 bg-[linear-gradient(180deg,rgba(16,185,129,0.06),transparent)] px-3 py-2.5">
+            <span className="text-xs text-muted-2">Live USDT yield, auto-rotated to the best venue</span>
+            <span className="tabular font-mono text-sm font-semibold text-success">
+              ~{bestApyPct.toFixed(2)}% APY <span className="text-muted-2">({bestVenue})</span>
+            </span>
+          </div>
+        )}
         <Stepper current={stepIndex} />
 
         {step === 'wallet' && (
