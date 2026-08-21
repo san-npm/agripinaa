@@ -1,6 +1,6 @@
 import { serializeSession } from '@agripinaa/session-kit/codec';
 import { buildSessionScope, describeScope } from '@agripinaa/session-kit/scope';
-import { ROUTER_ACTIONS, routerFor } from '@agripinaa/shared/contracts';
+import { ROUTER_ACTIONS, routerFor, YIELD_ROUTERS_BSC } from '@agripinaa/shared/contracts';
 import { fromBaseUnits } from '@agripinaa/shared/tokens';
 import {
   createPublicClient,
@@ -45,14 +45,19 @@ function assertConfirmed<T extends ExecResult>(result: T, action: string): T {
  * contract (router/tokens), or the account itself. Returns a user-facing
  * message, or null if the destination is a safe external wallet.
  */
-export function destinationProblem(to: string, account: string, chainId: number, token = 'USDT'): string | null {
+export function destinationProblem(to: string, account: string, chainId: number): string | null {
   if (!isAddress(to)) return 'Enter a valid destination address.';
   const lc = to.toLowerCase();
   if (lc === zeroAddress) return 'That is the zero address — funds sent there are burned.';
   if (lc === account.toLowerCase()) return 'That is this same account — enter an external wallet.';
-  const router = routerFor(chainId, token);
-  if (router && [router.address, router.usdt, router.aUsdt, router.vUsdt].some((a) => a.toLowerCase() === lc)) {
-    return 'That is a contract address, not a wallet.';
+  // Reject EVERY known managed contract on this chain (all routers + their
+  // underlying/aToken/vToken + the Aave pool), not just the selected token's,
+  // so a USDC withdrawal can't be mis-sent to a USDT contract (or vice versa).
+  for (const r of YIELD_ROUTERS_BSC) {
+    if (r.chainId !== chainId) continue;
+    if ([r.address, r.usdt, r.aUsdt, r.vUsdt, r.aavePool].some((a) => a.toLowerCase() === lc)) {
+      return 'That is a contract address, not a wallet.';
+    }
   }
   return null;
 }
@@ -90,11 +95,13 @@ export function verifyOnlyStub(address: Hex, publicKey: Hex) {
 
 /** A session scoped to ONLY the router's three actions + a USDT and gas cap. */
 export function buildManagedScope(opts: { chainId: number; capUsdt: string; hours: number; token?: string }) {
-  const router = routerFor(opts.chainId, opts.token ?? 'USDT');
+  const symbol = (opts.token ?? 'USDT') as 'USDT' | 'USDC';
+  const router = routerFor(opts.chainId, symbol);
   if (!router) throw new Error(`no YieldRouter deployed on chain ${opts.chainId}`);
   return buildSessionScope({
     callScopes: [{ to: router.address, signatures: ROUTER_SIGNATURES }],
-    spendCap: { token: 'USDT', amount: opts.capUsdt, period: 'day' },
+    // Meter the cap on the token actually being managed, not always USDT.
+    spendCap: { token: symbol, amount: opts.capUsdt, period: 'day' },
     // The account pays its own gas in BNB; without this the relay rejects execute.
     nativeGasCap: { amount: '0.02', period: 'day' },
     expiresInSeconds: opts.hours * 3600,
@@ -167,7 +174,7 @@ export async function sendTokenOut(
   amountWei: bigint,
   symbol = 'USDT',
 ) {
-  const problem = destinationProblem(to, wallet.address, chainId, symbol);
+  const problem = destinationProblem(to, wallet.address, chainId);
   if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
   const r = await altanaClient().execute({
@@ -181,7 +188,7 @@ export async function sendTokenOut(
 
 /** Move native BNB out of the account to an external address (passkey action). */
 export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint, symbol = 'USDT') {
-  const problem = destinationProblem(to, wallet.address, chainId, symbol);
+  const problem = destinationProblem(to, wallet.address, chainId);
   if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
   const r = await altanaClient().execute({

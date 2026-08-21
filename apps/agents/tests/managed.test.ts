@@ -152,8 +152,9 @@ test('in venus, aave beats by > hysteresis on the 2nd streak -> rotates via toAa
     walletUsdtWei: 0n,
     venusUnderlyingWei: 100n * 10n ** 18n,
     aaveATokenWei: 0n,
-    // A prior qualifying check already armed the streak at 1.
-    initialState: { [`managed:${ACCOUNT.toLowerCase()}:betterStreak`]: 1 },
+    // A prior qualifying check already armed the streak at 1. State is namespaced
+    // by (account, token); the fake executor manages the USDT router.
+    initialState: { [`managed:${ACCOUNT.toLowerCase()}:USDT:betterStreak`]: 1 },
   });
   const ex = fakeExecutor();
   await managedYieldTick(ctx, ex);

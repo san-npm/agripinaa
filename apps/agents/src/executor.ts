@@ -37,17 +37,22 @@ export interface ManagedExecutor {
   execute(action: RouterAction): Promise<{ txHash?: Hex; status: string }>;
 }
 
-/** The router a session is scoped to (by its call target), else the chain's default (USDT). */
+/**
+ * The router a session is scoped to, resolved from its call target. Fails CLOSED
+ * (undefined) if the session isn't scoped to exactly one known router on the
+ * entry's chain — never defaults to USDT, so a stale/malformed entry can't be
+ * silently run against the wrong token's venues.
+ */
 function deploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
   const calls = entry.session.permissions?.calls ?? [];
+  const targets = new Set<string>();
   for (const call of calls) {
     const to = 'to' in call ? call.to : undefined;
-    if (to) {
-      const byAddr = routerByAddress(to);
-      if (byAddr) return byAddr;
-    }
+    if (to) targets.add(to.toLowerCase());
   }
-  return routerFor(entry.chainId);
+  if (targets.size !== 1) return undefined;
+  const dep = routerByAddress([...targets][0]!);
+  return dep && dep.chainId === entry.chainId ? dep : undefined;
 }
 
 /** One client for the whole runner; supports both mainnet and testnet sessions. */

@@ -61,13 +61,29 @@ function save(agent: string, entries: ManagedAccount[]): void {
   renameSync(tmp, f);
 }
 
+/** The router (scoped call target) an entry manages through — its identity key. */
+function routerKey(entry: ManagedAccount): string {
+  const calls = entry.session.permissions?.calls ?? [];
+  for (const call of calls) {
+    const to = 'to' in call ? call.to : undefined;
+    if (to) return to.toLowerCase();
+  }
+  return '';
+}
+
 /**
- * Add or replace a managed account (keyed by lowercased address). Replacing is
- * how a re-grant (new session for the same account) supersedes the old one.
+ * Add or replace a managed account, keyed by (account, router). Keying by the
+ * router as well as the account lets ONE account hold both a USDT and a USDC
+ * mandate at once, and stops a re-registration for a different token from
+ * silently overwriting the other token's mandate. A re-grant for the SAME
+ * (account, router) still supersedes the old one.
  */
 export function upsertManaged(agent: string, entry: ManagedAccount): ManagedAccount[] {
-  const key = entry.account.toLowerCase();
-  const rest = loadManaged(agent).filter((e) => e.account.toLowerCase() !== key);
+  const acct = entry.account.toLowerCase();
+  const router = routerKey(entry);
+  const rest = loadManaged(agent).filter(
+    (e) => !(e.account.toLowerCase() === acct && routerKey(e) === router),
+  );
   const next = [...rest, entry];
   save(agent, next);
   return next;
