@@ -345,3 +345,48 @@ test('module export matches the chassis contract', async () => {
 /* Type-only usage so the import is exercised by the typechecker. */
 const _levelTypeCheck: GridLevel[] = LEVELS;
 void _levelTypeCheck;
+
+// --- Adaptive re-center on breakout (instead of permanent halt) ---
+
+import { maybeRecenter, MAX_RECENTERS_PER_DAY } from '../src/agents/grid';
+
+function fakeGridCtx(allow: () => boolean) {
+  const store = new Map<string, unknown>();
+  return {
+    store,
+    ctx: {
+      state: {
+        get: <T,>(k: string, f: T) => (store.has(k) ? (store.get(k) as T) : f),
+        set: (k: string, v: unknown) => void store.set(k, v),
+      },
+      breakers: { allowAction: () => allow() },
+      log: () => {},
+    } as unknown as Parameters<typeof maybeRecenter>[0],
+  };
+}
+
+test('maybeRecenter resets center + marks but PRESERVES the loss baseline', () => {
+  const { ctx, store } = fakeGridCtx(() => true);
+  store.set('center', 600);
+  store.set('inventoryStartUsd', 1000);
+  store.set('crossedLevels', ['sell:1', 'sell:2']);
+  const ok = maybeRecenter(ctx, 720, 850);
+  assert.equal(ok, true);
+  assert.equal(store.get('center'), 720);
+  assert.equal(store.get('lastPrice'), 720);
+  assert.deepEqual(store.get('crossedLevels'), []);
+  // The drawdown floor must NOT be re-baselined on a re-center.
+  assert.equal(store.get('inventoryStartUsd'), 1000);
+});
+
+test('maybeRecenter returns false and leaves center untouched once the daily cap is spent', () => {
+  const { ctx, store } = fakeGridCtx(() => false);
+  store.set('center', 600);
+  const ok = maybeRecenter(ctx, 720, 850);
+  assert.equal(ok, false);
+  assert.equal(store.get('center'), 600);
+});
+
+test('re-center cap is a small positive number (a runaway trend still halts)', () => {
+  assert.ok(MAX_RECENTERS_PER_DAY >= 1 && MAX_RECENTERS_PER_DAY <= 6);
+});

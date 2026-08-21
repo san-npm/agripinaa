@@ -55,6 +55,10 @@ export const COOLDOWN_MS = 10 * 60_000;
 export const MAX_TRADES_PER_DAY = 12;
 export const TREND_MAX_DEVIATION = 0.06;
 export const LOSS_FLOOR_FRACTION = 0.95;
+/** On a breakout the grid re-centers on the current price instead of halting
+ * forever, up to this many times per rolling day. Past the cap it halts, so a
+ * sustained runaway trend still stops the agent rather than chasing it. */
+export const MAX_RECENTERS_PER_DAY = 3;
 const SLIPPAGE_BPS = 100;
 const FILL_HISTORY = 20;
 
@@ -338,6 +342,25 @@ async function readBalances(ctx: AgentContext): Promise<{ wbnb: bigint; usdt: bi
   return { wbnb, usdt };
 }
 
+/**
+ * On a trend breakout, re-center the grid on the current price (fresh center,
+ * fresh loss baseline, cleared level marks) so it keeps trading around the new
+ * level instead of halting forever. Returns false when the daily re-center
+ * budget is spent, in which case the caller halts. The daily-loss breaker still
+ * protects capital across re-centers.
+ */
+export function maybeRecenter(ctx: AgentContext, price: number, inventoryNowUsd: number): boolean {
+  if (!ctx.breakers.allowAction('recenter', MAX_RECENTERS_PER_DAY)) return false;
+  ctx.state.set('center', price);
+  ctx.state.set('lastPrice', price);
+  ctx.state.set('crossedLevels', []);
+  // Deliberately NOT resetting inventoryStartUsd: the drawdown floor stays
+  // anchored to the original baseline so cumulative loss across re-centers is
+  // still capped, rather than each re-center granting a fresh 5% of rope.
+  ctx.log({ event: 'grid-recenter', center: price, inventoryNowUsd });
+  return true;
+}
+
 /* -------------------------------- module -------------------------------- */
 
 export const gridAgent: AgentModule = {
@@ -376,6 +399,23 @@ export const gridAgent: AgentModule = {
     const prevPrice = ctx.state.get<number>('lastPrice', price);
     ctx.state.set('lastPrice', price);
 
+    // Halting conditions first, and CAPITAL PROTECTION BEFORE ADAPTATION: a
+    // loss breach always halts, even when it coincides with a breakout, so
+    // re-centering can never bypass the drawdown floor. Only a breakout that
+    // did NOT breach the floor re-centers (up to the daily cap); past the cap
+    // a sustained trend halts rather than being chased.
+    if (isLossBreach(inventoryNowUsd, inventoryStartUsd)) {
+      ctx.log({ event: 'daily-loss', inventoryNowUsd, inventoryStartUsd });
+      ctx.breakers.halt('daily-loss');
+      return;
+    }
+    if (isTrendBreakout(price, center)) {
+      if (maybeRecenter(ctx, price, inventoryNowUsd)) return;
+      ctx.log({ event: 'trend-breakout', price, center });
+      ctx.breakers.halt('trend-breakout');
+      return;
+    }
+
     let crossed = ctx.state.get<string[]>('crossedLevels', []);
     const afterUnmark = unmarkNearCenter(price, center, crossed);
     if (afterUnmark.length !== crossed.length) {
@@ -387,19 +427,7 @@ export const gridAgent: AgentModule = {
     const levels = computeLevels(center);
     const hit = detectCrossing(prevPrice, price, levels, crossed);
     if (!hit) {
-      // With every level already marked the guard chain below is never
-      // reached, so the breakout and drawdown breakers must also fire here
-      // or a runaway trend would leave the agent unprotected.
-      if (isTrendBreakout(price, center)) {
-        ctx.log({ event: 'trend-breakout', price, center });
-        ctx.breakers.halt('trend-breakout');
-        return;
-      }
-      if (isLossBreach(inventoryNowUsd, inventoryStartUsd)) {
-        ctx.log({ event: 'daily-loss', inventoryNowUsd, inventoryStartUsd });
-        ctx.breakers.halt('daily-loss');
-        return;
-      }
+      // Breakout/loss halts already handled above; nothing to trade this tick.
       ctx.log({ event: 'tick', price, center, inventoryNowUsd, crossedCount: crossed.length });
       return;
     }
