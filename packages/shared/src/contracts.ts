@@ -17,6 +17,8 @@ export interface RouterDeployment {
   aUsdt: `0x${string}`;
   aavePool: `0x${string}`;
   vUsdt: `0x${string}`;
+  /** Block the router was deployed at — the floor for Rotated-event log scans. */
+  deployBlock: bigint;
 }
 
 /**
@@ -32,6 +34,8 @@ export const YIELD_ROUTER_BSC: RouterDeployment = {
   aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
+  // Deployed 2026-08-20 (~block 117084863 on BSC). A safe floor for log scans.
+  deployBlock: BigInt(117084000),
 };
 
 /**
