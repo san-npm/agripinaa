@@ -284,9 +284,9 @@ test('guards: a short-balance tick does not consume a rate-limit slot', () => {
   assert.equal(allowCalls, 0);
 });
 
-test('guards: trend breakout outranks daily loss when both are true', () => {
+test('guards: daily loss outranks trend breakout when both are true (capital protection first)', () => {
   const res = evaluateGuards(guardInput({ price: 107, inventoryNowUsd: 80 }));
-  assert.deepEqual(res, { ok: false, reason: 'trend-breakout', halt: true });
+  assert.deepEqual(res, { ok: false, reason: 'daily-loss', halt: true });
 });
 
 test('guards: daily loss halts', () => {
