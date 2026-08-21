@@ -44,8 +44,9 @@ export interface ManagedExecutor {
  * entry's chain — never defaults to USDT, so a stale/malformed entry can't be
  * silently run against the wrong token's venues.
  */
-function deploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
-  const calls = entry.session.permissions?.calls ?? [];
+export function deploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
+  const rawCalls = entry.session?.permissions?.calls;
+  const calls = Array.isArray(rawCalls) ? rawCalls : [];
   if (calls.length === 0) return undefined;
   const targets = new Set<string>();
   for (const call of calls) {

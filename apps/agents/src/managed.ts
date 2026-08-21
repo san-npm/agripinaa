@@ -70,7 +70,8 @@ function save(agent: string, entries: ManagedAccount[]): void {
  * can't collide across accounts (upsert also matches on the account).
  */
 function routerKey(entry: ManagedAccount): string {
-  const calls = entry.session.permissions?.calls ?? [];
+  const rawCalls = entry?.session?.permissions?.calls;
+  const calls = Array.isArray(rawCalls) ? rawCalls : [];
   for (const call of calls) {
     if (!call || typeof call !== 'object') continue;
     const to = 'to' in call ? (call as { to?: unknown }).to : undefined;

@@ -144,7 +144,7 @@ async function main() {
         if (ctx.breakers.isHalted().halted) return;
         running = true;
         try {
-          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKeys: keySet.byPublicKey });
+          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKeys: keySet });
           if (serviced > 0 || errors > 0) {
             ctx.log({ event: 'managed-sweep', serviced, errors });
           }
