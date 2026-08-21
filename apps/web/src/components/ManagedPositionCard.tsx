@@ -259,7 +259,8 @@ export function ManagedPositionCard({
             </p>
           </div>
         </div>
-        <span className={`rounded px-2 py-0.5 text-xs ${active ? 'bg-success/15 text-success' : 'bg-surface-2 text-muted'}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs ${active ? 'bg-success/15 text-success' : 'bg-surface-2 text-muted'}`}>
+          {active && <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden />}
           {validity === 'checking' ? 'checking…' : active ? 'managing' : 'stopped'}
         </span>
       </div>
@@ -296,7 +297,15 @@ export function ManagedPositionCard({
 
       {/* Live yield: what it earns, what it has earned, and why it sits where it does. */}
       {(earned != null || rationale) && (
-        <div className="mt-3 rounded-lg border border-border bg-[linear-gradient(180deg,rgba(16,185,129,0.05),transparent)] p-3">
+        <div className={`mt-3 rounded-lg border border-border bg-[linear-gradient(180deg,rgba(16,185,129,0.05),transparent)] p-3 ${active ? 'agp-working' : ''}`}>
+          {active && (
+            <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-success">
+              <span className="agp-think-dots inline-flex items-center gap-[3px]" aria-hidden>
+                <i /><i /><i />
+              </span>
+              Agent is optimizing your yield
+            </p>
+          )}
           {earned != null && deployed && (
             <p className="text-sm">
               <span className="text-muted-2">Earned so far </span>
