@@ -146,6 +146,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         chainId,
         agent: { chainId: agent.chainId, tokenId: agent.tokenId, name: agent.name },
         scope: { allowlist: [router.address], capFormatted: summary.capFormatted, expiresAt: summary.expiresAt },
+        principalUsdt: amount,
       });
       setStep('active');
       toast({ title: 'Funds under management', detail: `${agent.name} is now working your deposit`, kind: 'success' });
