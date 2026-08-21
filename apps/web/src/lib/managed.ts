@@ -263,3 +263,54 @@ export async function readManagedPosition(account: Hex, chainId: number): Promis
     nativeBnb: fromBaseUnits(native, 18),
   };
 }
+
+const venusRateAbi = parseAbi(['function supplyRatePerBlock() view returns (uint256)']);
+const aaveReserveAbi = parseAbi([
+  'function getReserveData(address asset) view returns ((uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))',
+]);
+
+export interface VenueApys {
+  venusApyBps: number;
+  aaveApyBps: number;
+}
+
+/**
+ * Live supply APY (in bps) for both venues, read client-side so the dashboard
+ * can show what the position is earning and why the agent is where it is.
+ * Mirrors the agent's own rate math: Venus quotes a WAD per-block rate (simple
+ * APR = rate × blocks/year), Aave a RAY-scaled annual liquidity rate. BSC block
+ * cadence is derived from two block timestamps, not assumed.
+ */
+export async function readVenueApys(chainId: number): Promise<VenueApys> {
+  const router = routerFor(chainId);
+  if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
+  const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
+  const span = 5000n;
+  const latest = await client.getBlock();
+  const older = await client.getBlock({ blockNumber: latest.number - span });
+  const elapsed = Number(latest.timestamp - older.timestamp);
+  const blocksPerYear = elapsed > 0 ? Math.round((365 * 24 * 3600 * 5000) / elapsed) : 0;
+
+  const [venusRate, reserve] = await Promise.all([
+    client.readContract({ address: router.vUsdt, abi: venusRateAbi, functionName: 'supplyRatePerBlock' }),
+    client.readContract({ address: router.aavePool, abi: aaveReserveAbi, functionName: 'getReserveData', args: [router.usdt] }),
+  ]);
+
+  const WAD = 10 ** 18;
+  const RAY = 10 ** 27;
+  return {
+    venusApyBps: (Number(venusRate) / WAD) * blocksPerYear * 10_000,
+    aaveApyBps: (Number(reserve.currentLiquidityRate) / RAY) * 10_000,
+  };
+}
+
+export const HYSTERESIS_BPS = 50;
+
+/** The agent's live rationale for where a managed position sits. */
+export function rotationRationale(venue: ManagedVenue, apys: VenueApys) {
+  const current = venue === 'venus' ? apys.venusApyBps : venue === 'aave' ? apys.aaveApyBps : null;
+  const other = venue === 'venus' ? apys.aaveApyBps : venue === 'aave' ? apys.venusApyBps : null;
+  const otherName = venue === 'venus' ? 'Aave' : 'Venus';
+  const edgeBps = current != null && other != null ? other - current : Math.abs(apys.venusApyBps - apys.aaveApyBps);
+  return { currentApyBps: current, edgeBps, otherName, hysteresisBps: HYSTERESIS_BPS };
+}

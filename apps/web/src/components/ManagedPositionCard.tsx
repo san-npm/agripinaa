@@ -9,11 +9,14 @@ import { altanaClient } from '@/lib/altana';
 import {
   destinationProblem,
   readManagedPosition,
+  readVenueApys,
+  rotationRationale,
   sendNativeOut,
   sendTokenOut,
   withdrawToIdle,
   WITHDRAW_GAS_RESERVE_WEI,
   type ManagedPosition,
+  type VenueApys,
 } from '@/lib/managed';
 import { forgetSession, markRevoked, reviveSession, type StoredSessionMeta } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
@@ -39,6 +42,7 @@ export function ManagedPositionCard({
   onChange: () => void;
 }) {
   const [pos, setPos] = useState<ManagedPosition | null>(null);
+  const [apys, setApys] = useState<VenueApys | null>(null);
   const [validity, setValidity] = useState<Validity>('checking');
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +56,16 @@ export function ManagedPositionCard({
       /* transient RPC error; leave the last-known position */
     }
   }, [meta.account, meta.chainId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    readVenueApys(meta.chainId)
+      .then((a) => !cancelled && setApys(a))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [meta.chainId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +210,17 @@ export function ManagedPositionCard({
       ? 'bg-surface-2 text-muted'
       : 'bg-success/15 text-success';
 
+  // Live yield facts for the dashboard.
+  const rationale = pos && apys ? rotationRationale(pos.venue, apys) : null;
+  const currentApyPct = rationale?.currentApyBps != null ? rationale.currentApyBps / 100 : null;
+  const principal = meta.principalUsdt != null ? Number(meta.principalUsdt) : null;
+  const positionValue = pos ? Number(pos.totalUsdt) : null;
+  const deployed = pos ? pos.venue !== 'idle' : false;
+  // Interest only accrues, so clamp tiny negative rounding to zero.
+  const earned =
+    principal != null && positionValue != null ? Math.max(0, positionValue - principal) : null;
+  const fmtEarned = (n: number) => (n >= 0.01 ? n.toFixed(2) : n.toFixed(6));
+
   return (
     <li className="rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -224,9 +249,16 @@ export function ManagedPositionCard({
         </div>
         <div className="rounded-lg border border-border bg-surface-2 p-3">
           <p className="text-xs uppercase tracking-wide text-muted-2">Current venue</p>
-          <span className={`tabular mt-1 inline-block rounded px-2 py-0.5 text-sm ${venueBadge}`}>
-            {pos ? VENUE_LABEL[pos.venue] : '…'}
-          </span>
+          <div className="mt-1 flex items-center gap-2">
+            <span className={`tabular inline-block rounded px-2 py-0.5 text-sm ${venueBadge}`}>
+              {pos ? VENUE_LABEL[pos.venue] : '…'}
+            </span>
+            {deployed && currentApyPct != null && (
+              <span className="tabular font-mono text-sm text-success">
+                ~{currentApyPct.toFixed(2)}% APY
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -236,6 +268,29 @@ export function ManagedPositionCard({
           <div><dt className="inline text-muted-2">Aave: </dt><dd className="inline tabular font-mono">{Number(pos.aaveUsdt).toFixed(2)}</dd></div>
           <div><dt className="inline text-muted-2">Venus: </dt><dd className="inline tabular font-mono">{Number(pos.venusUsdt).toFixed(2)}</dd></div>
         </dl>
+      )}
+
+      {/* Live yield: what it earns, what it has earned, and why it sits where it does. */}
+      {(earned != null || rationale) && (
+        <div className="mt-3 rounded-lg border border-border bg-[linear-gradient(180deg,rgba(16,185,129,0.05),transparent)] p-3">
+          {earned != null && deployed && (
+            <p className="text-sm">
+              <span className="text-muted-2">Earned so far </span>
+              <span className="tabular font-mono font-semibold text-success">+{fmtEarned(earned)} USDT</span>
+              {principal != null && (
+                <span className="text-xs text-muted-2"> on {principal.toFixed(2)} deposited</span>
+              )}
+            </p>
+          )}
+          {rationale && apys && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-2">
+              Venus {(apys.venusApyBps / 100).toFixed(2)}% vs Aave {(apys.aaveApyBps / 100).toFixed(2)}%.{' '}
+              {pos && pos.venue === 'idle'
+                ? 'Awaiting the agent’s next sweep to deploy into the higher one.'
+                : `Holding the higher one; the agent rotates to ${rationale.otherName} only if it leads by ${(rationale.hysteresisBps / 100).toFixed(2)}% on two checks (currently ${rationale.edgeBps >= 0 ? '+' : ''}${(rationale.edgeBps / 100).toFixed(2)}%).`}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="mt-4 rounded-lg border border-border bg-surface-2 p-3">

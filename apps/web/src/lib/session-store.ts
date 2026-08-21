@@ -16,6 +16,8 @@ export interface StoredSessionMeta {
   scope: { allowlist: string[]; capFormatted: string; expiresAt: string };
   grantedAt: string;
   revokedAt: string | null;
+  /** Managed only: the USDT amount put to work at activation, for earnings math. */
+  principalUsdt?: string;
   /** Byte-exact serialized session. */
   raw: string;
 }
@@ -78,6 +80,7 @@ export function storeSession(input: {
   chainId: number;
   agent: StoredSessionMeta['agent'];
   scope: StoredSessionMeta['scope'];
+  principalUsdt?: string;
 }): StoredSessionMeta {
   const raw = serializeSession(stripSigner(input.session));
   const s = input.session as {
@@ -93,6 +96,7 @@ export function storeSession(input: {
     scope: input.scope,
     grantedAt: new Date().toISOString(),
     revokedAt: null,
+    principalUsdt: input.principalUsdt,
     raw,
   };
   write([...read(), meta]);
