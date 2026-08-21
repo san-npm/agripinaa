@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { routerByAddress } from '@agripinaa/shared';
 import { deserializeSession, serializeSession } from '@agripinaa/session-kit/persist';
 import type { SessionPermissions } from '@altananetwork/sdk';
 import type { Address, Hex } from 'viem';
@@ -61,12 +62,21 @@ function save(agent: string, entries: ManagedAccount[]): void {
   renameSync(tmp, f);
 }
 
-/** The router (scoped call target) an entry manages through — its identity key. */
+/**
+ * The router (scoped call target) an entry manages through — its identity key.
+ * Resolves to the KNOWN router address when the target is one of ours (so the
+ * key is normalized), and guards every field access so a corrupt/foreign entry
+ * can never throw here. Returns '' only when there is no usable target, which
+ * can't collide across accounts (upsert also matches on the account).
+ */
 function routerKey(entry: ManagedAccount): string {
   const calls = entry.session.permissions?.calls ?? [];
   for (const call of calls) {
-    const to = 'to' in call ? call.to : undefined;
-    if (to) return to.toLowerCase();
+    if (!call || typeof call !== 'object') continue;
+    const to = 'to' in call ? (call as { to?: unknown }).to : undefined;
+    if (typeof to === 'string' && to) {
+      return (routerByAddress(to)?.address ?? to).toLowerCase();
+    }
   }
   return '';
 }

@@ -39,6 +39,52 @@ test('managed registry: upsert, replace, remove, bigint-safe', async () => {
   assert.equal(typeof round[0]!.session.permissions.spend![0]!.limit, 'bigint');
 });
 
+// --- per-token manager key isolation (Medium fix) -------------------------
+
+test('deriveManagerKey: distinct on-chain identity per token, deterministic', async () => {
+  const { deriveManagerKey } = await import('../src/manager-key');
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const masterPk = `0x${'11'.repeat(32)}` as const;
+  const a = privateKeyToAccount(masterPk);
+  const master = { privateKey: masterPk, address: a.address, publicKey: a.publicKey };
+  const usdc1 = deriveManagerKey(master, 'USDC');
+  const usdc2 = deriveManagerKey(master, 'USDC');
+  const usdx = deriveManagerKey(master, 'USDX');
+  // Deterministic (same seed+symbol -> same key), so both browser and runner agree.
+  assert.equal(usdc1.publicKey, usdc2.publicKey);
+  // Distinct from the master key and from every other token's key: no shared
+  // on-chain key identity, hence no shared expiry or revocation.
+  assert.notEqual(usdc1.publicKey.toLowerCase(), master.publicKey.toLowerCase());
+  assert.notEqual(usdc1.publicKey.toLowerCase(), usdx.publicKey.toLowerCase());
+});
+
+test('managedExecutor rejects a manager key that does not match the granted session', async () => {
+  const { managedExecutor } = await import('../src/executor');
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const grantedPk = `0x${'22'.repeat(32)}` as const;
+  const granted = privateKeyToAccount(grantedPk);
+  const wrongPk = `0x${'33'.repeat(32)}` as const;
+  const entry = {
+    account: ACCOUNT,
+    chainId: 56,
+    session: {
+      walletAddress: ACCOUNT,
+      publicKey: granted.publicKey,
+      permissions: { calls: [{ signature: 'toVenus()', to: YIELD_ROUTER_BSC.address }] },
+      expiry: 1893456000,
+    },
+    registeredAt: '2026-08-20T00:00:00.000Z',
+  };
+  // Wrong key: fail closed before anything reaches the relay.
+  assert.throws(
+    () => managedExecutor({ client: {} as never, managerKey: wrongPk, entry: entry as never }),
+    /does not match/,
+  );
+  // Correct key: constructs and resolves the token from the scoped router.
+  const ok = managedExecutor({ client: {} as never, managerKey: grantedPk, entry: entry as never });
+  assert.equal(ok.deployment.symbol, 'USDT');
+});
+
 // --- managedYieldTick decision -> router action ---------------------------
 
 interface FakeOpts {

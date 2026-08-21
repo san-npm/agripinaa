@@ -18,6 +18,17 @@ export interface ManagerIdentity {
   address: Hex;
 }
 
+/**
+ * The public manager identities for one agent: the master (primary token) plus
+ * one distinct identity per additional managed token. A session for a given
+ * token must be granted to that token's identity, so the two tokens never share
+ * an on-chain key (and therefore never share expiry or revocation).
+ */
+export interface ManagerSet {
+  master: ManagerIdentity;
+  byToken: Map<string, ManagerIdentity>;
+}
+
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ROUTER_SIGNATURES = new Set<string>(Object.values(ROUTER_ACTIONS).map((a) => a.signature));
 
@@ -30,7 +41,7 @@ const ROUTER_SIGNATURES = new Set<string>(Object.values(ROUTER_ACTIONS).map((a) 
  */
 async function validateManageRequest(
   body: { account?: string; chainId?: number; session?: ManagedAccount['session'] },
-  identity: ManagerIdentity,
+  managerSet: ManagerSet,
 ): Promise<string | null> {
   const { account, chainId, session } = body;
   if (typeof account !== 'string' || !ADDRESS_RE.test(account)) return 'account is not a 20-byte address';
@@ -38,8 +49,7 @@ async function validateManageRequest(
   if (!session || typeof session !== 'object') return 'missing session';
   if (typeof session.walletAddress !== 'string' || session.walletAddress.toLowerCase() !== account.toLowerCase())
     return 'session.walletAddress must equal account';
-  if (typeof session.publicKey !== 'string' || session.publicKey.toLowerCase() !== identity.publicKey.toLowerCase())
-    return 'session is not granted to this agent manager key';
+  if (typeof session.publicKey !== 'string') return 'session is missing a public key';
   if (typeof session.expiry !== 'number' || session.expiry * 1000 <= Date.now())
     return 'session is missing or already expired';
 
@@ -59,6 +69,13 @@ async function validateManageRequest(
     if (!signature || !ROUTER_SIGNATURES.has(signature))
       return 'session scopes a non-router selector';
   }
+
+  // The session must be granted to the manager key for the token it manages —
+  // never any other token's key. This binds the (token → key identity) mapping
+  // so a USDC mandate can't be authorized against the USDT key or vice versa.
+  const expected = managerSet.byToken.get(router.symbol);
+  if (!expected || session.publicKey.toLowerCase() !== expected.publicKey.toLowerCase())
+    return `session is not granted to this agent's ${router.symbol} manager key`;
 
   const live = await isSessionKeyValid({
     chainId,
@@ -107,11 +124,11 @@ export function startX402Server(opts: {
   facilitatorKey: `0x${string}`;
   agents: Map<string, { module: AgentModule; ctx: AgentContext }>;
   /** Public manager-key identities per managed-capable agent (e.g. yield). */
-  managers?: Map<string, ManagerIdentity>;
+  managers?: Map<string, ManagerSet>;
   rpcUrl?: string;
 }): Server {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
-  const managers = opts.managers ?? new Map<string, ManagerIdentity>();
+  const managers = opts.managers ?? new Map<string, ManagerSet>();
 
   const merchants = new Map(
     [...opts.agents.entries()].map(([name, { ctx }]) => [
@@ -204,19 +221,28 @@ export function startX402Server(opts: {
     const keyMatch = /^\/([a-z-]+)\/manager-key$/.exec(pathname);
     if (keyMatch) {
       const agent = keyMatch[1]!;
-      const identity = managers.get(agent);
+      const managerSet = managers.get(agent);
       if (req.method !== 'GET') {
         res.writeHead(405, { allow: 'GET', 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'method not allowed' }));
         return;
       }
-      if (!identity) {
+      if (!managerSet) {
         res.writeHead(404, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'agent does not support managed mode' }));
         return;
       }
+      // Return the identity for the requested token (default: master/primary).
+      // Each token has its own key, so a USDC grant never shares the USDT key.
+      const token = new URL(req.url ?? '/', 'http://localhost').searchParams.get('token') ?? undefined;
+      const identity = token ? managerSet.byToken.get(token) : managerSet.master;
+      if (!identity) {
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: `agent does not manage token ${token}` }));
+        return;
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ agent, publicKey: identity.publicKey, address: identity.address }));
+      res.end(JSON.stringify({ agent, token: token ?? null, publicKey: identity.publicKey, address: identity.address }));
       return;
     }
 
@@ -227,13 +253,13 @@ export function startX402Server(opts: {
     const manageMatch = /^\/([a-z-]+)\/manage$/.exec(pathname);
     if (manageMatch) {
       const agent = manageMatch[1]!;
-      const identity = managers.get(agent);
+      const managerSet = managers.get(agent);
       if (req.method !== 'POST') {
         res.writeHead(405, { allow: 'POST', 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'method not allowed' }));
         return;
       }
-      if (!identity) {
+      if (!managerSet) {
         res.writeHead(404, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'agent does not support managed mode' }));
         return;
@@ -244,7 +270,7 @@ export function startX402Server(opts: {
           chainId?: number;
           session?: ManagedAccount['session'];
         };
-        const problem = await validateManageRequest(body, identity);
+        const problem = await validateManageRequest(body, managerSet);
         if (problem) {
           res.writeHead(400, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: problem }));

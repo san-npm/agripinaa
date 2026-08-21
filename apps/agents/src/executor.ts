@@ -25,6 +25,7 @@ import {
   type Session,
 } from '@altananetwork/sdk';
 import type { Hex } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 
 import type { ManagedAccount } from './managed';
 
@@ -45,10 +46,15 @@ export interface ManagedExecutor {
  */
 function deploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
   const calls = entry.session.permissions?.calls ?? [];
+  if (calls.length === 0) return undefined;
   const targets = new Set<string>();
   for (const call of calls) {
-    const to = 'to' in call ? call.to : undefined;
-    if (to) targets.add(to.toLowerCase());
+    if (!call || typeof call !== 'object') return undefined;
+    const to = 'to' in call ? (call as { to?: unknown }).to : undefined;
+    // A call without a concrete target is a Porto anyTarget wildcard — fail
+    // closed rather than letting it ride alongside one known router.
+    if (typeof to !== 'string' || !to) return undefined;
+    targets.add(to.toLowerCase());
   }
   if (targets.size !== 1) return undefined;
   const dep = routerByAddress([...targets][0]!);
@@ -68,6 +74,14 @@ export function managedExecutor(opts: {
   const { client, managerKey, entry } = opts;
   const router = deploymentForEntry(entry);
   if (!router) throw new Error(`no YieldRouter deployed on chain ${entry.chainId}`);
+
+  // The manager key MUST be the exact key the session was granted to. Signing a
+  // session with a different key (e.g. the wrong token's key) would just be
+  // rejected on-chain, but failing here keeps a mis-routed entry from ever
+  // reaching the relay.
+  if (privateKeyToAccount(managerKey).publicKey.toLowerCase() !== entry.session.publicKey.toLowerCase()) {
+    throw new Error('manager key does not match the granted session public key');
+  }
 
   const session: Session = {
     walletAddress: entry.session.walletAddress,

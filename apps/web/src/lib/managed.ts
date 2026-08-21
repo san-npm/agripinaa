@@ -68,9 +68,13 @@ export interface ManagerKeyInfo {
   address: Hex;
 }
 
-/** Fetch the agent's public manager key (via the server proxy). */
-export async function fetchManagerKey(agent: string): Promise<ManagerKeyInfo> {
-  const res = await fetch(`/api/managed/${agent}/manager-key`);
+/**
+ * Fetch the agent's public manager key for a specific token (via the server
+ * proxy). Each token has its OWN key, so a USDC grant never shares the USDT
+ * key's on-chain identity, expiry, or revocation.
+ */
+export async function fetchManagerKey(agent: string, token = 'USDT'): Promise<ManagerKeyInfo> {
+  const res = await fetch(`/api/managed/${agent}/manager-key?token=${encodeURIComponent(token)}`);
   const body = (await res.json().catch(() => ({}))) as Partial<ManagerKeyInfo> & { error?: string };
   if (!res.ok || !body.publicKey) {
     throw new Error(body.error ?? `manager key unavailable (${res.status})`);
@@ -102,8 +106,11 @@ export function buildManagedScope(opts: { chainId: number; capUsdt: string; hour
     callScopes: [{ to: router.address, signatures: ROUTER_SIGNATURES }],
     // Meter the cap on the token actually being managed, not always USDT.
     spendCap: { token: symbol, amount: opts.capUsdt, period: 'day' },
-    // The account pays its own gas in BNB; without this the relay rejects execute.
-    nativeGasCap: { amount: '0.02', period: 'day' },
+    // The account pays its own gas in BNB; without this the relay rejects
+    // execute. Kept tight: the agent rotates at most a few times a day (each
+    // rotation is one cheap BSC tx), so a small daily allowance is plenty while
+    // bounding how much BNB a compromised manager key could burn on no-op calls.
+    nativeGasCap: { amount: '0.005', period: 'day' },
     expiresInSeconds: opts.hours * 3600,
   });
 }

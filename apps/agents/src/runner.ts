@@ -9,11 +9,13 @@ import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { MANAGED_TOKENS } from '@agripinaa/shared';
+
 import { buildContext } from './chassis';
 import { createAltanaClient } from './executor';
-import { loadManagerKey } from './manager-key';
+import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { tickManagedYield } from './managed-runner';
-import { startX402Server, type ManagerIdentity } from './x402-server';
+import { startX402Server, type ManagerIdentity, type ManagerSet } from './x402-server';
 import type { AgentContext, AgentModule } from './types';
 import { gridAgent } from './agents/grid';
 import { healthFactorAgent } from './agents/health-factor';
@@ -101,20 +103,29 @@ async function main() {
   // Managed mode: for each managed-capable agent that is running AND has a
   // manager key, publish its public identity (so the browser can grant to it)
   // and drive a per-account router tick loop.
-  const managers = new Map<string, ManagerIdentity>();
-  const managerKeys = new Map<string, `0x${string}`>();
+  // The PRIMARY managed token keeps the master key (so a live mandate keeps
+  // running untouched); every other token derives its own distinct key, so the
+  // two tokens never share an on-chain key identity/expiry/revocation.
+  const PRIMARY_TOKEN = MANAGED_TOKENS[0];
+  const managers = new Map<string, ManagerSet>();
+  const managerKeySets = new Map<string, ManagerKeySet>();
   for (const name of MANAGED_AGENTS) {
     if (!agents.has(name)) continue;
-    const key = loadManagerKey(name);
-    if (!key) {
+    const keySet = buildManagerKeySet(name, MANAGED_TOKENS, PRIMARY_TOKEN);
+    if (!keySet) {
       agents.get(name)!.ctx.log({
         event: 'managed-disabled',
         reason: `no wallets/agent-${name}-session.json; run fund --gen`,
       });
       continue;
     }
-    managers.set(name, { publicKey: key.publicKey, address: key.address });
-    managerKeys.set(name, key.privateKey);
+    const byToken = new Map<string, ManagerIdentity>();
+    for (const [sym, k] of keySet.byToken) byToken.set(sym, { publicKey: k.publicKey, address: k.address });
+    managers.set(name, {
+      master: { publicKey: keySet.master.publicKey, address: keySet.master.address },
+      byToken,
+    });
+    managerKeySets.set(name, keySet);
   }
 
   startX402Server({ port: PORT, facilitatorKey: privateKey, agents, managers });
@@ -123,9 +134,9 @@ async function main() {
     console.log(`managed mode: ${[...managers.keys()].join(', ')}`);
   }
 
-  if (managerKeys.size > 0) {
+  if (managerKeySets.size > 0) {
     const client = createAltanaClient();
-    for (const [name, managerKey] of managerKeys) {
+    for (const [name, keySet] of managerKeySets) {
       const ctx = agents.get(name)!.ctx;
       let running = false;
       const loop = async () => {
@@ -133,7 +144,7 @@ async function main() {
         if (ctx.breakers.isHalted().halted) return;
         running = true;
         try {
-          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKey });
+          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKeys: keySet.byPublicKey });
           if (serviced > 0 || errors > 0) {
             ctx.log({ event: 'managed-sweep', serviced, errors });
           }
