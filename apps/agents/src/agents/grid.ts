@@ -51,7 +51,10 @@ const POOL_ABI = parseAbi([
 export const GRID_SPACING = 0.015;
 export const GRID_LEVELS_PER_SIDE = 4;
 export const CLIP_USD = 2;
-export const COOLDOWN_MS = 10 * 60_000;
+// Must exceed the Ophis/CoW order validity (~30 min): otherwise a new clip can
+// be submitted while a prior order is still executable, and after a re-center
+// the two could fill against different grid regimes with unreserved balance.
+export const COOLDOWN_MS = 31 * 60_000;
 export const MAX_TRADES_PER_DAY = 12;
 export const TREND_MAX_DEVIATION = 0.06;
 export const LOSS_FLOOR_FRACTION = 0.95;
@@ -243,18 +246,20 @@ export interface GuardInput {
 
 export type GuardResult = { ok: true } | { ok: false; reason: GuardFailure; halt: boolean };
 
-/** Guard order: HALTING conditions first (trend breakout, daily loss) so
+/** Guard order: HALTING conditions first (daily loss, then trend breakout) so
  * they always trip regardless of cooldown or a spent rate-limit budget, then
  * the non-halting gates (cooldown, rate limit, balance). halt true means the
  * caller must trip the breaker. Note: allowTrade() records a slot, so it is
  * evaluated only after the halts and cooldown have passed, never burning the
  * daily budget on a no-op tick. */
 export function evaluateGuards(input: GuardInput): GuardResult {
-  if (isTrendBreakout(input.price, input.center, input.maxDeviation)) {
-    return { ok: false, reason: 'trend-breakout', halt: true };
-  }
+  // Capital protection before adaptation: daily loss halts first, so it wins
+  // when a downward move is both a loss breach and a breakout.
   if (isLossBreach(input.inventoryNowUsd, input.inventoryStartUsd, input.lossFloor)) {
     return { ok: false, reason: 'daily-loss', halt: true };
+  }
+  if (isTrendBreakout(input.price, input.center, input.maxDeviation)) {
+    return { ok: false, reason: 'trend-breakout', halt: true };
   }
   if (isCooldownActive(input.nowMs, input.lastFillAtMs, input.cooldownMs)) {
     return { ok: false, reason: 'cooldown', halt: false };
@@ -344,8 +349,8 @@ async function readBalances(ctx: AgentContext): Promise<{ wbnb: bigint; usdt: bi
 
 /**
  * On a trend breakout, re-center the grid on the current price (fresh center,
- * fresh loss baseline, cleared level marks) so it keeps trading around the new
- * level instead of halting forever. Returns false when the daily re-center
+ * cleared level marks, PRESERVED loss baseline) so it keeps trading around the
+ * new level instead of halting forever. Returns false when the daily re-center
  * budget is spent, in which case the caller halts. The daily-loss breaker still
  * protects capital across re-centers.
  */
@@ -378,11 +383,22 @@ export const gridAgent: AgentModule = {
     const usdtWhole = Number(fromBaseUnits(balances.usdt, USDT.decimals));
     const inventoryNowUsd = inventoryValueUsd(wbnbWhole, usdtWhole, price);
 
+    // Fail SAFE on a corrupt/abnormal read: a non-finite or non-positive price
+    // or inventory would silently make the breakout/loss comparisons false or
+    // poison the stored center. Skip the tick (transient) rather than trade.
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(inventoryNowUsd)) {
+      ctx.log({ event: 'bad-read', price, inventoryNowUsd });
+      return;
+    }
+
     const storedCenter = ctx.state.get<number | null>('center', null);
     if (storedCenter === null) {
-      ctx.state.set('center', price);
+      // Write the loss baseline BEFORE the center. Each set is atomic, so a
+      // crash mid-init can leave a baseline without a center (which re-inits
+      // cleanly) but never a center without a baseline.
       ctx.state.set('inventoryStartUsd', inventoryNowUsd);
       ctx.state.set('lastPrice', price);
+      ctx.state.set('center', price);
       ctx.log({
         event: 'grid-init',
         center: price,
@@ -395,7 +411,14 @@ export const gridAgent: AgentModule = {
       return;
     }
     const center = storedCenter;
-    const inventoryStartUsd = ctx.state.get<number>('inventoryStartUsd', inventoryNowUsd);
+    // Fail CLOSED if a center exists without a valid loss baseline: halt rather
+    // than trade with the drawdown floor silently disabled.
+    const inventoryStartUsd = ctx.state.get<number | null>('inventoryStartUsd', null);
+    if (inventoryStartUsd === null || !Number.isFinite(inventoryStartUsd) || inventoryStartUsd <= 0) {
+      ctx.log({ event: 'state-incomplete', reason: 'center set without a valid loss baseline' });
+      ctx.breakers.halt('state-incomplete');
+      return;
+    }
     const prevPrice = ctx.state.get<number>('lastPrice', price);
     ctx.state.set('lastPrice', price);
 
@@ -410,11 +433,22 @@ export const gridAgent: AgentModule = {
       return;
     }
     if (isTrendBreakout(price, center)) {
+      // Require the breakout to persist across two ticks before re-centering,
+      // so a single-tick spike or whipsaw doesn't re-arm the grid into noise.
+      const streak = ctx.state.get<number>('breakoutStreak', 0) + 1;
+      ctx.state.set('breakoutStreak', streak);
+      if (streak < 2) {
+        ctx.log({ event: 'breakout-observed', price, center, streak });
+        return;
+      }
+      ctx.state.set('breakoutStreak', 0);
       if (maybeRecenter(ctx, price, inventoryNowUsd)) return;
       ctx.log({ event: 'trend-breakout', price, center });
       ctx.breakers.halt('trend-breakout');
       return;
     }
+    // Back inside the band: clear any partial breakout streak.
+    if (ctx.state.get<number>('breakoutStreak', 0) !== 0) ctx.state.set('breakoutStreak', 0);
 
     let crossed = ctx.state.get<string[]>('crossedLevels', []);
     const afterUnmark = unmarkNearCenter(price, center, crossed);
