@@ -117,7 +117,7 @@ export default function Home() {
               <Link
                 key={category}
                 href={`/c/${category}`}
-                className="agp-sheen group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_30px_-12px_rgba(245,158,11,0.25)]"
+                className="agp-reveal agp-sheen group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200 hover:border-primary/40 hover:shadow-[0_10px_30px_-12px_rgba(245,158,11,0.25)]"
               >
                 <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-[inset_0_0_16px_rgba(245,158,11,0.1)] transition-transform group-hover:scale-105">
                   <Icon className="h-6 w-6" />

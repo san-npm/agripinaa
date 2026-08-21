@@ -188,9 +188,51 @@ h1, h2, h3 {
 }
 .agp-sheen:hover::after { transform: translateX(100%); }
 
+/* Agent "working" state (aicss agent-UI): a soft shimmer sweeping across a
+   panel signals the agent is live and deciding, not a static record. Meaning,
+   not decoration — only shown while a mandate is actively being managed. */
+@keyframes agp-shimmer {
+  0% { transform: translateX(-130%); }
+  100% { transform: translateX(330%); }
+}
+.agp-working { position: relative; overflow: hidden; }
+.agp-working::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.10), transparent);
+  animation: agp-shimmer 2.6s var(--ease-out) infinite;
+  pointer-events: none;
+}
+
+/* Three-dot "thinking" cue for an agent that is deciding (aicss reasoning). */
+@keyframes agp-think-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+.agp-think-dots > i {
+  display: inline-block;
+  width: 4px; height: 4px; border-radius: 9999px;
+  background: currentColor;
+  animation: agp-think-dot 1.4s ease-in-out infinite;
+}
+.agp-think-dots > i:nth-child(2) { animation-delay: 0.18s; }
+.agp-think-dots > i:nth-child(3) { animation-delay: 0.36s; }
+
+/* Enrich the orbs with a brighter inner core (orbs.jakubantalik layering). */
+.agp-orb { background:
+  radial-gradient(circle at 32% 30%, rgba(251, 191, 36, 0.42) 0%, transparent 38%),
+  radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.6), rgba(245, 158, 11, 0.12) 55%, transparent 72%); }
+.agp-orb-2 { background:
+  radial-gradient(circle at 58% 38%, rgba(167, 139, 250, 0.34) 0%, transparent 40%),
+  radial-gradient(circle at 60% 40%, rgba(139, 92, 246, 0.42), transparent 68%); }
+
 @media (prefers-reduced-motion: reduce) {
   .live-dot, .agp-orb, .agp-orb-2, .agp-gradient-text, .agp-toast, .agp-proof-event { animation: none; }
   .agp-reveal { animation: none; }
+  .agp-working::before, .agp-think-dots > i { animation: none; }
+  .agp-working::before { display: none; }
   .agp-gradient-text { background-position: center; }
   .agp-sheen:hover::after { transform: translateX(-100%); }
   * { transition-duration: 0.01ms !important; }
