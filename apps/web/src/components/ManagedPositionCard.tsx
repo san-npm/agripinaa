@@ -1,7 +1,7 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
-import { routerByAddress, routerFor } from '@agripinaa/shared/contracts';
+import { MANAGED_TOKENS, routerByAddress, routerFor } from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import type { Hex } from 'viem';
 
@@ -64,8 +64,16 @@ export function ManagedPositionCard({
   const [error, setError] = useState<string | null>(null);
   const [dest, setDest] = useState<string>('');
 
-  // Which stablecoin this position manages, derived from the session's scoped router.
-  const token = routerByAddress(meta.scope.allowlist[0] ?? '')?.symbol ?? 'USDT';
+  // Which stablecoin this position manages, derived from the UNIQUE known router
+  // in the session's allowlist on this chain — not just allowlist[0], so a
+  // stale/extra entry can't silently mis-derive the token (e.g. render a USDC
+  // position as USDT). If it doesn't resolve to exactly one known router, the
+  // record is malformed and every managed action is disabled below.
+  const knownRouters = (meta.scope.allowlist ?? [])
+    .map((a) => routerByAddress(a))
+    .filter((r): r is NonNullable<typeof r> => !!r && r.chainId === meta.chainId);
+  const configValid = knownRouters.length === 1;
+  const token = configValid ? knownRouters[0]!.symbol : 'USDT';
 
   const refreshPosition = useCallback(async () => {
     try {
@@ -193,11 +201,19 @@ export function ManagedPositionCard({
     setError(null);
     try {
       const wallet = await reauth();
-      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token);
-      if (fresh.idleWei + fresh.deployedWei > USDT_DUST_WEI) {
-        throw new Error(`Withdraw your ${token} first — sweeping BNB now could leave too little gas to move it.`);
+      // Don't strand gas under ANY still-deployed stablecoin on this account,
+      // not just this card's token: if a USDC position is still live, sweeping
+      // BNB now could leave its exit unable to pay gas. The BNB balance is the
+      // account's, identical whichever token we read it through.
+      let nativeWei = 0n;
+      for (const sym of MANAGED_TOKENS) {
+        const p = await readManagedPosition(meta.account as Hex, meta.chainId, sym);
+        if (p.idleWei + p.deployedWei > USDT_DUST_WEI) {
+          throw new Error(`Withdraw your ${sym} first — sweeping BNB now could leave too little gas to move it.`);
+        }
+        nativeWei = p.nativeWei;
       }
-      const amount = fresh.nativeWei - WITHDRAW_GAS_RESERVE_WEI;
+      const amount = nativeWei - WITHDRAW_GAS_RESERVE_WEI;
       if (amount <= 0n) throw new Error('Not enough BNB to withdraw after keeping a gas reserve.');
       await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount, token);
       await refreshPosition();
@@ -356,6 +372,12 @@ export function ManagedPositionCard({
 
       <div className="mt-4 rounded-lg border border-border bg-surface-2 p-3">
         <p className="text-xs uppercase tracking-wide text-muted-2">Withdraw to your wallet</p>
+        {!configValid && (
+          <p className="mt-2 text-xs text-danger">
+            This saved record doesn&apos;t map to a single known router on this network, so its
+            managed actions are disabled. Use &ldquo;Forget&rdquo; and re-activate from the agent page.
+          </p>
+        )}
         <input
           value={dest}
           onChange={(e) => setDest(e.target.value.trim())}
@@ -369,14 +391,14 @@ export function ManagedPositionCard({
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={withdrawUsdtOut}
-            disabled={busy !== null || !destValid || (pos != null && pos.idleWei === 0n && pos.deployedWei === 0n)}
+            disabled={!configValid || busy !== null || !destValid || (pos != null && pos.idleWei === 0n && pos.deployedWei === 0n)}
             className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
           >
             {busy === 'usdt' ? 'Withdrawing…' : `Withdraw ${token}${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
           </button>
           <button
             onClick={withdrawBnbOut}
-            disabled={busy !== null || !destValid || hasUsdt || (pos != null && pos.nativeWei <= WITHDRAW_GAS_RESERVE_WEI)}
+            disabled={!configValid || busy !== null || !destValid || hasUsdt || (pos != null && pos.nativeWei <= WITHDRAW_GAS_RESERVE_WEI)}
             title={hasUsdt ? `Withdraw your ${token} first` : undefined}
             className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
           >

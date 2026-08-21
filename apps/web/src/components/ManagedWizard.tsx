@@ -135,7 +135,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       // 2. Fetch the agent's manager key and grant a router-scoped session to
       //    it via a verify-only stub (the agent key never enters the browser).
       setPhase('Granting the managed session (1 passkey tap)…');
-      const manager = await fetchManagerKey(agent.managedAgent);
+      const manager = await fetchManagerKey(agent.managedAgent, token);
       const capUsdt = String(Math.max(50, Math.ceil(Number(amount) * 10)));
       const scope = buildManagedScope({ chainId, capUsdt, hours, token });
       const client = altanaClient();
