@@ -1,7 +1,7 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
-import { routerFor } from '@agripinaa/shared/contracts';
+import { routerByAddress, routerFor } from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import type { Hex } from 'viem';
 
@@ -64,29 +64,32 @@ export function ManagedPositionCard({
   const [error, setError] = useState<string | null>(null);
   const [dest, setDest] = useState<string>('');
 
+  // Which stablecoin this position manages, derived from the session's scoped router.
+  const token = routerByAddress(meta.scope.allowlist[0] ?? '')?.symbol ?? 'USDT';
+
   const refreshPosition = useCallback(async () => {
     try {
-      const p = await readManagedPosition(meta.account as `0x${string}`, meta.chainId);
+      const p = await readManagedPosition(meta.account as `0x${string}`, meta.chainId, token);
       setPos(p);
     } catch {
       /* transient RPC error; leave the last-known position */
     }
-  }, [meta.account, meta.chainId]);
+  }, [meta.account, meta.chainId, token]);
 
   useEffect(() => {
     let cancelled = false;
-    readVenueApys(meta.chainId)
+    readVenueApys(meta.chainId, token)
       .then((a) => !cancelled && setApys(a))
       .catch(() => {});
     if (meta.account !== 'unknown') {
-      readRotationHistory(meta.account as Hex, meta.chainId)
+      readRotationHistory(meta.account as Hex, meta.chainId, token)
         .then((h) => !cancelled && setHistory(h))
         .catch(() => !cancelled && setHistory([]));
     }
     return () => {
       cancelled = true;
     };
-  }, [meta.chainId, meta.account]);
+  }, [meta.chainId, meta.account, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,7 +124,7 @@ export function ManagedPositionCard({
     return wallet;
   }
 
-  const destProblem = dest ? destinationProblem(dest, meta.account, meta.chainId) : null;
+  const destProblem = dest ? destinationProblem(dest, meta.account, meta.chainId, token) : null;
   const destValid = dest !== '' && destProblem === null;
   const hasUsdt = pos != null && pos.idleWei + pos.deployedWei > USDT_DUST_WEI;
 
@@ -158,18 +161,18 @@ export function ManagedPositionCard({
     try {
       const wallet = await reauth();
       if (validity === 'valid') await doRevoke(wallet);
-      const cur = await readManagedPosition(meta.account as Hex, meta.chainId);
+      const cur = await readManagedPosition(meta.account as Hex, meta.chainId, token);
       if (cur.deployedWei > 0n) {
-        await withdrawToIdle(wallet as never, meta.chainId);
+        await withdrawToIdle(wallet as never, meta.chainId, token);
       }
-      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId);
-      if (fresh.idleWei <= 0n) throw new Error('No USDT available to withdraw.');
-      const router = routerFor(meta.chainId);
+      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token);
+      if (fresh.idleWei <= 0n) throw new Error(`No ${token} available to withdraw.`);
+      const router = routerFor(meta.chainId, token);
       if (!router) throw new Error('No router on this chain.');
-      await sendTokenOut(wallet as never, meta.chainId, router.usdt, dest as Hex, fresh.idleWei);
+      await sendTokenOut(wallet as never, meta.chainId, router.usdt, dest as Hex, fresh.idleWei, token);
       await refreshPosition();
       onChange();
-      toast({ title: 'USDT withdrawn', detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
+      toast({ title: `${token} withdrawn`, detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -190,13 +193,13 @@ export function ManagedPositionCard({
     setError(null);
     try {
       const wallet = await reauth();
-      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId);
+      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token);
       if (fresh.idleWei + fresh.deployedWei > USDT_DUST_WEI) {
-        throw new Error('Withdraw your USDT first — sweeping BNB now could leave too little gas to move it.');
+        throw new Error(`Withdraw your ${token} first — sweeping BNB now could leave too little gas to move it.`);
       }
       const amount = fresh.nativeWei - WITHDRAW_GAS_RESERVE_WEI;
       if (amount <= 0n) throw new Error('Not enough BNB to withdraw after keeping a gas reserve.');
-      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount);
+      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount, token);
       await refreshPosition();
       toast({ title: 'BNB withdrawn', detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
     } catch (e) {
@@ -265,7 +268,7 @@ export function ManagedPositionCard({
         <div className="rounded-lg border border-border bg-surface-2 p-3">
           <p className="text-xs uppercase tracking-wide text-muted-2">Under management</p>
           <p className="tabular mt-1 font-mono text-xl font-semibold">
-            {pos ? `${Number(pos.totalUsdt).toFixed(2)} USDT` : '…'}
+            {pos ? `${Number(pos.totalUsdt).toFixed(2)} ${token}` : '…'}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-surface-2 p-3">
@@ -297,7 +300,7 @@ export function ManagedPositionCard({
           {earned != null && deployed && (
             <p className="text-sm">
               <span className="text-muted-2">Earned so far </span>
-              <span className="tabular font-mono font-semibold text-success">+{fmtEarned(earned)} USDT</span>
+              <span className="tabular font-mono font-semibold text-success">+{fmtEarned(earned)} {token}</span>
               {principal != null && (
                 <span className="text-xs text-muted-2"> on {principal.toFixed(2)} deposited</span>
               )}
@@ -323,7 +326,7 @@ export function ManagedPositionCard({
                 <span className="flex items-center gap-2">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
                   <span className="text-foreground">{e.label}</span>
-                  <span className="tabular font-mono text-muted-2">{Number(e.amountUsdt).toFixed(2)} USDT</span>
+                  <span className="tabular font-mono text-muted-2">{Number(e.amountUsdt).toFixed(2)} {token}</span>
                 </span>
                 <span className="flex items-center gap-2 text-muted-2">
                   <span>{relTime(e.timestamp)}</span>
@@ -360,20 +363,20 @@ export function ManagedPositionCard({
             disabled={busy !== null || !destValid || (pos != null && pos.idleWei === 0n && pos.deployedWei === 0n)}
             className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
           >
-            {busy === 'usdt' ? 'Withdrawing…' : `Withdraw USDT${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
+            {busy === 'usdt' ? 'Withdrawing…' : `Withdraw ${token}${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
           </button>
           <button
             onClick={withdrawBnbOut}
             disabled={busy !== null || !destValid || hasUsdt || (pos != null && pos.nativeWei <= WITHDRAW_GAS_RESERVE_WEI)}
-            title={hasUsdt ? 'Withdraw your USDT first' : undefined}
+            title={hasUsdt ? `Withdraw your ${token} first` : undefined}
             className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
           >
             {busy === 'bnb' ? 'Withdrawing…' : `Withdraw BNB${pos ? ` (${Number(pos.nativeBnb).toFixed(4)})` : ''}`}
           </button>
         </div>
         <p className="mt-2 text-xs text-muted-2">
-          Withdraw USDT stops the agent, unwinds any venue position, then sends
-          everything to your address. Withdraw BNB (available once USDT is out)
+          Withdraw {token} stops the agent, unwinds any venue position, then sends
+          everything to your address. Withdraw BNB (available once {token} is out)
           keeps a small reserve so the transaction can pay its own gas.
         </p>
       </div>

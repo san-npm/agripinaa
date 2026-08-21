@@ -45,12 +45,12 @@ function assertConfirmed<T extends ExecResult>(result: T, action: string): T {
  * contract (router/tokens), or the account itself. Returns a user-facing
  * message, or null if the destination is a safe external wallet.
  */
-export function destinationProblem(to: string, account: string, chainId: number): string | null {
+export function destinationProblem(to: string, account: string, chainId: number, token = 'USDT'): string | null {
   if (!isAddress(to)) return 'Enter a valid destination address.';
   const lc = to.toLowerCase();
   if (lc === zeroAddress) return 'That is the zero address — funds sent there are burned.';
   if (lc === account.toLowerCase()) return 'That is this same account — enter an external wallet.';
-  const router = routerFor(chainId);
+  const router = routerFor(chainId, token);
   if (router && [router.address, router.usdt, router.aUsdt, router.vUsdt].some((a) => a.toLowerCase() === lc)) {
     return 'That is a contract address, not a wallet.';
   }
@@ -89,8 +89,8 @@ export function verifyOnlyStub(address: Hex, publicKey: Hex) {
 }
 
 /** A session scoped to ONLY the router's three actions + a USDT and gas cap. */
-export function buildManagedScope(opts: { chainId: number; capUsdt: string; hours: number }) {
-  const router = routerFor(opts.chainId);
+export function buildManagedScope(opts: { chainId: number; capUsdt: string; hours: number; token?: string }) {
+  const router = routerFor(opts.chainId, opts.token ?? 'USDT');
   if (!router) throw new Error(`no YieldRouter deployed on chain ${opts.chainId}`);
   return buildSessionScope({
     callScopes: [{ to: router.address, signatures: ROUTER_SIGNATURES }],
@@ -113,8 +113,8 @@ type WalletLike = Parameters<ReturnType<typeof altanaClient>['grantSession']>[0]
  * aToken, and vToken. The router only ever moves these back to the account, so
  * an unlimited approval to it is safe (that is the whole point of the adapter).
  */
-export async function approveRouter(wallet: WalletLike, chainId: number) {
-  const router = routerFor(chainId);
+export async function approveRouter(wallet: WalletLike, chainId: number, token = 'USDT') {
+  const router = routerFor(chainId, token);
   if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
   const calls = [router.usdt, router.aUsdt, router.vUsdt].map((token) => ({
     to: token,
@@ -134,8 +134,8 @@ export async function approveRouter(wallet: WalletLike, chainId: number) {
 }
 
 /** User-initiated unwind: pull everything back to plain USDT in the account. */
-export async function withdrawToIdle(wallet: WalletLike, chainId: number) {
-  const router = routerFor(chainId);
+export async function withdrawToIdle(wallet: WalletLike, chainId: number, token = 'USDT') {
+  const router = routerFor(chainId, token);
   if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
@@ -165,8 +165,9 @@ export async function sendTokenOut(
   token: Hex,
   to: Hex,
   amountWei: bigint,
+  symbol = 'USDT',
 ) {
-  const problem = destinationProblem(to, wallet.address, chainId);
+  const problem = destinationProblem(to, wallet.address, chainId, symbol);
   if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
   const r = await altanaClient().execute({
@@ -175,12 +176,12 @@ export async function sendTokenOut(
     chainId,
     calls: [{ to: token, data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to, amountWei] }) }],
   });
-  return assertConfirmed(r, 'USDT withdrawal');
+  return assertConfirmed(r, `${symbol} withdrawal`);
 }
 
 /** Move native BNB out of the account to an external address (passkey action). */
-export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint) {
-  const problem = destinationProblem(to, wallet.address, chainId);
+export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint, symbol = 'USDT') {
+  const problem = destinationProblem(to, wallet.address, chainId, symbol);
   if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
   const r = await altanaClient().execute({
@@ -231,8 +232,8 @@ export interface ManagedPosition {
 }
 
 /** Read a managed account's on-chain USDT position + native BNB for the dashboard. */
-export async function readManagedPosition(account: Hex, chainId: number): Promise<ManagedPosition> {
-  const router = routerFor(chainId);
+export async function readManagedPosition(account: Hex, chainId: number, token = 'USDT'): Promise<ManagedPosition> {
+  const router = routerFor(chainId, token);
   if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
   const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
   const [idle, aUsdt, venusUnderlying, native] = await Promise.all([
@@ -283,8 +284,8 @@ export interface VenueApys {
  * APR = rate × blocks/year), Aave a RAY-scaled annual liquidity rate. BSC block
  * cadence is derived from two block timestamps, not assumed.
  */
-export async function readVenueApys(chainId: number): Promise<VenueApys> {
-  const router = routerFor(chainId);
+export async function readVenueApys(chainId: number, token = 'USDT'): Promise<VenueApys> {
+  const router = routerFor(chainId, token);
   if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
   const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
   const span = 5000n;
@@ -333,8 +334,8 @@ export interface RotationEvent {
  * chunks (free RPCs cap the range) filtered by the account topic, then dates
  * the few matches from their block timestamps.
  */
-export async function readRotationHistory(account: Hex, chainId: number): Promise<RotationEvent[]> {
-  const router = routerFor(chainId);
+export async function readRotationHistory(account: Hex, chainId: number, token = 'USDT'): Promise<RotationEvent[]> {
+  const router = routerFor(chainId, token);
   if (!router) return [];
   const client = createPublicClient({
     chain: chainId === 97 ? bscTestnet : bsc,

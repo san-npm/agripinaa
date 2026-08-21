@@ -3,18 +3,16 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { YIELD_ROUTER_BSC } from '@agripinaa/shared/contracts';
+import { routerByAddress } from '@agripinaa/shared/contracts';
 
 import { ManagedPositionCard } from '@/components/ManagedPositionCard';
 import { SessionCard } from '@/components/SessionCard';
 import { ArrowIcon, CoinsIcon, LightningIcon, ShieldIcon } from '@/components/icons';
 import { listStoredSessions, type StoredSessionMeta } from '@/lib/session-store';
 
-/** A managed-yield session is scoped to the router address. */
+/** A managed-yield session is scoped to one of the deployed router addresses. */
 function isManaged(meta: StoredSessionMeta): boolean {
-  return meta.scope.allowlist.some(
-    (a) => a.toLowerCase() === YIELD_ROUTER_BSC.address.toLowerCase(),
-  );
+  return meta.scope.allowlist.some((a) => routerByAddress(a) !== undefined);
 }
 
 export default function DashboardPage() {

@@ -1,6 +1,6 @@
 'use client';
 
-import { routerFor } from '@agripinaa/shared/contracts';
+import { MANAGED_TOKENS, routerFor } from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { createPublicClient, erc20Abi, http } from 'viem';
 import { bsc, bscTestnet } from 'viem/chains';
@@ -42,6 +42,7 @@ type PasskeyWallet = Awaited<
 export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [step, setStep] = useState<Step>('wallet');
   const [chainId, setChainId] = useState<number>(56);
+  const [token, setToken] = useState<string>('USDT');
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
   const [nativeBal, setNativeBal] = useState<bigint | null>(null);
   const [usdtBal, setUsdtBal] = useState<bigint | null>(null);
@@ -54,20 +55,20 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
 
   useEffect(() => {
     let cancelled = false;
-    readVenueApys(chainId)
+    readVenueApys(chainId, token)
       .then((a) => !cancelled && setApys(a))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [chainId]);
+  }, [chainId, token]);
 
   const bestApyPct = apys ? Math.max(apys.venusApyBps, apys.aaveApyBps) / 100 : null;
   const bestVenue = apys ? (apys.venusApyBps >= apys.aaveApyBps ? 'Venus' : 'Aave') : null;
 
   // Managed mode only works where the YieldRouter (and real Venus/Aave) exist.
   const managedChains = SUPPORTED_CHAINS.filter((c) => routerFor(c.id));
-  const usdtAddress = routerFor(chainId)?.usdt;
+  const usdtAddress = routerFor(chainId, token)?.usdt;
 
   const publicClient = useCallback(
     () => createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() }),
@@ -127,16 +128,16 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     setBusy(true);
     setError(null);
     try {
-      // 1. Approve the router to move the account's USDT + aToken + vToken.
+      // 1. Approve the router to move the account's token + aToken + vToken.
       setPhase('Approving the router (1 passkey tap)…');
-      await approveRouter(wallet, chainId);
+      await approveRouter(wallet, chainId, token);
 
       // 2. Fetch the agent's manager key and grant a router-scoped session to
       //    it via a verify-only stub (the agent key never enters the browser).
       setPhase('Granting the managed session (1 passkey tap)…');
       const manager = await fetchManagerKey(agent.managedAgent);
       const capUsdt = String(Math.max(50, Math.ceil(Number(amount) * 10)));
-      const scope = buildManagedScope({ chainId, capUsdt, hours });
+      const scope = buildManagedScope({ chainId, capUsdt, hours, token });
       const client = altanaClient();
       const session = await client.grantSession({
         wallet,
@@ -156,7 +157,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
 
       // Keep a local record so the dashboard can show + revoke it.
       const summary = describeScope(scope);
-      const router = routerFor(chainId)!;
+      const router = routerFor(chainId, token)!;
       storeSession({
         session,
         chainId,
@@ -188,7 +189,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       <div className="rounded-2xl border border-border bg-surface p-6">
         {bestApyPct != null && bestVenue && (
           <div className="mb-5 flex items-center justify-between rounded-lg border border-success/20 bg-[linear-gradient(180deg,rgba(16,185,129,0.06),transparent)] px-3 py-2.5">
-            <span className="text-xs text-muted-2">Live USDT yield, auto-rotated to the best venue</span>
+            <span className="text-xs text-muted-2">Live {token} yield, auto-rotated to the best venue</span>
             <span className="tabular font-mono text-sm font-semibold text-success">
               ~{bestApyPct.toFixed(2)}% APY <span className="text-muted-2">({bestVenue})</span>
             </span>
@@ -246,16 +247,32 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             <div>
               <h2 className="font-display text-lg font-semibold">Deposit + gas</h2>
               <p className="mt-1 text-sm text-muted">
-                Send USDT (the funds to manage) and a little {chainId === 97 ? 'tBNB' : 'BNB'}{' '}
+                Send {token} (the funds to manage) and a little {chainId === 97 ? 'tBNB' : 'BNB'}{' '}
                 for gas to your account:
               </p>
+            </div>
+            <div>
+              <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Stablecoin</p>
+              <div className="inline-flex rounded-lg border border-border-strong p-0.5">
+                {MANAGED_TOKENS.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setToken(t)}
+                    className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                      token === t ? 'bg-primary/15 text-primary' : 'text-muted-2 hover:text-foreground'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             <p className="break-all rounded-lg border border-border bg-surface-2 p-3 font-mono text-xs">
               {wallet.address}
             </p>
             <label className="block text-sm">
               <span className="mb-1 block text-xs uppercase tracking-wide text-muted-2">
-                Amount to put to work (USDT)
+                Amount to put to work ({token})
               </span>
               <input
                 value={amount}
@@ -264,7 +281,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               />
             </label>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Balance label="USDT" value={usdtBal == null ? '…' : fmt(usdtBal)} ready={usdtReady} />
+              <Balance label={token} value={usdtBal == null ? '…' : fmt(usdtBal)} ready={usdtReady} />
               <Balance
                 label={chainId === 97 ? 'tBNB (gas)' : 'BNB (gas)'}
                 value={fmt(nativeBal)}

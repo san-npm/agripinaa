@@ -167,7 +167,15 @@ interface Rates {
 
 type Reader = Pick<PublicClient, 'getBlock' | 'readContract'>;
 
-async function readRates(client: Reader): Promise<Rates> {
+/** The Venus/Aave addresses for one managed token. Own-capital mode uses USDT. */
+export interface Venues {
+  token: `0x${string}`;
+  vToken: `0x${string}`;
+  aavePool: `0x${string}`;
+}
+const USDT_VENUES: Venues = { token: USDT.address, vToken: VENUS_VUSDT, aavePool: AAVE_POOL };
+
+async function readRates(client: Reader, venues: Venues = USDT_VENUES): Promise<Rates> {
   const latest = await client.getBlock();
   const span = 5000;
   const older = await client.getBlock({
@@ -177,15 +185,15 @@ async function readRates(client: Reader): Promise<Rates> {
 
   const [venusRate, reserve] = await Promise.all([
     client.readContract({
-      address: VENUS_VUSDT,
+      address: venues.vToken,
       abi: vTokenAbi,
       functionName: 'supplyRatePerBlock',
     }),
     client.readContract({
-      address: AAVE_POOL,
+      address: venues.aavePool,
       abi: aavePoolAbi,
       functionName: 'getReserveData',
-      args: [USDT.address],
+      args: [venues.token],
     }),
   ]);
 
@@ -205,25 +213,29 @@ interface Position {
   chainVenue: Venue;
 }
 
-async function readPosition(client: Reader, self: `0x${string}`): Promise<Position> {
+async function readPosition(
+  client: Reader,
+  self: `0x${string}`,
+  venues: Venues = USDT_VENUES,
+): Promise<Position> {
   const [walletUsdtWei, venusUnderlyingWei, reserve] = await Promise.all([
     client.readContract({
-      address: USDT.address,
+      address: venues.token,
       abi: erc20Abi,
       functionName: 'balanceOf',
       args: [self],
     }),
     client.readContract({
-      address: VENUS_VUSDT,
+      address: venues.vToken,
       abi: vTokenReadAbi,
       functionName: 'balanceOfUnderlying',
       args: [self],
     }),
     client.readContract({
-      address: AAVE_POOL,
+      address: venues.aavePool,
       abi: aavePoolAbi,
       functionName: 'getReserveData',
-      args: [USDT.address],
+      args: [venues.token],
     }),
   ]);
   const aaveATokenWei = await client.readContract({
@@ -517,8 +529,10 @@ export async function managedYieldTick(
     return;
   }
 
-  const rates = await readRates(ctx.publicClient);
-  const position = await readPosition(ctx.publicClient, acct);
+  const dep = executor.deployment;
+  const venues: Venues = { token: dep.usdt, vToken: dep.vUsdt, aavePool: dep.aavePool };
+  const rates = await readRates(ctx.publicClient, venues);
+  const position = await readPosition(ctx.publicClient, acct, venues);
   const venue = position.chainVenue;
 
   const storedVenue = ctx.state.get<Venue>(ns('venue'), 'none');
@@ -529,6 +543,7 @@ export async function managedYieldTick(
 
   const base = {
     account: acct,
+    token: dep.symbol,
     venue,
     venusApyBps: rates.venusBps,
     aaveApyBps: rates.aaveBps,

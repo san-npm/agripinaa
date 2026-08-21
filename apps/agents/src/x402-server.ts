@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 
-import { ROUTER_ACTIONS, TOKENS_BSC, routerFor, toBaseUnits } from '@agripinaa/shared';
+import { ROUTER_ACTIONS, TOKENS_BSC, routerByAddress, toBaseUnits } from '@agripinaa/shared';
 import { deserializeSession } from '@agripinaa/session-kit/persist';
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
 import { createX402Merchant } from '@altananetwork/x402-server';
@@ -35,8 +35,6 @@ async function validateManageRequest(
   const { account, chainId, session } = body;
   if (typeof account !== 'string' || !ADDRESS_RE.test(account)) return 'account is not a 20-byte address';
   if (chainId !== 56 && chainId !== 97) return 'chainId must be 56 or 97';
-  const router = routerFor(chainId);
-  if (!router) return `no YieldRouter deployed on chain ${chainId}`;
   if (!session || typeof session !== 'object') return 'missing session';
   if (typeof session.walletAddress !== 'string' || session.walletAddress.toLowerCase() !== account.toLowerCase())
     return 'session.walletAddress must equal account';
@@ -47,6 +45,12 @@ async function validateManageRequest(
 
   const calls = session.permissions?.calls ?? [];
   if (calls.length === 0) return 'session has no scoped calls (would be unrestricted)';
+  // The session must be scoped to ONE known managed router (USDT or USDC) on
+  // this chain, and to nothing but that router's selectors.
+  const firstTo = 'to' in calls[0]! ? calls[0]!.to : undefined;
+  const router = firstTo ? routerByAddress(firstTo) : undefined;
+  if (!router || router.chainId !== chainId)
+    return 'session is not scoped to a known managed router on this chain';
   for (const call of calls) {
     const to = 'to' in call ? call.to : undefined;
     const signature = 'signature' in call ? call.signature : undefined;
