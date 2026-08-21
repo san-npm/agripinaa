@@ -9,6 +9,7 @@ import { altanaClient } from '@/lib/altana';
 import {
   destinationProblem,
   readManagedPosition,
+  readRotationHistory,
   readVenueApys,
   rotationRationale,
   sendNativeOut,
@@ -16,6 +17,7 @@ import {
   withdrawToIdle,
   WITHDRAW_GAS_RESERVE_WEI,
   type ManagedPosition,
+  type RotationEvent,
   type VenueApys,
 } from '@/lib/managed';
 import { forgetSession, markRevoked, reviveSession, type StoredSessionMeta } from '@/lib/session-store';
@@ -34,6 +36,19 @@ const VENUE_LABEL: Record<ManagedPosition['venue'], string> = {
 /** Below this, a USDT balance is rounding dust, not a real position. */
 const USDT_DUST_WEI = 10n ** 16n; // 0.01 USDT
 
+function relTime(ms: number | null): string {
+  if (ms == null) return '';
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+}
+
+function explorerTx(chainId: number, tx: string): string {
+  return `${chainId === 97 ? 'https://testnet.bscscan.com' : 'https://bscscan.com'}/tx/${tx}`;
+}
+
 export function ManagedPositionCard({
   meta,
   onChange,
@@ -43,6 +58,7 @@ export function ManagedPositionCard({
 }) {
   const [pos, setPos] = useState<ManagedPosition | null>(null);
   const [apys, setApys] = useState<VenueApys | null>(null);
+  const [history, setHistory] = useState<RotationEvent[] | null>(null);
   const [validity, setValidity] = useState<Validity>('checking');
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,10 +78,15 @@ export function ManagedPositionCard({
     readVenueApys(meta.chainId)
       .then((a) => !cancelled && setApys(a))
       .catch(() => {});
+    if (meta.account !== 'unknown') {
+      readRotationHistory(meta.account as Hex, meta.chainId)
+        .then((h) => !cancelled && setHistory(h))
+        .catch(() => !cancelled && setHistory([]));
+    }
     return () => {
       cancelled = true;
     };
-  }, [meta.chainId]);
+  }, [meta.chainId, meta.account]);
 
   useEffect(() => {
     let cancelled = false;
@@ -290,6 +311,34 @@ export function ManagedPositionCard({
                 : `Holding the higher one; the agent rotates to ${rationale.otherName} only if it leads by ${(rationale.hysteresisBps / 100).toFixed(2)}% on two checks (currently ${rationale.edgeBps >= 0 ? '+' : ''}${(rationale.edgeBps / 100).toFixed(2)}%).`}
             </p>
           )}
+        </div>
+      )}
+
+      {history && history.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs uppercase tracking-wide text-muted-2">Agent activity</p>
+          <ul className="mt-2 space-y-1.5">
+            {history.slice(0, 6).map((e) => (
+              <li key={e.txHash} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
+                <span className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                  <span className="text-foreground">{e.label}</span>
+                  <span className="tabular font-mono text-muted-2">{Number(e.amountUsdt).toFixed(2)} USDT</span>
+                </span>
+                <span className="flex items-center gap-2 text-muted-2">
+                  <span>{relTime(e.timestamp)}</span>
+                  <a
+                    href={explorerTx(meta.chainId, e.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    tx ↗
+                  </a>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

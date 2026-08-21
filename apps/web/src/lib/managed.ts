@@ -6,10 +6,12 @@ import {
   createPublicClient,
   encodeFunctionData,
   erc20Abi,
+  fallback,
   http,
   isAddress,
   maxUint256,
   parseAbi,
+  parseAbiItem,
   zeroAddress,
   type Hex,
 } from 'viem';
@@ -302,6 +304,77 @@ export async function readVenueApys(chainId: number): Promise<VenueApys> {
     venusApyBps: (Number(venusRate) / WAD) * blocksPerYear * 10_000,
     aaveApyBps: (Number(reserve.currentLiquidityRate) / RAY) * 10_000,
   };
+}
+
+// --- Rotation history (the agent's on-chain moves) --------------------------
+
+const ROTATED_EVENT = parseAbiItem(
+  'event Rotated(address indexed account, bytes4 indexed action, uint256 usdtAmount)',
+);
+// Public dataseed/publicnode archive-gate historical getLogs; drpc + 1rpc serve them.
+const ROTATION_LOG_RPCS = ['https://bsc.drpc.org', 'https://1rpc.io/bnb'];
+const ROTATION_ACTION_LABEL: Record<string, string> = {
+  [ROUTER_ACTIONS.toAave.selector]: 'Moved into Aave',
+  [ROUTER_ACTIONS.toVenus.selector]: 'Moved into Venus',
+  [ROUTER_ACTIONS.toIdle.selector]: 'Unwound to idle USDT',
+};
+
+export interface RotationEvent {
+  label: string;
+  amountUsdt: string;
+  txHash: Hex;
+  blockNumber: bigint;
+  timestamp: number | null;
+}
+
+/**
+ * The agent's on-chain moves for an account, read straight from the router's
+ * Rotated events (no runner/indexer). Scans deployBlock→latest in ≤10k-block
+ * chunks (free RPCs cap the range) filtered by the account topic, then dates
+ * the few matches from their block timestamps.
+ */
+export async function readRotationHistory(account: Hex, chainId: number): Promise<RotationEvent[]> {
+  const router = routerFor(chainId);
+  if (!router) return [];
+  const client = createPublicClient({
+    chain: chainId === 97 ? bscTestnet : bsc,
+    transport: fallback(ROTATION_LOG_RPCS.map((u) => http(u))),
+  });
+  const latest = await client.getBlockNumber();
+  const CHUNK = BigInt(9000);
+  const ranges: { from: bigint; to: bigint }[] = [];
+  for (let b = router.deployBlock; b <= latest; b += CHUNK + BigInt(1)) {
+    ranges.push({ from: b, to: b + CHUNK > latest ? latest : b + CHUNK });
+  }
+  const chunks = await Promise.all(
+    ranges.map((r) =>
+      client
+        .getLogs({ address: router.address, event: ROTATED_EVENT, args: { account }, fromBlock: r.from, toBlock: r.to })
+        .catch(() => []),
+    ),
+  );
+  const logs = chunks.flat();
+  const blocks = [...new Set(logs.map((l) => l.blockNumber).filter((b): b is bigint => b != null))];
+  const tsByBlock = new Map<bigint, number>();
+  await Promise.all(
+    blocks.map(async (bn) => {
+      try {
+        const blk = await client.getBlock({ blockNumber: bn });
+        tsByBlock.set(bn, Number(blk.timestamp) * 1000);
+      } catch {
+        /* leave undated */
+      }
+    }),
+  );
+  return logs
+    .map((l) => ({
+      label: ROTATION_ACTION_LABEL[(l.args.action as string)?.toLowerCase()] ?? 'Rotation',
+      amountUsdt: fromBaseUnits((l.args.usdtAmount as bigint) ?? BigInt(0), 18),
+      txHash: l.transactionHash as Hex,
+      blockNumber: l.blockNumber ?? BigInt(0),
+      timestamp: l.blockNumber != null ? (tsByBlock.get(l.blockNumber) ?? null) : null,
+    }))
+    .sort((a, b) => Number(b.blockNumber - a.blockNumber));
 }
 
 export const HYSTERESIS_BPS = 50;
