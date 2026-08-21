@@ -166,3 +166,66 @@ contract AgripinaaYieldRouterForkTest is Test {
         assertApproxEqAbs(_bal(VUSDT, address(router)), strayV, 1, "stray vUSDT handed to user");
     }
 }
+
+/**
+ * Same router bytecode, USDC venues. Confirms the proven contract works
+ * unchanged against Aave USDC + Venus vUSDC (both active on BSC), so a second
+ * deployment can manage USDC exactly like USDT.
+ */
+contract AgripinaaYieldRouterUsdcForkTest is Test {
+    address constant USDC = 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d;
+    address constant AUSDC = 0x00901a076785e0906d1028c7d6372d247bec7d61;
+    address constant AAVE = 0x6807dc923806fE8Fd134338EABCA509979a7e0cB;
+    address constant VUSDC = 0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8;
+
+    uint256 constant PRINCIPAL = 1000e18;
+    uint256 constant DUST = 1e12;
+
+    AgripinaaYieldRouter router;
+    address user = makeAddr("usdcUser");
+    address attacker = makeAddr("usdcAttacker");
+
+    function setUp() public {
+        vm.createSelectFork("bsc");
+        router = new AgripinaaYieldRouter(USDC, AUSDC, AAVE, VUSDC);
+        deal(USDC, user, PRINCIPAL);
+        vm.startPrank(user);
+        IERC20(USDC).approve(address(router), type(uint256).max);
+        IERC20(AUSDC).approve(address(router), type(uint256).max);
+        IERC20(VUSDC).approve(address(router), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function _bal(address token, address who) internal view returns (uint256) {
+        return IERC20(token).balanceOf(who);
+    }
+
+    function test_usdc_rotationRoundTripReturnsPrincipal() public {
+        vm.prank(user);
+        router.toAave();
+        assertApproxEqAbs(_bal(AUSDC, user), PRINCIPAL, DUST, "aUSDC not credited");
+
+        vm.prank(user);
+        router.toVenus();
+        assertEq(_bal(AUSDC, user), 0, "Aave not unwound");
+        assertGt(_bal(VUSDC, user), 0, "vUSDC not credited");
+
+        vm.prank(user);
+        router.toIdle();
+        assertEq(_bal(VUSDC, user), 0, "Venus not unwound");
+        assertApproxEqAbs(_bal(USDC, user), PRINCIPAL, DUST, "principal not returned");
+    }
+
+    function test_usdc_attackerCannotTouchAnotherUsersFunds() public {
+        vm.prank(user);
+        router.toVenus();
+        uint256 before = _bal(VUSDC, user);
+        vm.startPrank(attacker);
+        router.toIdle();
+        router.toAave();
+        router.toVenus();
+        vm.stopPrank();
+        assertEq(_bal(VUSDC, user), before, "user's Venus position changed");
+        assertEq(_bal(USDC, attacker), 0, "attacker extracted USDC");
+    }
+}
