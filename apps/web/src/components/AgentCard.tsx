@@ -1,14 +1,18 @@
 import type { AgentSummary } from "@agripinaa/agent-index";
+import { MANAGED_TOKENS } from "@agripinaa/shared/contracts";
 import Link from "next/link";
 
 import { CATEGORY_INFO } from "@/lib/categories";
 import { isVerified } from "@/lib/verified";
-import { CATEGORY_ICON, VerifiedIcon } from "./icons";
+import { CATEGORY_ICON, TokenLogo, VerifiedIcon } from "./icons";
 
 export function AgentCard({ agent }: { agent: AgentSummary }) {
   const cat = agent.category ? CATEGORY_INFO[agent.category] : null;
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
   const verified = isVerified(agent.tokenId);
+  // The Harvester offers real managed funds; show which stablecoins it manages.
+  // Gated to our verified yield agent so the promise is accurate.
+  const managesFunds = verified && agent.category === "yield";
 
   return (
     <Link
@@ -56,6 +60,22 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
       <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-sm text-muted">
         {agent.description || "No description provided by this agent."}
       </p>
+
+      {managesFunds && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5">
+          <span className="flex -space-x-1.5">
+            {MANAGED_TOKENS.map((t) => (
+              <TokenLogo key={t} symbol={t} className="h-5 w-5 rounded-full ring-2 ring-surface" />
+            ))}
+          </span>
+          <span className="text-xs font-medium text-foreground">
+            Manages {MANAGED_TOKENS.join(" + ")}
+          </span>
+          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-2">
+            non-custodial
+          </span>
+        </div>
+      )}
 
       <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs">
         <Stat label="Score" value={agent.trust.totalScore != null ? String(agent.trust.totalScore) : "—"} />
