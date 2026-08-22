@@ -18,7 +18,7 @@ import {
 } from '@/lib/managed';
 import { storeSession } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
-import { CoinsIcon, LightningIcon, ShieldIcon, VerifiedIcon } from './icons';
+import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
 
@@ -203,9 +203,29 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               <h2 className="font-display text-lg font-semibold">Your managed account</h2>
               <p className="mt-1 text-sm text-muted">
                 Funds stay in a smart account secured by your passkey. {agent.name}{' '}
-                gets a scoped key that can only route your USDT between lending
+                gets a scoped key that can only route your {token} between lending
                 venues, never send it anywhere but back to you.
               </p>
+            </div>
+            <div>
+              <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Stablecoin to manage</p>
+              <div className="flex flex-wrap gap-2">
+                {MANAGED_TOKENS.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setToken(t)}
+                    aria-pressed={token === t}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                      token === t
+                        ? 'border-primary/50 bg-primary/10 text-foreground shadow-[0_0_16px_rgba(245,158,11,0.15)]'
+                        : 'border-border-strong text-muted-2 hover:border-primary/30 hover:text-foreground'
+                    }`}
+                  >
+                    <TokenLogo symbol={t} className="h-6 w-6" />
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Network</p>
@@ -224,7 +244,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               </div>
               <p className="mt-2 text-xs text-muted-2">
                 Live venue management runs on BNB Chain mainnet. Try it with a
-                few dollars of USDT.
+                few dollars of {token}.
               </p>
             </div>
             <div className="flex flex-wrap gap-3 pt-1">
@@ -253,15 +273,19 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             </div>
             <div>
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Stablecoin</p>
-              <div className="inline-flex rounded-lg border border-border-strong p-0.5">
+              <div className="flex flex-wrap gap-2">
                 {MANAGED_TOKENS.map((t) => (
                   <button
                     key={t}
                     onClick={() => setToken(t)}
-                    className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                      token === t ? 'bg-primary/15 text-primary' : 'text-muted-2 hover:text-foreground'
+                    aria-pressed={token === t}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                      token === t
+                        ? 'border-primary/50 bg-primary/10 text-foreground shadow-[0_0_16px_rgba(245,158,11,0.15)]'
+                        : 'border-border-strong text-muted-2 hover:border-primary/30 hover:text-foreground'
                     }`}
                   >
+                    <TokenLogo symbol={t} className="h-6 w-6" />
                     {t}
                   </button>
                 ))}
@@ -281,8 +305,9 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               />
             </label>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Balance label={token} value={usdtBal == null ? '…' : fmt(usdtBal)} ready={usdtReady} />
+              <Balance symbol={token} label={token} value={usdtBal == null ? '…' : fmt(usdtBal)} ready={usdtReady} />
               <Balance
+                symbol="BNB"
                 label={chainId === 97 ? 'tBNB (gas)' : 'BNB (gas)'}
                 value={fmt(nativeBal)}
                 ready={gasReady}
@@ -325,7 +350,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               <h2 className="font-display text-lg font-semibold text-success">Funds under management</h2>
             </div>
             <p className="text-sm text-muted">
-              {agent.name} now reads Venus and Aave each cycle and keeps your USDT
+              {agent.name} now reads Venus and Aave each cycle and keeps your {token}
               in the higher-yielding venue. Your funds never leave your account;
               track the position and withdraw from your dashboard.
             </p>
@@ -348,11 +373,11 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             funds to your account, never to a third party.
           </Assurance>
           <Assurance icon={<CoinsIcon className="h-5 w-5" />} title="Non-custodial">
-            Your USDT (or its aToken/vToken) always sits in your own passkey
+            Your {token} (or its aToken/vToken) always sits in your own passkey
             account. We never hold it.
           </Assurance>
           <Assurance icon={<LightningIcon className="h-5 w-5" />} title="Withdraw anytime">
-            One tap unwinds to plain USDT in your account; revoking the session
+            One tap unwinds to plain {token} in your account; revoking the session
             stops the agent instantly.
           </Assurance>
           <Assurance icon={<VerifiedIcon className="h-5 w-5" />} title="On-chain enforced">
@@ -364,10 +389,23 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   );
 }
 
-function Balance({ label, value, ready }: { label: string; value: string; ready: boolean }) {
+function Balance({
+  symbol,
+  label,
+  value,
+  ready,
+}: {
+  symbol: string;
+  label: string;
+  value: string;
+  ready: boolean;
+}) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm">
-      <span className="text-muted-2">{label}</span>
+      <span className="flex items-center gap-2 text-muted-2">
+        <TokenLogo symbol={symbol} className="h-5 w-5" />
+        {label}
+      </span>
       <span className={`tabular font-mono ${ready ? 'text-success' : 'text-muted'}`}>
         {value}
         {ready && ' ✓'}

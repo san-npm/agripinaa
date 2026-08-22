@@ -50,7 +50,7 @@ async function ActivateContent({
       </h1>
       <p className="relative z-10 mb-8 max-w-xl text-sm text-muted">
         {managedAgent
-          ? "A passkey-secured account, a USDT deposit, and one grant that lets the agent rotate your funds between lending venues, never anywhere else."
+          ? "A passkey-secured account, a USDT or USDC deposit, and one grant that lets the agent rotate your funds between lending venues, never anywhere else."
           : "Three steps: a passkey-secured account, a one-time gas top-up, and one signature granting exactly the authority you choose."}
       </p>
       {managedAgent ? (

@@ -31,3 +31,63 @@ export const CATEGORY_ICON: Record<Category, (p: IconProps) => React.ReactNode> 
   yield: YieldIcon,
   rebalancing: RangeIcon,
 };
+
+// --- Token logos (full-colour brand marks, not currentColor) ----------------
+// Self-contained SVGs so a stablecoin is identifiable at a glance. 32-unit box,
+// coloured coin + white symbol; sized by the className the caller passes.
+
+/** Tether (USDT): green coin, white ₮ (top bar + stem + crossbar). */
+export const USDTLogo = ({ className }: IconProps) => (
+  <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
+    <circle cx="16" cy="16" r="16" fill="#26A17B" />
+    <g fill="#fff">
+      <rect x="8.5" y="9" width="15" height="3.1" rx="0.6" />
+      <rect x="14.3" y="9" width="3.4" height="14" rx="0.6" />
+      <rect x="11" y="14.4" width="10" height="2.6" rx="0.6" />
+    </g>
+  </svg>
+);
+
+/** USD Coin (USDC): blue coin, white $. */
+export const USDCLogo = ({ className }: IconProps) => (
+  <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
+    <circle cx="16" cy="16" r="16" fill="#2775CA" />
+    <text
+      x="16"
+      y="16.5"
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontFamily="Arial, Helvetica, sans-serif"
+      fontSize="20"
+      fontWeight="700"
+      fill="#fff"
+    >
+      $
+    </text>
+  </svg>
+);
+
+/** BNB: gold coin, white Binance diamonds (N/E/S/W + centre). */
+export const BNBLogo = ({ className }: IconProps) => {
+  const d = (cx: number, cy: number, r: number) =>
+    `M${cx} ${cy - r}L${cx + r} ${cy}L${cx} ${cy + r}L${cx - r} ${cy}Z`;
+  return (
+    <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
+      <circle cx="16" cy="16" r="16" fill="#F0B90B" />
+      <path
+        fill="#fff"
+        d={`${d(16, 10.6, 2.6)} ${d(21.4, 16, 2.6)} ${d(16, 21.4, 2.6)} ${d(10.6, 16, 2.6)} ${d(16, 16, 2.4)}`}
+        fillRule="evenodd"
+      />
+    </svg>
+  );
+};
+
+/** Pick the logo for a token symbol (USDT/USDC/BNB/tBNB). */
+export function TokenLogo({ symbol, className }: { symbol: string; className?: string }) {
+  const s = symbol.toUpperCase();
+  if (s === "USDT") return <USDTLogo className={className} />;
+  if (s === "USDC") return <USDCLogo className={className} />;
+  if (s === "BNB" || s === "TBNB" || s === "WBNB") return <BNBLogo className={className} />;
+  return <CoinsIcon className={className} />;
+}
