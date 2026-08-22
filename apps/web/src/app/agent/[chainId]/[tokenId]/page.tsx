@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
-import { ArrowIcon, CATEGORY_ICON, VerifiedIcon } from "@/components/icons";
+import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
@@ -132,6 +132,16 @@ async function AgentContent({
             {category && (
               <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-muted">
                 {category.label}
+              </span>
+            )}
+            {verified && category && (
+              <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-muted">
+                <span className="flex -space-x-1">
+                  {category.tokens.map((t) => (
+                    <TokenLogo key={t} symbol={t} className="h-4 w-4 rounded-full ring-2 ring-surface" />
+                  ))}
+                </span>
+                {category.tokens.join(" · ")}
               </span>
             )}
           </div>
