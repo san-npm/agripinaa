@@ -22,7 +22,7 @@ import {
 } from '@/lib/managed';
 import { forgetSession, markRevoked, reviveSession, type StoredSessionMeta } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
-import { CoinsIcon } from './icons';
+import { TokenLogo } from './icons';
 
 type Validity = 'checking' | 'valid' | 'invalid' | 'unknown';
 type Busy = null | 'unwind' | 'usdt' | 'bnb' | 'revoke';
@@ -265,13 +265,13 @@ export function ManagedPositionCard({
     <li className="rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
-            <CoinsIcon className="h-5 w-5" />
+          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5">
+            <TokenLogo symbol={token} className="h-7 w-7" />
           </span>
           <div>
             <p className="font-medium">{meta.agent.name}</p>
             <p className="text-xs text-muted-2">
-              {meta.chainId === 97 ? 'BSC Testnet' : 'BNB Chain'} · managed yield
+              {meta.chainId === 97 ? 'BSC Testnet' : 'BNB Chain'} · managed {token} yield
             </p>
           </div>
         </div>
