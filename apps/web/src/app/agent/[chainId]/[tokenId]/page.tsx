@@ -10,8 +10,9 @@ import { ProofPanel } from "@/components/ProofPanel";
 import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
 import {
   ACTIVATION_BLOCKED_COPY,
+  activationBlockedReason,
+  agentConsumesSession,
   endpointIsLive,
-  isActivatable,
 } from "@/lib/activatable";
 import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
@@ -134,10 +135,12 @@ async function AgentContent({
   // hub card cannot disagree about the same agent, and the stamp below names
   // where each number actually came from.
   const trust = mergeAttestation(agent, attestation).trust;
-  const activatable = isActivatable({
+  const blocked = activationBlockedReason({
     tokenId: agent.tokenId,
     endpointLive: await endpointIsLive(agent),
+    consumesSession: agentConsumesSession(agent.tokenId),
   });
+  const blockedCopy = blocked ? ACTIVATION_BLOCKED_COPY[blocked] : null;
 
   return (
     <div className="max-w-4xl">
@@ -190,13 +193,22 @@ async function AgentContent({
             {agent.description || "No description provided by this agent."}
           </p>
         </div>
-        {activatable ? (
+        {!blockedCopy ? (
           <Link
             href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
           >
             Activate agent <ArrowIcon className="h-4 w-4" />
           </Link>
+        ) : blocked === "own-capital-only" ? (
+          // Not hireable, but observable: the execution panel below is the
+          // agent's on-chain record of what it did with its own funds.
+          <a
+            href="#execution"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+          >
+            {blockedCopy.ctaLabel} <ArrowIcon className="h-4 w-4" />
+          </a>
         ) : (
           <a
             href={bscScanAddress(agent.chainId, agent.agentWallet ?? agent.owner)}
@@ -204,14 +216,14 @@ async function AgentContent({
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/50 hover:text-primary"
           >
-            Inspect on-chain identity <ArrowIcon className="h-4 w-4" />
+            {blockedCopy.ctaLabel} <ArrowIcon className="h-4 w-4" />
           </a>
         )}
       </div>
 
-      {!activatable && (
+      {blockedCopy && (
         <p className="mt-4 max-w-2xl text-xs leading-relaxed text-muted-2">
-          {ACTIVATION_BLOCKED_COPY}
+          {blockedCopy.body}
         </p>
       )}
 
@@ -274,7 +286,8 @@ async function AgentContent({
         </div>
       )}
 
-      <div className="mt-4">
+      {/* Anchor target for the "See its execution record" CTA above. */}
+      <div id="execution" className="mt-4 scroll-mt-20">
         <Suspense
           fallback={
             <Panel title="Execution quality">

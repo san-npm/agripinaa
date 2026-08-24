@@ -1,3 +1,4 @@
+import { agentByTokenId } from "@agripinaa/shared/agents";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -7,13 +8,11 @@ import { SessionWizard } from "@/components/SessionWizard";
 import { ArrowIcon } from "@/components/icons";
 import {
   ACTIVATION_BLOCKED_COPY,
+  activationBlockedReason,
+  agentConsumesSession,
   endpointIsLive,
-  isActivatable,
 } from "@/lib/activatable";
 import { CHAIN_ID, getAgent } from "@/lib/data";
-
-/** Agent categories that manage real user funds (map to a runner agent name). */
-const MANAGED_AGENTS: Record<string, string> = { yield: "yield" };
 
 export default function ActivatePage(
   props: PageProps<"/agent/[chainId]/[tokenId]/activate">,
@@ -35,11 +34,21 @@ async function ActivateContent({
   const agent = await getAgent(tokenId);
   if (!agent) notFound();
 
-  const managedAgent = agent.category ? MANAGED_AGENTS[agent.category] : undefined;
+  // The runner agent name is the registry slug, so the wizard choice and the
+  // gate below read the same `managed` flag: an agent that consumes no session
+  // can never reach a wizard.
+  const record = agentByTokenId(agent.tokenId);
+  const managedAgent = record?.managed ? record.slug : undefined;
 
   // Deep links skip the agent page, so the gate lives here too: no wallet step
   // renders for an agent that has nothing behind it.
-  if (!isActivatable({ tokenId: agent.tokenId, endpointLive: await endpointIsLive(agent) })) {
+  const blocked = activationBlockedReason({
+    tokenId: agent.tokenId,
+    endpointLive: await endpointIsLive(agent),
+    consumesSession: agentConsumesSession(agent.tokenId),
+  });
+  if (blocked) {
+    const copy = ACTIVATION_BLOCKED_COPY[blocked];
     return (
       <div className="max-w-xl">
         <Link
@@ -49,17 +58,17 @@ async function ActivateContent({
           <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> Back to {agent.name}
         </Link>
         <div className="rounded-xl border border-border-strong bg-surface p-6">
-          <h1 className="font-display text-xl font-semibold">
-            {agent.name} cannot be activated
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-muted">
-            {ACTIVATION_BLOCKED_COPY}
-          </p>
+          <h1 className="font-display text-xl font-semibold">{copy.headline}</h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted">{copy.body}</p>
           <Link
-            href={`/agent/${agent.chainId}/${agent.tokenId}`}
+            href={
+              blocked === "own-capital-only"
+                ? `/agent/${agent.chainId}/${agent.tokenId}#execution`
+                : `/agent/${agent.chainId}/${agent.tokenId}`
+            }
             className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface-2 px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/50 hover:text-primary"
           >
-            Back to the agent page <ArrowIcon className="h-4 w-4" />
+            {copy.ctaLabel} <ArrowIcon className="h-4 w-4" />
           </Link>
         </div>
       </div>
