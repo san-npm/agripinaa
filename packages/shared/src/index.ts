@@ -1,3 +1,4 @@
+export * from './agents';
 export * from './chains';
 export * from './contracts';
 export * from './proof';
