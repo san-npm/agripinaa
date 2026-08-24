@@ -3,8 +3,10 @@
  * PancakeSwap V3 WBNB/USDT pool; execution is Ophis (CoW) swaps only.
  * Four levels each side of the first-tick center at 1.5 percent spacing,
  * $2 clips shrunk to what the spending leg can actually fund (never grown),
- * hard halts on a 6 percent trend breakout or a 5 percent inventory drawdown.
- * All sizing comes from live balances every tick.
+ * hard halts on a 5 percent inventory drawdown. The grid re-centers on the live
+ * price, up to a shared daily cap, when a breakout leaves the band or when a
+ * drifted center has gone half a day without a fill; past that cap a breakout
+ * halts. All sizing comes from live balances every tick.
  */
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { TOKENS_BSC, toBaseUnits, fromBaseUnits } from '@agripinaa/shared';
@@ -74,6 +76,14 @@ export const LOSS_FLOOR_FRACTION = 0.95;
  * forever, up to this many times per rolling day. Past the cap it halts, so a
  * sustained runaway trend still stops the agent rather than chasing it. */
 export const MAX_RECENTERS_PER_DAY = 3;
+/**
+ * How long the grid may go without a fill before a drifted center counts as
+ * stale. Twelve hours is well past the 31 minute cooldown and the 2 minute
+ * tick, so a merely quiet session never trips it, while a center the market no
+ * longer reaches is caught within half a day instead of never. Exported so it
+ * is testable and tunable in one place.
+ */
+export const STALE_RECENTER_MS = 12 * 60 * 60_000;
 const SLIPPAGE_BPS = 100;
 const FILL_HISTORY = 20;
 
@@ -148,9 +158,16 @@ export function detectCrossing(
   return { level, crossedThisTick: !isBeyond(prevPrice, level) };
 }
 
-/** All marks clear once price returns to within half a grid step of center,
+/** The band around center in which marks clear: within half a grid step,
  * boundary inclusive. Formulated without division to keep the exact boundary
- * free of float artifacts. */
+ * free of float artifacts. Shared by unmarkNearCenter and isGridStale so the
+ * two can never disagree about where the band ends. */
+export function isWithinUnmarkBand(price: number, center: number, spacing = GRID_SPACING): boolean {
+  return Math.abs(price - center) <= center * (spacing / 2);
+}
+
+/** All marks clear once price returns to within half a grid step of center,
+ * boundary inclusive. */
 export function unmarkNearCenter(
   price: number,
   center: number,
@@ -158,7 +175,66 @@ export function unmarkNearCenter(
   spacing = GRID_SPACING,
 ): string[] {
   if (crossed.length === 0) return crossed;
-  return Math.abs(price - center) <= center * (spacing / 2) ? [] : crossed;
+  return isWithinUnmarkBand(price, center, spacing) ? [] : crossed;
+}
+
+/**
+ * A center the market has left behind silences the grid permanently. Marks only
+ * clear inside the un-mark band, so once price settles between two levels with
+ * the near one marked, there is nothing left to trade and nothing that can
+ * un-mark it: the only escape is a 6 percent breakout the range will never
+ * reach. Staleness names exactly that shape, a long drought while price sits
+ * where no mark can clear, and is the signal to re-arm around the live price.
+ *
+ * A null lastFillAtMs (never filled) is NOT stale. There is no drought to
+ * measure from, and a freshly initialised grid sits on its own center by
+ * construction, so treating it as infinitely stale would re-center off the
+ * first small drift and burn the daily budget for nothing.
+ *
+ * Half the test only. It says the grid CANNOT recover on its own; pair it with
+ * isSuppressedByMark, which says there is something to recover.
+ */
+export function isGridStale(
+  nowMs: number,
+  lastFillAtMs: number | null,
+  price: number,
+  center: number,
+  staleMs = STALE_RECENTER_MS,
+  spacing = GRID_SPACING,
+): boolean {
+  if (lastFillAtMs === null) return false;
+  if (nowMs - lastFillAtMs < staleMs) return false;
+  // Inside the band the marks clear on their own next tick, so the grid is
+  // quiet rather than stuck: leave it to recover without spending budget.
+  return !isWithinUnmarkBand(price, center, spacing);
+}
+
+/**
+ * True when a mark is the only thing stopping a trade right now: price already
+ * satisfies that level, and detectCrossing skips it purely because it is
+ * marked. That is the pathology, stated exactly.
+ *
+ * This is what stops a re-center from CHASING the price, and it is not
+ * cosmetic. A drought plus an out-of-band price, on its own, also fires on a
+ * grid that is merely waiting for a 1.5 percent move; re-centering there resets
+ * the distance to the nearest level from as little as 0.75 percent back to the
+ * full 1.5 percent, pushing the next fill FURTHER away. Replaying the real BNB
+ * tape (2026-07-25 to 2026-08-24, 2 minute samples) the looser rule fires 61
+ * times in 30 days and cuts fills from 11 to 5, and over the last 7 days it
+ * spends the shared re-center budget on chasing, so the next genuine breakout
+ * finds the budget gone and halts the agent. With this condition it fires 5
+ * times and the fills survive.
+ *
+ * It strictly implies the un-mark band test, since a level sits at least a full
+ * step from center and so price beyond one is more than half a step out.
+ */
+export function isSuppressedByMark(
+  price: number,
+  levels: GridLevel[],
+  crossed: Iterable<string>,
+): boolean {
+  const marked = crossed instanceof Set ? (crossed as Set<string>) : new Set(crossed);
+  return levels.some((l) => marked.has(l.key) && isBeyond(price, l));
 }
 
 /** Fixed-notation decimal string with the given significant digits; never
@@ -381,22 +457,45 @@ async function readBalances(ctx: AgentContext): Promise<{ wbnb: bigint; usdt: bi
   return { wbnb, usdt };
 }
 
+/** Why the grid re-armed: a breakout out of the band, or a stale center the
+ * market no longer reaches. Both spend the SAME daily budget. */
+export type RecenterReason = 'breakout' | 'stale';
+
 /**
- * On a trend breakout, re-center the grid on the current price (fresh center,
- * cleared level marks, PRESERVED loss baseline) so it keeps trading around the
- * new level instead of halting forever. Returns false when the daily re-center
- * budget is spent, in which case the caller halts. The daily-loss breaker still
- * protects capital across re-centers.
+ * Re-center the grid on the current price (fresh center, cleared level marks,
+ * PRESERVED loss baseline) so it keeps trading around the live price instead of
+ * going quiet forever. Returns false when the daily re-center budget is spent.
+ *
+ * THE ONLY re-center path, and the only consumer of the 'recenter' action
+ * counter, so a breakout re-center and a stale re-center draw on one shared
+ * MAX_RECENTERS_PER_DAY allowance and can never together exceed it. Breakout is
+ * checked earlier in the tick than staleness, so on a tick where both apply the
+ * acute case takes the budget first. The daily-loss breaker still protects
+ * capital across re-centers.
  */
-export function maybeRecenter(ctx: AgentContext, price: number, inventoryNowUsd: number): boolean {
+export function maybeRecenter(
+  ctx: AgentContext,
+  price: number,
+  inventoryNowUsd: number,
+  reason: RecenterReason = 'breakout',
+  detail: Record<string, unknown> = {},
+): boolean {
   if (!ctx.breakers.allowAction('recenter', MAX_RECENTERS_PER_DAY)) return false;
+  const previousCenter = ctx.state.get<number | null>('center', null);
   ctx.state.set('center', price);
   ctx.state.set('lastPrice', price);
   ctx.state.set('crossedLevels', []);
   // Deliberately NOT resetting inventoryStartUsd: the drawdown floor stays
   // anchored to the original baseline so cumulative loss across re-centers is
   // still capped, rather than each re-center granting a fresh 5% of rope.
-  ctx.log({ event: 'grid-recenter', center: price, inventoryNowUsd });
+  ctx.log({
+    event: 'grid-recenter',
+    reason,
+    previousCenter,
+    center: price,
+    inventoryNowUsd,
+    ...detail,
+  });
   return true;
 }
 
@@ -496,6 +595,29 @@ export const gridAgent: AgentModule = {
     const hit = detectCrossing(prevPrice, price, levels, crossed);
     if (!hit) {
       // Breakout/loss halts already handled above; nothing to trade this tick.
+      // Nothing to trade for STALE_RECENTER_MS either, while a mark is sitting
+      // on a level the price already satisfies and cannot clear, means the
+      // center has drifted out of the market's reach and the grid is not quiet
+      // but dead. Re-arm it on the live price through the SAME capped path a
+      // breakout uses. BOTH conditions are required: the drought says the grid
+      // cannot recover on its own, the mark says there is something to recover.
+      // Dropping the second turns this into chasing, which measurably costs
+      // fills and eats the breakout budget (see isSuppressedByMark). Checked
+      // only in this branch, so a re-center can never pre-empt a clip that was
+      // about to trade.
+      const nowMs = Date.now();
+      const lastFillAtMs = ctx.state.get<number | null>('lastFillAt', null);
+      if (
+        lastFillAtMs !== null &&
+        isGridStale(nowMs, lastFillAtMs, price, center) &&
+        isSuppressedByMark(price, levels, crossed)
+      ) {
+        const hoursSinceLastFill = (nowMs - lastFillAtMs) / 3_600_000;
+        if (maybeRecenter(ctx, price, inventoryNowUsd, 'stale', { hoursSinceLastFill })) return;
+        // Budget spent. Fall through to the ordinary tick log rather than
+        // halting: a grid with no fills is idle, not a runaway trend, and the
+        // breakout path still owns the halt.
+      }
       ctx.log({ event: 'tick', price, center, inventoryNowUsd, crossedCount: crossed.length });
       return;
     }
