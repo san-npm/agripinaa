@@ -5,12 +5,15 @@ import { TOKENS_BSC } from '@agripinaa/shared';
 
 import {
   DAY_MS,
+  MAX_REBALANCES_PER_WEEK,
+  MIN_MINT_LEG_USD,
   OUT_OF_RANGE_EXIT_MS,
   WEEK_MS,
   computeRebalanceLeg,
   formatWholeUnits,
   isInRange,
   lpRangeAgent,
+  needsInventoryPrep,
   needsReentry,
   nextOutSince,
   pctToTickDelta,
@@ -222,21 +225,49 @@ interface LpFakeOpts {
   ownedTokenIds: string[];
   wbnbWei?: bigint;
   usdtWei?: bigint;
+  /** Breaker verdict for every allowAction call (daily caps). */
+  allowAction?: boolean;
+  initialState?: Record<string, unknown>;
 }
 
 function fakeCtx(opts: LpFakeOpts): {
   ctx: AgentContext;
   logs: Record<string, unknown>[];
   store: Map<string, unknown>;
+  /** Sell tokens handed to executeOphisSwap: one entry per swap actually attempted. */
+  swapAttempts: string[];
+  writes: { functionName: string }[];
 } {
   const store = new Map<string, unknown>([
     ['poolInfo', LIVE_POOL_INFO],
     ['position', opts.position],
+    ...Object.entries(opts.initialState ?? {}),
   ]);
   const logs: Record<string, unknown>[] = [];
+  const swapAttempts: string[] = [];
+  const writes: { functionName: string }[] = [];
   const publicClient = {
+    async waitForTransactionReceipt() {
+      return { status: 'success', logs: [] };
+    },
     async readContract(call: { address: string; functionName: string; args?: unknown[] }) {
       const { address, functionName, args } = call;
+      /*
+       * executeOphisSwap reads the sell token's decimals before it quotes, so a
+       * decimals read is the point of no return into the real swap library. Record
+       * it and stop there: the tests assert which swaps the agent decides to make,
+       * not the orderbook round trip.
+       */
+      if (functionName === 'decimals') {
+        swapAttempts.push(address.toLowerCase());
+        return Promise.reject(new Error('test stub: swap stopped before the orderbook'));
+      }
+      /* Allowances are already in place, so ensureErc20Allowance sends no approve. */
+      if (functionName === 'allowance') return BigInt(2) ** BigInt(200);
+      if (functionName === 'observe') {
+        /* A flat book: the 60s TWAP tick equals spot, so the sandwich gate opens. */
+        return [[BigInt(0), BigInt(LIVE_TICK * 60)], [BigInt(0), BigInt(0)]];
+      }
       if (functionName === 'positions') {
         const tokenId = String(args![0]);
         const liquidity = opts.liquidityByTokenId[tokenId] ?? BigInt(0);
@@ -269,12 +300,19 @@ function fakeCtx(opts: LpFakeOpts): {
       throw new Error(`unexpected read ${functionName}@${address}`);
     },
   };
+  const walletClient = {
+    chain: { id: 56 },
+    async writeContract(call: { functionName: string }) {
+      writes.push(call);
+      return '0xminttx';
+    },
+  };
   const ctx = {
     name: 'lp-range',
     chainId: 56,
     account: { address: '0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6' },
     publicClient,
-    walletClient: {},
+    walletClient,
     log: (e: Record<string, unknown>) => logs.push(e),
     state: {
       get<T>(key: string, fallback: T): T {
@@ -287,10 +325,10 @@ function fakeCtx(opts: LpFakeOpts): {
     breakers: {
       halt() {},
       isHalted: () => ({ halted: false }),
-      allowAction: () => true,
+      allowAction: () => opts.allowAction ?? true,
     },
   } as unknown as AgentContext;
-  return { ctx, logs, store };
+  return { ctx, logs, store, swapAttempts, writes };
 }
 
 test('a stored position drained to zero liquidity is treated as absent, not range-checked', async () => {
@@ -333,4 +371,151 @@ test('a stored position with live liquidity is still range-checked, never cleare
   assert.equal(check!['tokenId'], '7209976');
   assert.equal(check!['inRange'], true);
   assert.deepEqual(store.get('position'), STUCK_POSITION);
+});
+
+/* --------------------- one-sided wallet, no position ----------------------- */
+
+/*
+ * Same incident, one layer down. Clearing the emptied tokenId let the agent tell
+ * the truth but not act on it: with no position the tick called tryMint and
+ * returned, and rebalanceInventory was reachable ONLY from the rebalance branch,
+ * which needs a position to reach. The wallet left behind by the interrupted
+ * rebalance held 3.342685 USDT and 0.000206485 WBNB; after the 0.0002 WBNB gas
+ * reserve the WBNB leg is worth about $0.0039 against a $0.05 mint floor, so the
+ * agent logged mint-skipped/insufficient-leg every 10 minutes and never traded
+ * its way back into a mintable inventory.
+ */
+
+const LIVE_USDT_WEI = BigInt('3342685000000000000'); // 3.342685 USDT
+const LIVE_WBNB_WEI = BigInt('206485000000000'); // 0.000206485 WBNB
+/** Spot price the fake slot0 implies: 603.04 USDT per WBNB. */
+const LIVE_PRICE = 603.0376903689724;
+
+test('needsInventoryPrep flags a wallet that cannot fund both mint legs', () => {
+  /* The live incident: plenty of USDT, a WBNB leg worth $0.0039. */
+  assert.equal(needsInventoryPrep(0.000006485, 3.242685, LIVE_PRICE), true);
+  /* Mirror image: WBNB rich, no USDT. */
+  assert.equal(needsInventoryPrep(0.005, 0, LIVE_PRICE), true);
+  /* Both legs above the floor: nothing to prepare. */
+  assert.equal(needsInventoryPrep(0.0033, 1.99, LIVE_PRICE), false);
+  /* Exactly at the floor on both sides still mints (strict less-than). */
+  assert.equal(needsInventoryPrep(MIN_MINT_LEG_USD / LIVE_PRICE, MIN_MINT_LEG_USD, LIVE_PRICE), false);
+});
+
+test('no position and a one-sided wallet prepares inventory instead of idling', async () => {
+  const { ctx, logs, swapAttempts } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: [],
+    usdtWei: LIVE_USDT_WEI,
+    wbnbWei: LIVE_WBNB_WEI,
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  const prep = logs.find((l) => l.event === 'inventory-prep');
+  assert.ok(prep, `expected an inventory-prep event, got ${JSON.stringify(events)}`);
+  /* Half the value gap, sold from the heavy side: ~$1.61 of USDT into WBNB. */
+  assert.equal(prep!['sell'], 'USDT');
+  const notional = prep!['notionalUsd'] as number;
+  assert.ok(Math.abs(notional - 1.609) < 0.01, `unexpected prep notional ${notional}`);
+  assert.deepEqual(
+    swapAttempts,
+    [USDT.address.toLowerCase()],
+    'the prep must actually reach the swap, selling USDT',
+  );
+});
+
+test('no position and a balanced wallet mints straight away, with no swap', async () => {
+  const { ctx, logs, store, swapAttempts, writes } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    /* An NPM token with no liquidity: nothing to recover, and the id the mint
+     * receipt fallback reports once the new position is opened. */
+    ownedTokenIds: ['7300001'],
+    usdtWei: BigInt('2100000000000000000'), // 2.1 USDT
+    wbnbWei: BigInt('3500000000000000'), // 0.0035 WBNB, ~$2.11
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  assert.ok(
+    !events.some((e) => String(e).startsWith('inventory-prep')),
+    `a balanced wallet needs no prep, got ${JSON.stringify(events)}`,
+  );
+  assert.deepEqual(swapAttempts, [], 'a balanced wallet must not trade before minting');
+  const minted = logs.find((l) => l.event === 'minted');
+  assert.ok(minted, `expected a mint, got ${JSON.stringify(events)}`);
+  assert.equal(minted!['tokenId'], '7300001');
+  /* snapRange(-65620, 487, 10) around the live tick. */
+  assert.equal(minted!['tickLower'], -66110);
+  assert.equal(minted!['tickUpper'], -65130);
+  assert.deepEqual(writes.map((w) => w.functionName), ['mint']);
+  assert.equal((store.get('position') as { tokenId: string }).tokenId, '7300001');
+});
+
+test('inventory prep is refused when the daily breaker says no', async () => {
+  const { ctx, logs, swapAttempts, writes } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: [],
+    usdtWei: LIVE_USDT_WEI,
+    wbnbWei: LIVE_WBNB_WEI,
+    allowAction: false,
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  assert.ok(!events.includes('inventory-prep'), 'a blocked breaker must not swap');
+  const skipped = logs.find((l) => l.event === 'inventory-prep-skipped');
+  assert.ok(skipped, `expected inventory-prep-skipped, got ${JSON.stringify(events)}`);
+  assert.equal(skipped!['reason'], 'daily-cap');
+  assert.deepEqual(swapAttempts, []);
+  assert.deepEqual(writes, []);
+  /* Still honest about why it did not mint. */
+  assert.ok(events.includes('mint-skipped'));
+});
+
+test('inventory prep is refused when the weekly rebalance budget is spent', async () => {
+  const now = Date.now();
+  const { ctx, logs, swapAttempts } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: [],
+    usdtWei: LIVE_USDT_WEI,
+    wbnbWei: LIVE_WBNB_WEI,
+    initialState: {
+      rebalanceTimes: Array.from({ length: MAX_REBALANCES_PER_WEEK }, (_, i) => now - i * 3600_000),
+    },
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  const skipped = logs.find((l) => l.event === 'inventory-prep-skipped');
+  assert.ok(skipped, `expected inventory-prep-skipped, got ${JSON.stringify(events)}`);
+  assert.equal(skipped!['reason'], 'weekly-cap');
+  assert.deepEqual(swapAttempts, []);
+});
+
+test('inventory prep leaves a dust wallet alone rather than swapping under the min notional', async () => {
+  const { ctx, logs, swapAttempts } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: [],
+    usdtWei: BigInt('300000000000000000'), // 0.3 USDT, gap under MIN_SWAP_NOTIONAL_USD
+    wbnbWei: BigInt('0'),
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  const skipped = logs.find((l) => l.event === 'inventory-prep-skipped');
+  assert.ok(skipped, `expected inventory-prep-skipped, got ${JSON.stringify(events)}`);
+  assert.equal(skipped!['reason'], 'imbalance-under-min-notional');
+  assert.deepEqual(swapAttempts, []);
+  assert.ok(events.includes('mint-skipped'));
 });
