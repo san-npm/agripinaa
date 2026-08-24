@@ -58,6 +58,18 @@ export function shouldRebalance(
   return outSince !== null && now - outSince > thresholdMs;
 }
 
+/**
+ * A stored position whose on-chain liquidity has fallen to zero is the residue
+ * of an interrupted rebalance (liquidity removed, re-mint never completed), not
+ * a healthy position. The NFT still exists and still reports its old ticks, so a
+ * range-check against it happily answers "in range" forever while the capital
+ * sits idle in the wallet. Treat zero liquidity as "no position" so the normal
+ * recover-then-mint path takes over.
+ */
+export function needsReentry(liquidity: bigint): boolean {
+  return liquidity <= BigInt(0);
+}
+
 export interface RebalanceLeg {
   sell: 'WBNB' | 'USDT';
   amountUnits: number;
@@ -665,6 +677,25 @@ export const lpRangeAgent: AgentModule = {
     }
     let info = await resolvePool(ctx);
     let pos = ctx.state.get<PositionState | null>('position', null);
+
+    // Self-heal the other direction: state may point at a tokenId that has
+    // already been drained (a rebalance removed the liquidity and the re-mint
+    // never landed). Revalidate against the chain before trusting the stored
+    // ticks, otherwise the range-check below reports a healthy in-range
+    // position forever and the capital never gets redeployed.
+    if (pos) {
+      const onChain = await ctx.publicClient.readContract({
+        address: POSITION_MANAGER,
+        abi: NPM_ABI,
+        functionName: 'positions',
+        args: [BigInt(pos.tokenId)],
+      });
+      if (needsReentry(onChain[7])) {
+        ctx.log({ event: 'position-empty', tokenId: pos.tokenId });
+        ctx.state.set('position', null);
+        pos = null;
+      }
+    }
 
     // Self-heal (like the other agents read their position from chain): if
     // state has no position but the wallet already owns a live one for this
