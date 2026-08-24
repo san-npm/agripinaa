@@ -34,6 +34,9 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
       // stablecoin leg is USDC because that is the token its buys spend.
       ['agent-grid-b', '0.0015', '0', '0.003', '2'],
       ['agent-health-factor', '0.0011', '2', '0.005', '0'],
+      // Budgeted, not yet sent: the Venus guardian repays from a USDT budget,
+      // and the WBNB leg is what a demo borrow position would be opened against.
+      ['agent-venus-guardian', '0.0015', '2', '0.005', '0'],
       ['agent-yield', '0.0009', '2.5', '0', '0'],
       ['agent-lp-range', '0.0011', '1.5', '0.003', '0'],
       ['agent-weight-rebalancer', '0.0015', '2.5', '0.004', '0'],
