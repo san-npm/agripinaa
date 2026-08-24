@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { TOKENS_BSC } from '@agripinaa/shared';
+
 import {
   DAY_MS,
   OUT_OF_RANGE_EXIT_MS,
@@ -8,6 +10,8 @@ import {
   computeRebalanceLeg,
   formatWholeUnits,
   isInRange,
+  lpRangeAgent,
+  needsReentry,
   nextOutSince,
   pctToTickDelta,
   pruneWindow,
@@ -15,6 +19,7 @@ import {
   snapRange,
   sqrtPriceX96ToUsdtPerWbnb,
 } from '../src/agents/lp-range';
+import type { AgentContext } from '../src/types';
 
 test('pctToTickDelta converts 5% to 487 ticks', () => {
   assert.equal(pctToTickDelta(0.05), 487);
@@ -173,4 +178,159 @@ test('formatWholeUnits emits plain decimals accepted by toBaseUnits', () => {
   assert.throws(() => formatWholeUnits(0));
   assert.throws(() => formatWholeUnits(-1));
   assert.throws(() => formatWholeUnits(Number.NaN));
+});
+
+/* ------------------------- emptied-position self-heal ---------------------- */
+
+test('needsReentry flags a drained position and leaves a live one alone', () => {
+  assert.equal(needsReentry(BigInt(0)), true);
+  assert.equal(needsReentry(BigInt(1)), false);
+  assert.equal(needsReentry(BigInt('1234567890123456789')), false);
+});
+
+/*
+ * Live incident, 2026-08-22. The agent logged "Removed liquidity from position
+ * #7209976 for rebalancing" and never re-minted, then range-checked that same
+ * emptied tokenId every 10 minutes forever:
+ *   {"event":"range-check","tokenId":"7209976","currentTick":-65620,
+ *    "tickLower":-65720,"tickUpper":-64740,"inRange":true,"outSinceMs":null}
+ * All three NPM tokens the wallet held reported liquidity 0, so the agent was
+ * reporting a healthy in-range position while holding none and earning nothing.
+ * recoverPosition already refuses zero-liquidity tokens, but it only ran when
+ * state had NO position, so a stored-but-emptied tokenId was never revalidated.
+ */
+
+const POSITION_MANAGER = '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364';
+const WBNB = TOKENS_BSC['WBNB']!;
+const USDT = TOKENS_BSC['USDT']!;
+/* fee-500 WBNB/USDT pool and the tick from the stuck range-check log. */
+const LIVE_POOL_INFO = {
+  pool: '0x36696169C63e42cd08ce11f5deeBbCeBae652050',
+  fee: 500,
+  tickSpacing: 10,
+  wbnbIsToken0: false,
+};
+const LIVE_TICK = -65620;
+const LIVE_SQRT_PRICE_X96 = BigInt('3226319368666370249255859660');
+const STUCK_POSITION = { tokenId: '7209976', tickLower: -65720, tickUpper: -64740, outSince: null };
+
+interface LpFakeOpts {
+  position: typeof STUCK_POSITION | null;
+  /** tokenId -> on-chain liquidity, the field the self-heal reads. */
+  liquidityByTokenId: Record<string, bigint>;
+  /** NPM tokens the wallet owns, oldest first (recoverPosition walks newest first). */
+  ownedTokenIds: string[];
+  wbnbWei?: bigint;
+  usdtWei?: bigint;
+}
+
+function fakeCtx(opts: LpFakeOpts): {
+  ctx: AgentContext;
+  logs: Record<string, unknown>[];
+  store: Map<string, unknown>;
+} {
+  const store = new Map<string, unknown>([
+    ['poolInfo', LIVE_POOL_INFO],
+    ['position', opts.position],
+  ]);
+  const logs: Record<string, unknown>[] = [];
+  const publicClient = {
+    async readContract(call: { address: string; functionName: string; args?: unknown[] }) {
+      const { address, functionName, args } = call;
+      if (functionName === 'positions') {
+        const tokenId = String(args![0]);
+        const liquidity = opts.liquidityByTokenId[tokenId] ?? BigInt(0);
+        /* nonce, operator, token0, token1, fee, tickLower, tickUpper, liquidity, ... */
+        return [
+          BigInt(0),
+          '0x0000000000000000000000000000000000000000',
+          USDT.address,
+          WBNB.address,
+          LIVE_POOL_INFO.fee,
+          STUCK_POSITION.tickLower,
+          STUCK_POSITION.tickUpper,
+          liquidity,
+          BigInt(0),
+          BigInt(0),
+          BigInt(0),
+          BigInt(0),
+        ];
+      }
+      if (functionName === 'balanceOf' && address.toLowerCase() === POSITION_MANAGER.toLowerCase())
+        return BigInt(opts.ownedTokenIds.length);
+      if (functionName === 'tokenOfOwnerByIndex')
+        return BigInt(opts.ownedTokenIds[Number(args![1])]!);
+      if (functionName === 'balanceOf' && address.toLowerCase() === WBNB.address.toLowerCase())
+        return opts.wbnbWei ?? BigInt(0);
+      if (functionName === 'balanceOf' && address.toLowerCase() === USDT.address.toLowerCase())
+        return opts.usdtWei ?? BigInt(0);
+      if (functionName === 'slot0')
+        return [LIVE_SQRT_PRICE_X96, LIVE_TICK, 0, 0, 0, 0, true];
+      throw new Error(`unexpected read ${functionName}@${address}`);
+    },
+  };
+  const ctx = {
+    name: 'lp-range',
+    chainId: 56,
+    account: { address: '0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6' },
+    publicClient,
+    walletClient: {},
+    log: (e: Record<string, unknown>) => logs.push(e),
+    state: {
+      get<T>(key: string, fallback: T): T {
+        return (store.has(key) ? store.get(key) : fallback) as T;
+      },
+      set(key: string, value: unknown) {
+        store.set(key, value);
+      },
+    },
+    breakers: {
+      halt() {},
+      isHalted: () => ({ halted: false }),
+      allowAction: () => true,
+    },
+  } as unknown as AgentContext;
+  return { ctx, logs, store };
+}
+
+test('a stored position drained to zero liquidity is treated as absent, not range-checked', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    position: { ...STUCK_POSITION },
+    /* All three wallet NFTs empty, exactly as the chain reported. */
+    liquidityByTokenId: {},
+    ownedTokenIds: ['7173629', '7191882', '7209976'],
+    usdtWei: BigInt('3340000000000000000'), // the ~3.34 USDT left idle
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  const empty = logs.find((l) => l.event === 'position-empty');
+  assert.ok(empty, `expected a position-empty event, got ${JSON.stringify(events)}`);
+  assert.equal(empty!['tokenId'], '7209976');
+  assert.equal(store.get('position'), null, 'the emptied tokenId must be cleared from state');
+  assert.ok(
+    !events.includes('range-check'),
+    'an emptied position must never be reported as in range',
+  );
+  /* Same tick continues into the recover-then-mint path instead of idling. */
+  assert.ok(events.includes('mint-skipped'), `expected the mint path to run, got ${JSON.stringify(events)}`);
+});
+
+test('a stored position with live liquidity is still range-checked, never cleared', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    position: { ...STUCK_POSITION },
+    liquidityByTokenId: { '7209976': BigInt('1000000000000000') },
+    ownedTokenIds: ['7209976'],
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  assert.ok(!events.includes('position-empty'), 'a funded position must not be cleared');
+  const check = logs.find((l) => l.event === 'range-check');
+  assert.ok(check, `expected a range-check event, got ${JSON.stringify(events)}`);
+  assert.equal(check!['tokenId'], '7209976');
+  assert.equal(check!['inRange'], true);
+  assert.deepEqual(store.get('position'), STUCK_POSITION);
 });
