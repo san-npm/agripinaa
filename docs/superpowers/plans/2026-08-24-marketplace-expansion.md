@@ -1094,6 +1094,37 @@ Side effect worth knowing for Task 18: adding capital without resetting `invento
 
 ---
 
+## Verification sweep, 2026-08-24 (five independent lenses)
+
+Run at the owner's request across codex, the pashov solidity-auditor, and three Trail of Bits passes (differential-review, insecure-defaults, semgrep plus sharp-edges). Semgrep returned 0 findings with a live positive control; it could not parse the shell scripts, which were read by hand instead.
+
+**Fixed and deployed (VM at `368e1b3`, verified booting with the live position #7248592 still managed):**
+
+- **SSRF guard bypass, permissionlessly reachable.** `assertSafeUrl` ACCEPTED `https://[::ffff:169.254.169.254]`, `[::ffff:127.0.0.1]`, `[::ffff:10.0.0.1]` and `[febf::1]`. The WHATWG parser rewrites an embedded IPv4 tail to hex, so `[::ffff:127.0.0.1]` arrives as `[::ffff:7f00:1]`; stripping `::ffff:` left `7f00:1`, matching no dotted-quad test, and `assertResolvedHostPublic` returns early for colon-bearing literals so DNS could not catch it either. Only `fe80:` was blocked while link-local is `fe80::/10`. This is the guard `safeFetchJson` uses for ERC-8004 `tokenURI`s, which ANYONE can register, so no compromised component was needed. Fixed by expanding the literal into eight groups and classifying structurally.
+- **Orphaned LP principal, a regression introduced by `b41cdf8`.** `needsReentry` read only `liquidity`, ignoring `tokensOwed0/1` at indices 10 and 11. A failed `collect` left principal in `tokensOwed`, our self-heal nulled the stored id, and `recoverPosition` requires `liquidity > 0`, so it could never be re-adopted. Permanent loss, no attacker. Note: the subagent that wrote `b41cdf8` flagged this in its own report and it was not acted on until an independent review ranked it merge-blocker number one.
+- **Published cap was not binding.** `prepareInventory` checked `rebalanceTimes` but never appended, so the weekly ceiling was 14 against the `maxRebalancesPerWeek: 4` served at a permanent ERC-8004 tokenURI. Fixed with a shared `weeklyBudget` over both windows, keeping `status()` reporting position rebalances separately.
+- **Missing TWAP gate** on the prep swap, the only `rebalanceInventory` caller outside it.
+- **Donated-NFT pool downgrade.** `recoverPosition` adopted any WBNB/USDT position with liquidity and persisted a repointed `poolInfo`; the fee-10000 pool holds about $14, so an attacker could donate a position there and move the reference pool somewhere cheap to manipulate. Worse than first stated: `resolvePool` returns persisted `poolInfo` unconditionally, so a repoint moved mints too, not just range-checks. Fixed by adopting only agent-minted ids, with #7248592 seeded explicitly so the live position survives.
+- **Manager-key primary decoupled** from the display-ordered `MANAGED_TOKENS`, where a cosmetic reorder would have silently rotated on-chain key identity. `chainId` was deliberately NOT added to the derivation tag after measuring that it moves the USDC child address and would orphan live mandates.
+- **Activation gated on session consumption, not ownership.** `apps/agents/src` never reads stored sessions and only `yield` has `managed: true`, so activating Grid, Guardian or Ranger granted a session key nothing consumes. Task 8 asked "is this ours?" when the question is "will anything act on this?".
+
+**Router audit (pashov, on the live BSC deployments).** No High or Critical. The L-1 delta fix is sound, verified rather than assumed: both deployments' runtime bytecode matched the compiled source, 10 fork tests passed, Echidna and Medusa each completed 60,000-case campaigns with both properties holding, and 30-day fork tests confirmed yield reaches the user while donated aTokens and vTokens stay untouched.
+
+One **Medium (confidence 90)** with a working PoC: `_unwindAllToUsdt` removes the user's receipt token from its lending venue, and if that token secures live debt in the same venue, a compromised session key can strip it while the account is barely solvent and liquidate after an adverse oracle move. PoC: $1,000 aUSDT plus $2,000 WBNB against $1,390 USDC debt, health factor 1.4784 to 1.0792 on the forced rotation, to 0.9173 after a 15 percent WBNB move, attacker profit about $125. The fuzz harness could never find this: its mocks have no collateral flags, debt, oracle, health factor, or liquidation.
+
+**No user is exposed today** (checked on-chain: the single live managed account has zero debt in both venues and has entered no Venus market as collateral). Two consequences: the security write-up in Task 28 must state the precondition rather than claiming a compromised key cannot cost a user value, and the structural fix is a guarded redeploy, which is the OWNER'S CALL since the routers are immutable and a redeploy means new addresses, fresh approvals, and migrating the live mandate. The cheap mitigation is refusing activation for accounts carrying venue debt.
+
+**Still queued, not yet fixed:**
+
+1. **Redirects bypass the SSRF guard (codex, High).** `proof.ts` `getRunnerEvents` and both `api/managed/[agent]/*` routes use raw `fetch` with default redirect following, so redirect hops get no scheme, DNS or private-address validation, unlike `safeFetchJson` which revalidates per hop. A hostile tunnel can answer `302 Location: http://169.254.169.254/...` and the public proxy reflects the body.
+2. **Runner base fails open** to a `trycloudflare.com` hostname the project cannot reserve, confirmed live: production resolves through the committed constant because neither `AGENTS_BASE_URL` nor KV is set, and `/api/ops/runner-url` 404s since that work is branch-only. Empirically, the hostname in `ops/tunnel-url.txt` from 08-18 no longer resolves while the committed one serves 200, so these names do die. `fetchManagerKey` then accepts `body.address` with no `isAddress` check, and that address becomes the session grantee.
+3. **Response size limits are applied after buffering** (`text()`/`arrayBuffer()`), so a large body exhausts memory before rejection. The proof fetch has no cap at all.
+4. **Manifest route resolves `runnerBase()` before validating the slug**, so `/manifests/<random>` burns a credentialed KV command per request.
+5. **`report-runner-url.sh` can publish the previous dead URL** by accepting the first match in a ten-minute journal window after a restart.
+6. Ops hardening: `grep -q` accepts multi-line values in both curl-config validators, `ops.env` is not chmodded, SSH is trust-on-first-use on the connection that ships wallet keys, and `chassis.ts` writes state at default umask while wallets are 0600.
+
+---
+
 # Phase 2: Add-agent scaffold and four new agents
 
 ## Task 10: The shared agent registry
