@@ -21,6 +21,7 @@ import type { AgentContext, AgentModule } from './types';
 import { gridAgent } from './agents/grid';
 import { gridBAgent } from './agents/grid-b';
 import { healthFactorAgent } from './agents/health-factor';
+import { venusGuardianAgent } from './agents/venus-guardian';
 import { yieldAgent } from './agents/yield';
 import { lpRangeAgent } from './agents/lp-range';
 import { weightRebalancerAgent } from './agents/weight-rebalancer';
@@ -29,6 +30,7 @@ const ALL: AgentModule[] = [
   gridAgent,
   gridBAgent,
   healthFactorAgent,
+  venusGuardianAgent,
   yieldAgent,
   lpRangeAgent,
   weightRebalancerAgent,

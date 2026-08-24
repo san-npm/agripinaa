@@ -31,6 +31,7 @@ export type AgentSlug =
   | 'grid'
   | 'grid-b'
   | 'health-factor'
+  | 'venus-guardian'
   | 'yield'
   | 'lp-range'
   | 'weight-rebalancer';
@@ -258,6 +259,53 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         note: 'HF pushed to 1.25, agent repaid to 1.60 in ~62s, unattended',
       },
     ],
+  },
+  /*
+   * Configured, not yet on-chain, same as grid-b: Task 17 fills in the wallet,
+   * token id, registration and attestation once the owner has signed off on the
+   * display name (PROVISIONAL below) and released the funding.
+   */
+  'venus-guardian': {
+    slug: 'venus-guardian',
+    tokenId: null,
+    name: 'Agripinaa Venus Guardian',
+    category: 'health-factor',
+    wallet: null,
+    walletFile: 'agent-venus-guardian.json',
+    managed: false,
+    backfillOphisTrades: false,
+    manifest: {
+      name: 'Agripinaa Venus Guardian',
+      description:
+        'Liquidation protection for Venus borrow positions on BSC. Reads collateral, debt, and the live market collateral factor every minute, derives the health factor Venus does not publish, and repays USDT from its own budget to lift the position back to 1.6 before liquidation can trigger. Repay only: it never borrows, never withdraws collateral, and never exits a market.',
+      category: 'health-factor',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['monitoring', 'x402-status'],
+      execution: { protocol: 'venus', chainId: 56 },
+      /*
+       * The numbers the tick enforces, pinned to the module's constants by
+       * tests/venus-guardian.test.ts. The two prose entries carry what a number
+       * cannot: where the health factor comes from (Venus publishes a shortfall,
+       * not a ratio) and what happens when the repay budget runs out.
+       */
+      safety: {
+        actions: ['repay'],
+        warnHF: 1.5,
+        actHF: 1.3,
+        targetHF: 1.6,
+        maxRepaysPerDay: 6,
+        tickSeconds: 60,
+        healthFactorSource:
+          'derived from collateral value, borrow value and the collateral factor read live from Comptroller.markets on every tick, because Venus reports liquidity and shortfall rather than a ratio; the derivation is cross-checked against that shortfall each tick',
+        onBudgetExhausted:
+          'the agent keeps monitoring and keeps reporting; it never sells or withdraws collateral to fund a repay',
+      },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    funding: { bnb: '0.0015', usdt: '2', wbnb: '0.005' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
   },
   yield: {
     slug: 'yield',
