@@ -18,11 +18,14 @@ import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { tickManagedYield } from './managed-runner';
 import { startX402Server, type ManagerIdentity, type ManagerSet } from './x402-server';
 import type { AgentContext, AgentModule } from './types';
+import { policyForAgent } from './yield-policy';
+import type { ManagedPolicy } from './agents/yield';
 import { gridAgent } from './agents/grid';
 import { gridBAgent } from './agents/grid-b';
 import { healthFactorAgent } from './agents/health-factor';
 import { venusGuardianAgent } from './agents/venus-guardian';
 import { yieldAgent } from './agents/yield';
+import { yieldBAgent } from './agents/yield-b';
 import { lpRangeAgent } from './agents/lp-range';
 import { weightRebalancerAgent } from './agents/weight-rebalancer';
 
@@ -32,6 +35,7 @@ const ALL: AgentModule[] = [
   healthFactorAgent,
   venusGuardianAgent,
   yieldAgent,
+  yieldBAgent,
   lpRangeAgent,
   weightRebalancerAgent,
 ];
@@ -139,9 +143,23 @@ async function main() {
   // cosmetic reorder there used to move the master key off USDT, which would
   // strand every live USDT mandate at the executor's signer check.
   const managers = new Map<string, ManagerSet>();
-  const managerKeySets = new Map<string, ManagerKeySet>();
+  const managerKeySets = new Map<string, { keySet: ManagerKeySet; policy: ManagedPolicy }>();
   for (const name of MANAGED_AGENTS) {
     if (!agents.has(name)) continue;
+    // More than one agent manages funds on the same router, and the policy is
+    // the whole difference between them. An agent with no policy of its own is
+    // left unserviced (the deposit simply stays where it is) rather than being
+    // run on another agent's, which would silently give a depositor the agent
+    // they did not choose.
+    const policy = policyForAgent(name);
+    if (!policy) {
+      agents.get(name)!.ctx.log({
+        event: 'managed-disabled',
+        level: 'warn',
+        reason: `no rotation policy registered for ${name}; add one in src/yield-policy.ts`,
+      });
+      continue;
+    }
     const keySet = buildManagerKeySet(name, MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN);
     if (!keySet) {
       agents.get(name)!.ctx.log({
@@ -156,7 +174,7 @@ async function main() {
       master: { publicKey: keySet.master.publicKey, address: keySet.master.address },
       byToken,
     });
-    managerKeySets.set(name, keySet);
+    managerKeySets.set(name, { keySet, policy });
   }
 
   startX402Server({ port: PORT, facilitatorKey: privateKey, agents, managers });
@@ -167,7 +185,7 @@ async function main() {
 
   if (managerKeySets.size > 0) {
     const client = createAltanaClient();
-    for (const [name, keySet] of managerKeySets) {
+    for (const [name, { keySet, policy }] of managerKeySets) {
       const ctx = agents.get(name)!.ctx;
       let running = false;
       const loop = async () => {
@@ -175,7 +193,12 @@ async function main() {
         if (ctx.breakers.isHalted().halted) return;
         running = true;
         try {
-          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKeys: keySet });
+          const { serviced, errors } = await tickManagedYield({
+            ctx,
+            client,
+            managerKeys: keySet,
+            policy,
+          });
           if (serviced > 0 || errors > 0) {
             ctx.log({ event: 'managed-sweep', serviced, errors });
           }

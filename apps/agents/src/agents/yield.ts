@@ -59,8 +59,8 @@ const RAY = BigInt(10) ** BigInt(27);
 const YEAR_SECONDS = 365 * 24 * 3600;
 
 // Kept liquid for x402 demo payments, per spec.
-const RESERVE_WEI = toBaseUnits('0.1', USDT.decimals);
-const DUST_WEI = toBaseUnits('0.01', USDT.decimals);
+export const RESERVE_WEI = toBaseUnits('0.1', USDT.decimals);
+export const DUST_WEI = toBaseUnits('0.01', USDT.decimals);
 
 export const HYSTERESIS_BPS = 50;
 export const REQUIRED_STREAK = 2;
@@ -157,7 +157,7 @@ export function decideRotation(input: RotationInput): RotationDecision {
 // Chain reads
 // ---------------------------------------------------------------------------
 
-interface Rates {
+export interface Rates {
   venusBps: number;
   aaveBps: number;
   blocksPerYear: number;
@@ -165,7 +165,7 @@ interface Rates {
   aaveLiquidityRate: string;
 }
 
-type Reader = Pick<PublicClient, 'getBlock' | 'readContract'>;
+export type Reader = Pick<PublicClient, 'getBlock' | 'readContract'>;
 
 /** The Venus/Aave addresses for one managed token. Own-capital mode uses USDT. */
 export interface Venues {
@@ -175,7 +175,7 @@ export interface Venues {
 }
 const USDT_VENUES: Venues = { token: USDT.address, vToken: VENUS_VUSDT, aavePool: AAVE_POOL };
 
-async function readRates(client: Reader, venues: Venues = USDT_VENUES): Promise<Rates> {
+export async function readRates(client: Reader, venues: Venues = USDT_VENUES): Promise<Rates> {
   const latest = await client.getBlock();
   const span = 5000;
   const older = await client.getBlock({
@@ -206,14 +206,14 @@ async function readRates(client: Reader, venues: Venues = USDT_VENUES): Promise<
   };
 }
 
-interface Position {
+export interface Position {
   walletUsdtWei: bigint;
   venusUnderlyingWei: bigint;
   aaveATokenWei: bigint;
   chainVenue: Venue;
 }
 
-async function readPosition(
+export async function readPosition(
   client: Reader,
   self: `0x${string}`,
   venues: Venues = USDT_VENUES,
@@ -302,7 +302,7 @@ async function supplyVenus(ctx: AgentContext, amountWei: bigint): Promise<void> 
   });
 }
 
-async function withdrawVenus(ctx: AgentContext): Promise<void> {
+export async function withdrawVenus(ctx: AgentContext): Promise<void> {
   // Redeeming the full vToken balance (not redeemUnderlying) exits exactly,
   // leaving no interest-accrual dust behind.
   const vTokenBalance = await ctx.publicClient.readContract({
@@ -349,7 +349,7 @@ async function supplyAave(ctx: AgentContext, amountWei: bigint): Promise<void> {
   });
 }
 
-async function withdrawAave(ctx: AgentContext): Promise<void> {
+export async function withdrawAave(ctx: AgentContext): Promise<void> {
   // maxUint256 tells the pool to withdraw the full aToken balance including
   // interest accrued in the same block.
   const hash = await ctx.walletClient.writeContract({
@@ -365,19 +365,19 @@ async function withdrawAave(ctx: AgentContext): Promise<void> {
   ctx.log({ event: 'withdraw', venue: 'aave', txHash: hash });
 }
 
-async function supplyTo(ctx: AgentContext, venue: 'venus' | 'aave', amountWei: bigint): Promise<void> {
+export async function supplyTo(ctx: AgentContext, venue: 'venus' | 'aave', amountWei: bigint): Promise<void> {
   if (venue === 'venus') await supplyVenus(ctx, amountWei);
   else await supplyAave(ctx, amountWei);
 }
 
-function recordMove(ctx: AgentContext): void {
+export function recordMove(ctx: AgentContext): void {
   const now = Date.now();
   const dayAgo = now - 24 * 3600 * 1000;
   const moves = ctx.state.get<number[]>('moves', []).filter((t) => t > dayAgo);
   ctx.state.set('moves', [...moves, now]);
 }
 
-function movesToday(ctx: AgentContext): number {
+export function movesToday(ctx: AgentContext): number {
   const dayAgo = Date.now() - 24 * 3600 * 1000;
   return ctx.state.get<number[]>('moves', []).filter((t) => t > dayAgo).length;
 }
@@ -516,9 +516,34 @@ export const yieldAgent: AgentModule = {
 // agent process without cross-talk.
 // ---------------------------------------------------------------------------
 
+/**
+ * How ONE managed agent decides to rotate a mandate. Everything else about the
+ * managed path is shared (same reads, same router, same per-account state
+ * namespacing), so this is the whole difference between two agents competing
+ * for the same deposits.
+ *
+ * Defaulted to the incumbent's live behaviour, so `yield` is unchanged: same
+ * gate, same 50 bps hysteresis, same two confirmations, same one rotation per
+ * rolling day, and no minimum interval on top.
+ */
+export interface ManagedPolicy {
+  decide(input: RotationInput): RotationDecision;
+  /** Shortest gap between two rotations of one mandate. 0 disables the floor. */
+  minRotationIntervalMs: number;
+  /** Ceiling inside the breakers' rolling 24 hour window. */
+  maxRotationsPerDay: number;
+}
+
+export const DEFAULT_MANAGED_POLICY: ManagedPolicy = {
+  decide: decideRotation,
+  minRotationIntervalMs: 0,
+  maxRotationsPerDay: 1,
+};
+
 export async function managedYieldTick(
   ctx: AgentContext,
   executor: ManagedExecutor,
+  policy: ManagedPolicy = DEFAULT_MANAGED_POLICY,
 ): Promise<void> {
   const acct = executor.account;
   // Namespace strategy state by (account, token) so a USDT mandate's hysteresis
@@ -574,7 +599,7 @@ export async function managedYieldTick(
     return;
   }
 
-  const decision = decideRotation({
+  const decision = policy.decide({
     venue,
     venusBps: rates.venusBps,
     aaveBps: rates.aaveBps,
@@ -586,13 +611,33 @@ export async function managedYieldTick(
     ctx.log({ ...base, event: 'managed-tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak });
     return;
   }
-  if (!ctx.breakers.allowAction(ns('rotate'), 1)) {
+  // The floor is checked BEFORE the daily counter so a refused rotation costs
+  // no slot, and it applies only here: an idle deposit is put to work on the
+  // first tick regardless, since this bounds churn between venues, not entry.
+  const now = Date.now();
+  const sinceLastRotateMs = now - ctx.state.get<number>(ns('lastRotateAt'), 0);
+  if (policy.minRotationIntervalMs > 0 && sinceLastRotateMs < policy.minRotationIntervalMs) {
+    ctx.log({
+      ...base,
+      event: 'managed-tick',
+      decision: 'rotate-cooldown',
+      target: decision.target,
+      edgeBps: decision.edgeBps,
+      sinceLastRotateMs,
+      minRotationIntervalMs: policy.minRotationIntervalMs,
+    });
+    return;
+  }
+  if (!ctx.breakers.allowAction(ns('rotate'), policy.maxRotationsPerDay)) {
     ctx.log({ ...base, event: 'managed-tick', decision: 'rotate-capped', target: decision.target, edgeBps: decision.edgeBps });
     return;
   }
   // One router call rotates: it unwinds the current venue and supplies the
   // target in a single tx, leaving the position token in the user's account.
   const action = decision.target === 'venus' ? 'toVenus' : 'toAave';
+  // Anchored before the call, so a crash inside the execute window cannot let
+  // the next tick fire a second rotation against a mandate already moving.
+  ctx.state.set(ns('lastRotateAt'), now);
   const res = await executor.execute(action);
   ctx.state.set(ns('venue'), decision.target);
   ctx.log({ ...base, event: 'managed-tick', decision: 'rotate', from: venue, to: decision.target, action, edgeBps: decision.edgeBps, txHash: res.txHash, status: res.status });
