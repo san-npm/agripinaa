@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN } from '@agripinaa/shared';
 
+import { assertModulesRegistered, MANAGED_AGENT_SLUGS } from './agent-config';
 import { buildContext } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
@@ -24,7 +25,7 @@ import { lpRangeAgent } from './agents/lp-range';
 
 const ALL: AgentModule[] = [gridAgent, healthFactorAgent, yieldAgent, lpRangeAgent];
 /** Agents that can manage user funds (grant a scoped session to their manager key). */
-const MANAGED_AGENTS = ['yield'] as const;
+const MANAGED_AGENTS = MANAGED_AGENT_SLUGS;
 const PORT = Number(process.env.AGENTS_PORT ?? 4410);
 /** Managed accounts are serviced faster than own-capital (6h) so deposits deploy promptly. */
 const MANAGED_TICK_MS = Number(process.env.AGENTS_MANAGED_TICK_MS ?? 5 * 60_000);
@@ -82,6 +83,10 @@ function acquireRunLock(): string {
 }
 
 async function main() {
+  // Before anything acquires a lock, opens a port, or signs: a module with no
+  // registry record has no token id, no manifest, and no proof-feed identity,
+  // so it would trade with nothing on the marketplace pointing at it.
+  assertModulesRegistered(ALL);
   acquireRunLock();
   const modules = selectedModules();
   const agents = new Map<string, { module: AgentModule; ctx: AgentContext }>();
