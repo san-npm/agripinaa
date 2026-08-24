@@ -18,6 +18,7 @@ import {
   FUNDING_PLAN,
   MANAGED_AGENT_SLUGS,
   assertModulesRegistered,
+  isUnprovisioned,
   manifestUrl,
   preflightManifest,
   preflightManifests,
@@ -29,6 +30,9 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
     FUNDING_PLAN.map((e) => [e.name, e.bnb, e.usdt, e.wbnb, e.usdc]),
     [
       ['agent-grid', '0.0011', '5', '0.004', '0'],
+      // Budgeted, not yet sent: grid-b holds no wallet to send to. Its
+      // stablecoin leg is USDC because that is the token its buys spend.
+      ['agent-grid-b', '0.0015', '0', '0.003', '2'],
       ['agent-health-factor', '0.0011', '2', '0.005', '0'],
       ['agent-yield', '0.0009', '2.5', '0', '0'],
       ['agent-lp-range', '0.0011', '1.5', '0.003', '0'],
@@ -80,6 +84,7 @@ test('the runner boot guard accepts the registered strategy slugs', () => {
   assert.doesNotThrow(() =>
     assertModulesRegistered([
       { name: 'grid' },
+      { name: 'grid-b' },
       { name: 'health-factor' },
       { name: 'yield' },
       { name: 'lp-range' },
@@ -89,9 +94,21 @@ test('the runner boot guard accepts the registered strategy slugs', () => {
 
 test('the runner boot guard rejects a module with no registry record', () => {
   assert.throws(
-    () => assertModulesRegistered([{ name: 'grid' }, { name: 'grid-b' }]),
-    /agent module "grid-b" has no record/,
+    () => assertModulesRegistered([{ name: 'grid' }, { name: 'grid-c' }]),
+    /agent module "grid-c" has no record/,
   );
+});
+
+test('an agent with no wallet yet is unprovisioned, and one with a key is not', () => {
+  // The runner skips an unprovisioned agent instead of dying at boot: a record
+  // can exist before `fund --gen` creates its key, and one such agent must not
+  // take every other agent's tick loop down with it.
+  assert.equal(isUnprovisioned({ wallet: null }, false), true);
+  assert.equal(isUnprovisioned({ wallet: null }, true), false);
+  // A record that names a wallet is provisioned, so a missing key file is a
+  // real failure and must still surface (buildContext throws on it).
+  assert.equal(isUnprovisioned(AGENTS.grid, false), false);
+  assert.equal(isUnprovisioned(AGENTS['grid-b'], false), true);
 });
 
 test('manifest urls are the ones the minted tokenURIs already point at', () => {

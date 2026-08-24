@@ -15,9 +15,13 @@ export interface ProofAgent {
   backfillOphisTrades: boolean;
 }
 
-/** Registered agents only: no token id means nothing to attribute a proof to. */
+/**
+ * Registered agents only: no token id means nothing to attribute a proof to,
+ * and no wallet means there is no settlement history to attribute in the first
+ * place (a record can exist before `fund --gen` creates its key).
+ */
 function toProofAgent(record: AgentRecord): ProofAgent | null {
-  if (record.tokenId === null) return null;
+  if (record.tokenId === null || record.wallet === null) return null;
   return {
     slug: record.slug,
     tokenId: record.tokenId,

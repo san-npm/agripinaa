@@ -18,11 +18,27 @@ test('the four live agents are listed, keyed by token id', () => {
 
 test('each listing carries the registration, attestation, and execution proof', () => {
   for (const record of Object.values(AGENTS)) {
-    const listed = VERIFIED_AGENTS[record.tokenId!];
+    if (record.tokenId == null) continue; // configured, not yet registered
+    const listed = VERIFIED_AGENTS[record.tokenId];
     assert.ok(listed, `${record.slug} is missing from the verified listing`);
     assert.equal(listed.registrationTx, record.registrationTx);
     assert.deepEqual(listed.attestation, record.attestation);
     assert.deepEqual(listed.proofs, record.proofs);
+  }
+});
+
+test('an agent that is only configured earns no verified badge', () => {
+  // Adding a record must not put a badge on the marketplace before the
+  // on-chain artifacts that badge stands for exist.
+  const configured = Object.values(AGENTS).filter((record) => record.tokenId == null);
+  assert.ok(configured.length > 0, 'no unregistered agent to check');
+  assert.equal(VERIFIED_IDS.length, Object.values(AGENTS).length - configured.length);
+  for (const record of configured) {
+    assert.equal(isVerified(record.slug), false);
+    assert.ok(
+      !Object.values(VERIFIED_AGENTS).some((listed) => listed.name === record.name),
+      `${record.slug} appears in the verified listing`,
+    );
   }
 });
 
