@@ -58,16 +58,39 @@ export function shouldRebalance(
   return outSince !== null && now - outSince > thresholdMs;
 }
 
+/** The three balance fields of a V3 position that say where the capital is. */
+export interface PositionBalances {
+  liquidity: bigint;
+  tokensOwed0: bigint;
+  tokensOwed1: bigint;
+}
+
 /**
  * A stored position whose on-chain liquidity has fallen to zero is the residue
  * of an interrupted rebalance (liquidity removed, re-mint never completed), not
  * a healthy position. The NFT still exists and still reports its old ticks, so a
  * range-check against it happily answers "in range" forever while the capital
- * sits idle in the wallet. Treat zero liquidity as "no position" so the normal
- * recover-then-mint path takes over.
+ * sits idle in the wallet. Treat a genuinely empty position as "no position" so
+ * the normal recover-then-mint path takes over.
+ *
+ * Empty means zero liquidity AND nothing owed. Liquidity alone is not the test:
+ * decreaseLiquidity moves the principal into tokensOwed0/1, where it sits until
+ * collect runs. Between those two calls the position reads liquidity 0 while
+ * holding every token the agent owns, so dropping the tokenId on liquidity
+ * alone strands the principal in an NFT nothing in the loop looks at again.
  */
-export function needsReentry(liquidity: bigint): boolean {
-  return liquidity <= BigInt(0);
+export function needsReentry(balances: PositionBalances): boolean {
+  return (
+    balances.liquidity <= BigInt(0) &&
+    balances.tokensOwed0 <= BigInt(0) &&
+    balances.tokensOwed1 <= BigInt(0)
+  );
+}
+
+/** Liquidity gone, principal or fees still parked in the NFT: collect before
+ * the tokenId may be let go. */
+export function needsCollect(balances: PositionBalances): boolean {
+  return balances.liquidity <= BigInt(0) && !needsReentry(balances);
 }
 
 /**
@@ -113,6 +136,53 @@ export function computeRebalanceLeg(
 export function pruneWindow(timestamps: number[], now: number, windowMs: number): number[] {
   const cutoff = now - windowMs;
   return timestamps.filter((t) => t > cutoff);
+}
+
+export interface WeeklyBudget {
+  /** Position rebalances still inside the window. */
+  rebalances: number[];
+  /** Inventory-prep swaps still inside the window. */
+  preps: number[];
+  used: number;
+  exhausted: boolean;
+}
+
+/**
+ * ONE weekly budget shared by both swap paths.
+ *
+ * The manifest served at this agent's permanent ERC-8004 tokenURI promises
+ * maxRebalancesPerWeek: 4, and a caller that checks a budget it never
+ * contributes to does not bind it: the inventory-prep path read the rebalance
+ * window, refused at the ceiling, and then never recorded, so its real ceiling
+ * was the daily breaker alone (2 a day, 14 a week). Both paths now spend from
+ * this budget and both record into it.
+ *
+ * The two windows stay separate so status() can keep reporting position
+ * rebalances as position rebalances: a prep swap neither opens nor closes a
+ * position, and counting it as churn would misreport the strategy.
+ */
+export function weeklyBudget(
+  rebalanceTimes: number[],
+  prepTimes: number[],
+  now: number,
+  max: number = MAX_REBALANCES_PER_WEEK,
+): WeeklyBudget {
+  const rebalances = pruneWindow(rebalanceTimes, now, WEEK_MS);
+  const preps = pruneWindow(prepTimes, now, WEEK_MS);
+  const used = rebalances.length + preps.length;
+  return { rebalances, preps, used, exhausted: used >= max };
+}
+
+/** How many past mints the agent remembers; adoption never looks further back. */
+export const MINTED_HISTORY_LIMIT = 50;
+
+/** Append a tokenId to the minted history, newest last, without duplicates. */
+export function rememberTokenId(
+  known: readonly string[],
+  tokenId: string,
+  limit: number = MINTED_HISTORY_LIMIT,
+): string[] {
+  return [...known.filter((id) => id !== tokenId), tokenId].slice(-limit);
 }
 
 /** Both pool tokens are 18 decimals, so the raw ratio needs no decimal scaling. */
@@ -248,6 +318,37 @@ interface PendingOrder {
   sellAmountWei: string;
   preSellBalanceWei: string;
   placedAt: number;
+}
+
+/*
+ * Positions this agent minted before it began recording its own mints
+ * (2026-08-24). Adoption is now restricted to ids in this seed plus whatever
+ * the agent mints from here on, because anyone may transfer an NPM token to the
+ * agent's EOA: the fee-10000 WBNB/USDT pool holds around $14 of depth, so a
+ * donated position in it would otherwise repoint the reference pool onto a book
+ * cheap enough to skew.
+ *
+ * Only #7248592 is seeded. It is the live position (minted 2026-08-24, the
+ * mint the runner logged after the inventory-prep order filled) and state
+ * written by an older build carries no minted history, so without the seed a
+ * state loss would leave it unadoptable. The three positions the wallet held
+ * before it (7173629, 7191882, 7209976) read liquidity 0 and owe 0 tokens, so
+ * there is nothing in them left to manage and no reason to widen the seed.
+ */
+const LEGACY_MINTED_TOKEN_IDS: readonly string[] = ['7248592'];
+
+function knownMintedTokenIds(ctx: AgentContext): Set<string> {
+  return new Set([
+    ...LEGACY_MINTED_TOKEN_IDS,
+    ...ctx.state.get<string[]>('mintedTokenIds', []),
+  ]);
+}
+
+function recordMintedTokenId(ctx: AgentContext, tokenId: string): void {
+  ctx.state.set(
+    'mintedTokenIds',
+    rememberTokenId(ctx.state.get<string[]>('mintedTokenIds', []), tokenId),
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -419,8 +520,14 @@ async function findMintedTokenId(ctx: AgentContext, logs: Log[]): Promise<bigint
 /**
  * Adopt an existing on-chain position for this pair when state has none
  * (e.g. after a host migration wiped local state). Scans the wallet's NPM
- * tokens, newest first, and returns the first with live liquidity whose
- * token pair and fee match the reference pool.
+ * tokens, newest first, and returns the first the agent itself minted whose
+ * token pair matches and which still holds capital (live liquidity, or tokens
+ * owed awaiting a collect).
+ *
+ * Ownership is NOT the adoption test. An NPM token can be transferred to this
+ * EOA by anyone, and adopting a stranger's position persists its pool as the
+ * reference pool for range-checks, exits and mints, which is a cheap way to
+ * move the agent onto a thin book. Only the agent's own mints are adopted.
  */
 async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<PositionState | null> {
   const balance = await ctx.publicClient.readContract({
@@ -430,6 +537,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
     args: [ctx.account.address],
   });
   const pair = new Set([WBNB.address.toLowerCase(), USDT.address.toLowerCase()]);
+  const minted = knownMintedTokenIds(ctx);
   for (let i = balance - BigInt(1); i >= BigInt(0); i -= BigInt(1)) {
     const tokenId = await ctx.publicClient.readContract({
       address: POSITION_MANAGER,
@@ -437,18 +545,26 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
       functionName: 'tokenOfOwnerByIndex',
       args: [ctx.account.address, i],
     });
+    if (!minted.has(tokenId.toString())) {
+      ctx.log({ event: 'position-ignored', tokenId: tokenId.toString(), reason: 'not-minted-by-agent' });
+      if (i === BigInt(0)) break;
+      continue;
+    }
     const p = await ctx.publicClient.readContract({
       address: POSITION_MANAGER,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
     });
-    const [, , token0, token1, fee, tickLower, tickUpper, liquidity] = p;
+    const [, , token0, token1, fee, tickLower, tickUpper, liquidity, , , tokensOwed0, tokensOwed1] = p;
+    const holdsCapital = !needsReentry({ liquidity, tokensOwed0, tokensOwed1 });
     // Match on the token PAIR, not the fee tier: a live position from before
     // a reference-pool change must still be managed (in its own pool) rather
     // than abandoned. Repoint poolInfo to the position's pool so range-check
-    // and exit use the right tick; new mints still pick the deepest pool.
-    if (liquidity > BigInt(0) && pair.has(token0.toLowerCase()) && pair.has(token1.toLowerCase())) {
+    // and exit use the right tick. This is safe only because the candidate is
+    // one of the agent's own mints; resolvePool returns the persisted value
+    // from here on, so an adopted pool becomes the pool new mints use too.
+    if (holdsCapital && pair.has(token0.toLowerCase()) && pair.has(token1.toLowerCase())) {
       if (fee !== info.fee) {
         const pool = await ctx.publicClient.readContract({
           address: EXPECTED_FACTORY,
@@ -552,6 +668,9 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
       tickUpper,
       outSince: null,
     };
+    /* Recorded before the position itself: recovery may only adopt what the
+     * agent minted, so an id that reaches state must already be in the list. */
+    recordMintedTokenId(ctx, position.tokenId);
     ctx.state.set('position', position);
     ctx.log({
       event: 'minted',
@@ -638,6 +757,61 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
   }
 }
 
+type Settlement = 'keep' | 'released' | 'retry';
+
+/**
+ * Revalidate a position against the chain before the tick trusts its stored
+ * ticks, and make sure nothing is let go while it still holds capital.
+ *
+ * 'keep'     live liquidity, manage it normally.
+ * 'released' nothing left in the NFT, state cleared, the tick may re-mint.
+ * 'retry'    liquidity gone but tokens still owed and the collect did not land.
+ *            The tokenId stays in state so the next tick collects it. The tick
+ *            must stand down rather than range-check a drained position, which
+ *            would report "in range" forever (the 2026-08-22 incident).
+ */
+async function settlePosition(
+  ctx: AgentContext,
+  pos: PositionState,
+  info: PoolInfo,
+): Promise<Settlement> {
+  const onChain = await ctx.publicClient.readContract({
+    address: POSITION_MANAGER,
+    abi: NPM_ABI,
+    functionName: 'positions',
+    args: [BigInt(pos.tokenId)],
+  });
+  const balances: PositionBalances = {
+    liquidity: onChain[7],
+    tokensOwed0: onChain[10],
+    tokensOwed1: onChain[11],
+  };
+  if (needsCollect(balances)) {
+    /* decreaseLiquidity landed, collect did not (reverted, or its receipt timed
+     * out). The principal is parked in the NFT: sweep it before the tokenId may
+     * be dropped, because recovery would never look at an id state forgot. */
+    ctx.log({
+      event: 'position-uncollected',
+      tokenId: pos.tokenId,
+      tokensOwed0: balances.tokensOwed0.toString(),
+      tokensOwed1: balances.tokensOwed1.toString(),
+    });
+    if (!(await exitPosition(ctx, pos, info))) {
+      ctx.log({ event: 'position-sweep-deferred', tokenId: pos.tokenId });
+      return 'retry';
+    }
+    ctx.log({ event: 'position-swept', tokenId: pos.tokenId });
+    ctx.state.set('position', null);
+    return 'released';
+  }
+  if (needsReentry(balances)) {
+    ctx.log({ event: 'position-empty', tokenId: pos.tokenId });
+    ctx.state.set('position', null);
+    return 'released';
+  }
+  return 'keep';
+}
+
 async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<void> {
   const { wbnbBal, usdtBal, usdtPerWbnb: price } = await readInventory(ctx, info);
   const leg = computeRebalanceLeg(
@@ -704,10 +878,11 @@ async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<vo
  * out and just logged mint-skipped/insufficient-leg every tick.
  *
  * This adds no trading budget. The swap is the same 50/50 leg under the same
- * min-notional floor, refuses to stack on a live order, spends from the SAME
- * daily 'rebalance' allowance, and stands down once the weekly rebalance budget
- * is used up. It deliberately does not RECORD a rebalance: it neither opens nor
- * closes a position, so counting it would misreport churn in status().
+ * min-notional floor and the same TWAP gate, refuses to stack on a live order,
+ * spends from the SAME daily 'rebalance' allowance, and spends from and records
+ * into the same weekly budget (see weeklyBudget). Its record goes in a separate
+ * window so status() still reports position rebalances as position rebalances:
+ * a prep swap neither opens nor closes a position.
  */
 async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void> {
   /* A second order on top of an unfilled one would sell the same side twice. */
@@ -739,15 +914,28 @@ async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void
     return;
   }
 
+  /* The prep swap is sized from spot price, so it is sandwichable exactly like
+   * the mint and the exit it sits between. Same gate as its siblings. */
+  if (!(await twapAligned(ctx, info.pool, inv.tick))) {
+    ctx.log({ event: 'inventory-prep-skipped', reason: 'twap-deviation' });
+    return;
+  }
+
   const now = Date.now();
-  const weekly = pruneWindow(ctx.state.get<number[]>('rebalanceTimes', []), now, WEEK_MS);
-  if (weekly.length >= MAX_REBALANCES_PER_WEEK) {
+  const budget = weeklyBudget(
+    ctx.state.get<number[]>('rebalanceTimes', []),
+    ctx.state.get<number[]>('inventoryPrepTimes', []),
+    now,
+  );
+  if (budget.exhausted) {
     ctx.log({
       event: 'inventory-prep-skipped',
       reason: 'weekly-cap',
-      rebalancesThisWeek: weekly.length,
+      rebalancesThisWeek: budget.rebalances.length,
+      inventoryPrepsThisWeek: budget.preps.length,
     });
-    ctx.state.set('rebalanceTimes', weekly);
+    ctx.state.set('rebalanceTimes', budget.rebalances);
+    ctx.state.set('inventoryPrepTimes', budget.preps);
     return;
   }
   if (!ctx.breakers.allowAction('rebalance', 2)) {
@@ -755,6 +943,9 @@ async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void
     return;
   }
 
+  /* Committed: recorded before the swap, so a failure still costs budget and
+   * the published weekly ceiling stays an upper bound rather than a target. */
+  ctx.state.set('inventoryPrepTimes', [...budget.preps, now]);
   ctx.log({
     event: 'inventory-prep',
     sell: leg.sell,
@@ -794,27 +985,25 @@ export const lpRangeAgent: AgentModule = {
     // ticks, otherwise the range-check below reports a healthy in-range
     // position forever and the capital never gets redeployed.
     if (pos) {
-      const onChain = await ctx.publicClient.readContract({
-        address: POSITION_MANAGER,
-        abi: NPM_ABI,
-        functionName: 'positions',
-        args: [BigInt(pos.tokenId)],
-      });
-      if (needsReentry(onChain[7])) {
-        ctx.log({ event: 'position-empty', tokenId: pos.tokenId });
-        ctx.state.set('position', null);
-        pos = null;
-      }
+      const settled = await settlePosition(ctx, pos, info);
+      if (settled === 'retry') return;
+      if (settled === 'released') pos = null;
     }
 
     // Self-heal (like the other agents read their position from chain): if
-    // state has no position but the wallet already owns a live one for this
-    // pair, adopt it rather than minting a duplicate and stranding the old.
+    // state has no position but the wallet already owns one of the agent's own
+    // mints that still holds capital, adopt it rather than minting a duplicate
+    // and stranding the old. Revalidate it too: recovery also adopts a position
+    // whose liquidity is gone but whose tokens are still owed, and that one
+    // needs a collect, not a range-check.
     if (!pos) {
       pos = await recoverPosition(ctx, info);
       if (pos) {
         ctx.state.set('position', pos);
         info = await resolvePool(ctx); // recovery may have repointed the pool
+        const settled = await settlePosition(ctx, pos, info);
+        if (settled === 'retry') return;
+        if (settled === 'released') pos = null;
       }
     }
 
@@ -845,10 +1034,20 @@ export const lpRangeAgent: AgentModule = {
 
     if (!shouldRebalance(outSince, now)) return;
 
-    const weekly = pruneWindow(ctx.state.get<number[]>('rebalanceTimes', []), now, WEEK_MS);
-    if (weekly.length >= MAX_REBALANCES_PER_WEEK) {
-      ctx.log({ event: 'rebalance-skipped', reason: 'weekly-cap', rebalancesThisWeek: weekly.length });
-      ctx.state.set('rebalanceTimes', weekly);
+    const budget = weeklyBudget(
+      ctx.state.get<number[]>('rebalanceTimes', []),
+      ctx.state.get<number[]>('inventoryPrepTimes', []),
+      now,
+    );
+    if (budget.exhausted) {
+      ctx.log({
+        event: 'rebalance-skipped',
+        reason: 'weekly-cap',
+        rebalancesThisWeek: budget.rebalances.length,
+        inventoryPrepsThisWeek: budget.preps.length,
+      });
+      ctx.state.set('rebalanceTimes', budget.rebalances);
+      ctx.state.set('inventoryPrepTimes', budget.preps);
       return;
     }
     if (!ctx.breakers.allowAction('rebalance', 2)) {
@@ -857,7 +1056,7 @@ export const lpRangeAgent: AgentModule = {
     }
 
     /* Committed: count it even if a later step fails, so caps stay conservative. */
-    ctx.state.set('rebalanceTimes', [...weekly, now]);
+    ctx.state.set('rebalanceTimes', [...budget.rebalances, now]);
     ctx.log({ event: 'rebalance-start', tokenId: pos.tokenId, currentTick: slot0.tick });
 
     const exited = await exitPosition(ctx, pos, info);
@@ -876,7 +1075,12 @@ export const lpRangeAgent: AgentModule = {
   async status(ctx) {
     const now = Date.now();
     const pos = ctx.state.get<PositionState | null>('position', null);
-    const weekly = pruneWindow(ctx.state.get<number[]>('rebalanceTimes', []), now, WEEK_MS);
+    const budget = weeklyBudget(
+      ctx.state.get<number[]>('rebalanceTimes', []),
+      ctx.state.get<number[]>('inventoryPrepTimes', []),
+      now,
+    );
+    const weekly = budget.rebalances;
     let currentTick: number | null = null;
     try {
       const info = await resolvePool(ctx);
@@ -896,6 +1100,11 @@ export const lpRangeAgent: AgentModule = {
         pos?.outSince != null ? Math.round((now - pos.outSince) / 60000) : null,
       rebalancesToday: pruneWindow(weekly, now, DAY_MS).length,
       rebalancesThisWeek: weekly.length,
+      /* Prep swaps are reported apart from position rebalances (they open and
+       * close nothing) but they spend the same published weekly budget. */
+      inventoryPrepsThisWeek: budget.preps.length,
+      weeklyBudgetUsed: budget.used,
+      weeklyBudgetMax: MAX_REBALANCES_PER_WEEK,
       halted: halted.halted,
     };
   },

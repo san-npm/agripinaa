@@ -7,20 +7,24 @@ import {
   DAY_MS,
   MAX_REBALANCES_PER_WEEK,
   MIN_MINT_LEG_USD,
+  MINTED_HISTORY_LIMIT,
   OUT_OF_RANGE_EXIT_MS,
   WEEK_MS,
   computeRebalanceLeg,
   formatWholeUnits,
   isInRange,
   lpRangeAgent,
+  needsCollect,
   needsInventoryPrep,
   needsReentry,
   nextOutSince,
   pctToTickDelta,
   pruneWindow,
+  rememberTokenId,
   shouldRebalance,
   snapRange,
   sqrtPriceX96ToUsdtPerWbnb,
+  weeklyBudget,
 } from '../src/agents/lp-range';
 import type { AgentContext } from '../src/types';
 
@@ -185,10 +189,40 @@ test('formatWholeUnits emits plain decimals accepted by toBaseUnits', () => {
 
 /* ------------------------- emptied-position self-heal ---------------------- */
 
+const EMPTY_BALANCES = { liquidity: BigInt(0), tokensOwed0: BigInt(0), tokensOwed1: BigInt(0) };
+
 test('needsReentry flags a drained position and leaves a live one alone', () => {
-  assert.equal(needsReentry(BigInt(0)), true);
-  assert.equal(needsReentry(BigInt(1)), false);
-  assert.equal(needsReentry(BigInt('1234567890123456789')), false);
+  assert.equal(needsReentry(EMPTY_BALANCES), true);
+  assert.equal(needsReentry({ ...EMPTY_BALANCES, liquidity: BigInt(1) }), false);
+  assert.equal(
+    needsReentry({ ...EMPTY_BALANCES, liquidity: BigInt('1234567890123456789') }),
+    false,
+  );
+});
+
+/*
+ * decreaseLiquidity moves the principal into tokensOwed0/1 and leaves liquidity
+ * at 0. If the collect that follows reverts or its receipt times out, the
+ * position reads "no liquidity" while holding every token the agent owns.
+ * Judging emptiness on liquidity alone therefore drops the tokenId from state,
+ * and recoverPosition (which also needs something left in the NFT) can never
+ * re-adopt it: the principal is orphaned with no attacker involved.
+ */
+test('needsReentry keeps a position that still owes tokens', () => {
+  assert.equal(needsReentry({ ...EMPTY_BALANCES, tokensOwed0: BigInt(1) }), false);
+  assert.equal(needsReentry({ ...EMPTY_BALANCES, tokensOwed1: BigInt(1) }), false);
+  assert.equal(
+    needsReentry({ liquidity: BigInt(0), tokensOwed0: BigInt('3342685000000000000'), tokensOwed1: BigInt(0) }),
+    false,
+  );
+});
+
+test('needsCollect separates "sweep me" from "empty" and from "live"', () => {
+  assert.equal(needsCollect(EMPTY_BALANCES), false);
+  assert.equal(needsCollect({ ...EMPTY_BALANCES, tokensOwed0: BigInt(1) }), true);
+  assert.equal(needsCollect({ ...EMPTY_BALANCES, tokensOwed1: BigInt(1) }), true);
+  /* Fees owed on a live position are collected by the normal exit, not swept. */
+  assert.equal(needsCollect({ liquidity: BigInt(5), tokensOwed0: BigInt(1), tokensOwed1: BigInt(1) }), false);
 });
 
 /*
@@ -217,16 +251,28 @@ const LIVE_TICK = -65620;
 const LIVE_SQRT_PRICE_X96 = BigInt('3226319368666370249255859660');
 const STUCK_POSITION = { tokenId: '7209976', tickLower: -65720, tickUpper: -64740, outSince: null };
 
+/** A shallow fee-10000 book, the kind an adopted stranger position points at. */
+const THIN_POOL = '0xdEaD00000000000000000000000000000000dEaD';
+
 interface LpFakeOpts {
   position: typeof STUCK_POSITION | null;
   /** tokenId -> on-chain liquidity, the field the self-heal reads. */
   liquidityByTokenId: Record<string, bigint>;
+  /** tokenId -> [tokensOwed0, tokensOwed1], where principal sits after a
+   * decreaseLiquidity whose collect has not landed. */
+  tokensOwedByTokenId?: Record<string, [bigint, bigint]>;
+  /** tokenId -> fee tier, for positions that do not belong to the reference pool. */
+  feeByTokenId?: Record<string, number>;
   /** NPM tokens the wallet owns, oldest first (recoverPosition walks newest first). */
   ownedTokenIds: string[];
   wbnbWei?: bigint;
   usdtWei?: bigint;
   /** Breaker verdict for every allowAction call (daily caps). */
   allowAction?: boolean;
+  /** 60s TWAP tick the pool reports; defaults to spot, so the gate opens. */
+  twapTick?: number;
+  /** Write calls whose receipt comes back reverted, by function name. */
+  revertedWrites?: string[];
   initialState?: Record<string, unknown>;
 }
 
@@ -247,8 +293,12 @@ function fakeCtx(opts: LpFakeOpts): {
   const swapAttempts: string[] = [];
   const writes: { functionName: string }[] = [];
   const publicClient = {
-    async waitForTransactionReceipt() {
-      return { status: 'success', logs: [] };
+    async waitForTransactionReceipt({ hash }: { hash: string }) {
+      /* writeContract encodes the function name into the hash, so a test can
+       * fail one specific call (a collect that reverts) and not the others. */
+      const fn = hash.replace(/^0x/, '');
+      const status = opts.revertedWrites?.includes(fn) ? 'reverted' : 'success';
+      return { status, logs: [] };
     },
     async readContract(call: { address: string; functionName: string; args?: unknown[] }) {
       const { address, functionName, args } = call;
@@ -265,28 +315,36 @@ function fakeCtx(opts: LpFakeOpts): {
       /* Allowances are already in place, so ensureErc20Allowance sends no approve. */
       if (functionName === 'allowance') return BigInt(2) ** BigInt(200);
       if (functionName === 'observe') {
-        /* A flat book: the 60s TWAP tick equals spot, so the sandwich gate opens. */
-        return [[BigInt(0), BigInt(LIVE_TICK * 60)], [BigInt(0), BigInt(0)]];
+        /* Flat by default: the 60s TWAP tick equals spot, so the sandwich gate
+         * opens. A twapTick opt skews it the way a sandwich would. */
+        const twap = opts.twapTick ?? LIVE_TICK;
+        return [[BigInt(0), BigInt(twap * 60)], [BigInt(0), BigInt(0)]];
       }
       if (functionName === 'positions') {
         const tokenId = String(args![0]);
         const liquidity = opts.liquidityByTokenId[tokenId] ?? BigInt(0);
-        /* nonce, operator, token0, token1, fee, tickLower, tickUpper, liquidity, ... */
+        const [owed0, owed1] = opts.tokensOwedByTokenId?.[tokenId] ?? [BigInt(0), BigInt(0)];
+        /* nonce, operator, token0, token1, fee, tickLower, tickUpper, liquidity,
+         * feeGrowthInside0, feeGrowthInside1, tokensOwed0, tokensOwed1 */
         return [
           BigInt(0),
           '0x0000000000000000000000000000000000000000',
           USDT.address,
           WBNB.address,
-          LIVE_POOL_INFO.fee,
+          opts.feeByTokenId?.[tokenId] ?? LIVE_POOL_INFO.fee,
           STUCK_POSITION.tickLower,
           STUCK_POSITION.tickUpper,
           liquidity,
           BigInt(0),
           BigInt(0),
-          BigInt(0),
-          BigInt(0),
+          owed0,
+          owed1,
         ];
       }
+      /* Only reached when a position sits in a pool other than the reference
+       * one, i.e. when recoverPosition is about to repoint poolInfo. */
+      if (functionName === 'getPool') return THIN_POOL;
+      if (functionName === 'tickSpacing') return 200;
       if (functionName === 'balanceOf' && address.toLowerCase() === POSITION_MANAGER.toLowerCase())
         return BigInt(opts.ownedTokenIds.length);
       if (functionName === 'tokenOfOwnerByIndex')
@@ -304,7 +362,7 @@ function fakeCtx(opts: LpFakeOpts): {
     chain: { id: 56 },
     async writeContract(call: { functionName: string }) {
       writes.push(call);
-      return '0xminttx';
+      return `0x${call.functionName}`;
     },
   };
   const ctx = {
@@ -499,6 +557,243 @@ test('inventory prep is refused when the weekly rebalance budget is spent', asyn
   assert.ok(skipped, `expected inventory-prep-skipped, got ${JSON.stringify(events)}`);
   assert.equal(skipped!['reason'], 'weekly-cap');
   assert.deepEqual(swapAttempts, []);
+});
+
+/* ------------------- uncollected principal must not be dropped ------------- */
+
+/*
+ * The exit is two transactions: decreaseLiquidity, then collect. Between them
+ * the principal sits in tokensOwed0/1 with liquidity at 0. A collect that
+ * reverts (or whose receipt times out) leaves the position exactly there, so a
+ * self-heal that reads liquidity only would clear the stored tokenId, and the
+ * NFT holding the money would never be looked at again.
+ */
+
+const OWED_USDT = BigInt('3342685000000000000');
+const OWED_WBNB = BigInt('5500000000000000');
+
+test('a position with zero liquidity but tokens still owed is collected before it is let go', async () => {
+  const { ctx, logs, store, writes } = fakeCtx({
+    position: { ...STUCK_POSITION },
+    liquidityByTokenId: {},
+    tokensOwedByTokenId: { '7209976': [OWED_USDT, OWED_WBNB] },
+    ownedTokenIds: ['7209976'],
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  assert.ok(
+    !events.includes('position-empty'),
+    `a position still owing tokens is not empty, got ${JSON.stringify(events)}`,
+  );
+  const uncollected = logs.find((l) => l.event === 'position-uncollected');
+  assert.ok(uncollected, `expected position-uncollected, got ${JSON.stringify(events)}`);
+  assert.equal(uncollected!['tokensOwed0'], OWED_USDT.toString());
+  assert.deepEqual(
+    writes.map((w) => w.functionName),
+    ['collect'],
+    'the owed principal must be collected, and with no liquidity left there is nothing to decrease',
+  );
+  assert.ok(events.includes('position-swept'));
+  /* Only once the collect landed may the tokenId be released. */
+  assert.equal(store.get('position'), null);
+});
+
+test('an uncollected position stays stored when the collect fails, so it can be retried', async () => {
+  const { ctx, logs, store, writes } = fakeCtx({
+    position: { ...STUCK_POSITION },
+    liquidityByTokenId: {},
+    tokensOwedByTokenId: { '7209976': [OWED_USDT, OWED_WBNB] },
+    ownedTokenIds: ['7209976'],
+    revertedWrites: ['collect'],
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  assert.ok(events.includes('collect-reverted'));
+  assert.ok(events.includes('position-sweep-deferred'));
+  assert.ok(!events.includes('position-empty'), 'a failed collect must not orphan the principal');
+  assert.deepEqual(
+    store.get('position'),
+    STUCK_POSITION,
+    'the tokenId must survive in state, otherwise nothing can ever reach the owed tokens again',
+  );
+  /* And it must not be range-checked either: it holds no liquidity. */
+  assert.ok(!events.includes('range-check'));
+  assert.deepEqual(writes.map((w) => w.functionName), ['collect']);
+});
+
+/* --------------------- one weekly budget for both paths -------------------- */
+
+test('weeklyBudget counts both windows against the published ceiling', () => {
+  const now = 10 * WEEK_MS;
+  const budget = weeklyBudget([now - DAY_MS, now - 2 * DAY_MS], [now - 3 * DAY_MS], now);
+  assert.equal(budget.rebalances.length, 2);
+  assert.equal(budget.preps.length, 1);
+  assert.equal(budget.used, 3);
+  assert.equal(budget.exhausted, false);
+  const full = weeklyBudget([now - DAY_MS, now - 2 * DAY_MS], [now - 3 * DAY_MS, now - 4 * DAY_MS], now);
+  assert.equal(full.used, MAX_REBALANCES_PER_WEEK);
+  assert.equal(full.exhausted, true);
+  /* Entries outside the week do not count, in either window. */
+  const stale = weeklyBudget([now - 2 * WEEK_MS], [now - 2 * WEEK_MS], now);
+  assert.equal(stale.used, 0);
+});
+
+/*
+ * prepareInventory checked rebalanceTimes and refused at the ceiling, but only
+ * wrote the pruned array back inside the refusal branch: passing the check
+ * recorded nothing. Its real ceiling was the daily breaker alone, 2 a day and
+ * so 14 a week, against the maxRebalancesPerWeek: 4 published at the agent's
+ * permanent ERC-8004 tokenURI.
+ */
+test('inventory prep spends the weekly budget it checks, so the published cap binds', async () => {
+  const { ctx, logs, swapAttempts } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: [],
+    usdtWei: LIVE_USDT_WEI,
+    wbnbWei: LIVE_WBNB_WEI,
+  });
+
+  for (let i = 0; i < MAX_REBALANCES_PER_WEEK + 1; i += 1) {
+    await lpRangeAgent.tick(ctx);
+  }
+
+  assert.equal(
+    swapAttempts.length,
+    MAX_REBALANCES_PER_WEEK,
+    `the prep path must stop at the weekly ceiling, it swapped ${swapAttempts.length} times`,
+  );
+  const capped = logs.filter((l) => l.event === 'inventory-prep-skipped' && l['reason'] === 'weekly-cap');
+  assert.equal(capped.length, 1, 'the tick past the ceiling must be refused, not swapped');
+  assert.equal(capped[0]!['inventoryPrepsThisWeek'], MAX_REBALANCES_PER_WEEK);
+  /* Position rebalances stay reported apart from prep swaps. */
+  assert.equal(capped[0]!['rebalancesThisWeek'], 0);
+  const status = await lpRangeAgent.status(ctx);
+  assert.equal(status['rebalancesThisWeek'], 0);
+  assert.equal(status['inventoryPrepsThisWeek'], MAX_REBALANCES_PER_WEEK);
+  assert.equal(status['weeklyBudgetUsed'], MAX_REBALANCES_PER_WEEK);
+});
+
+/* ------------------------- prep swap under the TWAP gate ------------------- */
+
+/*
+ * tryMint and exitPosition both refuse to act while spot has been pushed away
+ * from the 60s TWAP. The prep swap sits between them, is sized from the same
+ * unguarded spot price, and had no gate at all.
+ */
+test('inventory prep stands down while spot price is skewed from the TWAP', async () => {
+  const { ctx, logs, swapAttempts } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: [],
+    usdtWei: LIVE_USDT_WEI,
+    wbnbWei: LIVE_WBNB_WEI,
+    twapTick: LIVE_TICK + 500, // 5x the 100-tick tolerance
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  const skipped = logs.find((l) => l.event === 'inventory-prep-skipped');
+  assert.ok(skipped, `expected inventory-prep-skipped, got ${JSON.stringify(events)}`);
+  assert.equal(skipped!['reason'], 'twap-deviation');
+  assert.deepEqual(swapAttempts, [], 'a skewed book must not size a swap');
+  /* The budget is untouched: a deferred action costs nothing. */
+  assert.equal((await lpRangeAgent.status(ctx))['weeklyBudgetUsed'], 0);
+});
+
+/* ---------------- adoption is restricted to the agent's own mints ---------- */
+
+test('rememberTokenId keeps the newest ids, without duplicates', () => {
+  assert.deepEqual(rememberTokenId([], '1'), ['1']);
+  assert.deepEqual(rememberTokenId(['1', '2'], '3'), ['1', '2', '3']);
+  assert.deepEqual(rememberTokenId(['1', '2'], '1'), ['2', '1']);
+  const many = Array.from({ length: MINTED_HISTORY_LIMIT + 5 }, (_, i) => String(i));
+  const capped = rememberTokenId(many, 'x');
+  assert.equal(capped.length, MINTED_HISTORY_LIMIT);
+  assert.equal(capped.at(-1), 'x');
+});
+
+/*
+ * Anyone can transfer a PancakeSwap V3 position NFT to the agent's EOA.
+ * recoverPosition adopted any WBNB/USDT position the wallet held with live
+ * liquidity, and when the fee tier differed it PERSISTED a repointed poolInfo,
+ * which resolvePool then returns for every later tick: range-checks, exits and
+ * new mints all move to the donated position's pool. The fee-10000 WBNB/USDT
+ * book holds around $14 of depth, so the donation costs an attacker almost
+ * nothing and buys a reference price that is cheap to skew.
+ */
+test('a donated position is never adopted and never repoints the reference pool', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    position: null,
+    liquidityByTokenId: { '9999001': BigInt('1000000000000000') },
+    feeByTokenId: { '9999001': 10000 },
+    /* The donated NFT, plus an old drained one of the agent's own. */
+    ownedTokenIds: ['9999001', '7300001'],
+    usdtWei: BigInt('2100000000000000000'),
+    wbnbWei: BigInt('3500000000000000'),
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  assert.ok(
+    !events.includes('position-recovered'),
+    `a position the agent never minted must not be adopted, got ${JSON.stringify(events)}`,
+  );
+  const ignored = logs.find((l) => l.event === 'position-ignored');
+  assert.ok(ignored, `expected position-ignored, got ${JSON.stringify(events)}`);
+  assert.equal(ignored!['reason'], 'not-minted-by-agent');
+  assert.deepEqual(
+    store.get('poolInfo'),
+    LIVE_POOL_INFO,
+    'the reference pool must stay the deepest pool the agent selected',
+  );
+  /* It mints its own position instead of managing a stranger's. */
+  assert.ok(events.includes('minted'));
+  assert.equal((store.get('position') as { tokenId: string }).tokenId, '7300001');
+});
+
+/*
+ * Migration guard. #7248592 was minted on 2026-08-24, before the agent started
+ * recording its own mints, and it is the live position: it must keep being
+ * managed under the minted-id restriction.
+ */
+test('the live position 7248592 is still adopted when state has no position', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    position: null,
+    liquidityByTokenId: { '7248592': BigInt('2451189888573570005') },
+    ownedTokenIds: ['7248592'],
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  const events = logs.map((l) => l.event);
+  const recovered = logs.find((l) => l.event === 'position-recovered');
+  assert.ok(recovered, `expected position-recovered, got ${JSON.stringify(events)}`);
+  assert.equal(recovered!['tokenId'], '7248592');
+  assert.equal((store.get('position') as { tokenId: string }).tokenId, '7248592');
+  const check = logs.find((l) => l.event === 'range-check');
+  assert.ok(check, 'the recovered live position must be range-checked as usual');
+  assert.equal(check!['tokenId'], '7248592');
+});
+
+test('a position the agent mints is remembered, so it can be adopted after a state loss', async () => {
+  const { ctx, store } = fakeCtx({
+    position: null,
+    liquidityByTokenId: {},
+    ownedTokenIds: ['7300001'],
+    usdtWei: BigInt('2100000000000000000'),
+    wbnbWei: BigInt('3500000000000000'),
+  });
+
+  await lpRangeAgent.tick(ctx);
+
+  assert.deepEqual(store.get('mintedTokenIds'), ['7300001']);
 });
 
 test('inventory prep leaves a dust wallet alone rather than swapping under the min notional', async () => {
