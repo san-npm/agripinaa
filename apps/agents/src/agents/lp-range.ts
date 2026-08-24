@@ -70,6 +70,22 @@ export function needsReentry(liquidity: bigint): boolean {
   return liquidity <= BigInt(0);
 }
 
+/**
+ * A concentrated-liquidity mint needs BOTH legs funded, so a wallet holding
+ * value on one side only cannot open a position at all: the mint computes zero
+ * liquidity and reverts. This is the starvation test tryMint runs before it
+ * gives up, named once so the no-position path can act on it (swap into the
+ * missing leg) instead of logging mint-skipped forever. Units are what is
+ * actually spendable, i.e. after the dust reserves.
+ */
+export function needsInventoryPrep(
+  wbnbUnits: number,
+  usdtUnits: number,
+  usdtPerWbnb: number,
+): boolean {
+  return wbnbUnits * usdtPerWbnb < MIN_MINT_LEG_USD || usdtUnits < MIN_MINT_LEG_USD;
+}
+
 export interface RebalanceLeg {
   sell: 'WBNB' | 'USDT';
   amountUnits: number;
@@ -267,6 +283,34 @@ async function readSlot0(
   return { sqrtPriceX96: slot0[0], tick: slot0[1] };
 }
 
+interface Inventory {
+  wbnbBal: bigint;
+  usdtBal: bigint;
+  /** Spendable after the dust reserves that keep gas and rounding headroom. */
+  availWbnb: bigint;
+  availUsdt: bigint;
+  tick: number;
+  usdtPerWbnb: number;
+}
+
+/** Wallet balances and the pool price in one read: the inputs every mint and
+ * swap decision below is made from. */
+async function readInventory(ctx: AgentContext, info: PoolInfo): Promise<Inventory> {
+  const [wbnbBal, usdtBal, slot0] = await Promise.all([
+    erc20Balance(ctx, WBNB.address),
+    erc20Balance(ctx, USDT.address),
+    readSlot0(ctx, info.pool),
+  ]);
+  return {
+    wbnbBal,
+    usdtBal,
+    availWbnb: wbnbBal > WBNB_DUST_RESERVE ? wbnbBal - WBNB_DUST_RESERVE : BigInt(0),
+    availUsdt: usdtBal > USDT_DUST_RESERVE ? usdtBal - USDT_DUST_RESERVE : BigInt(0),
+    tick: slot0.tick,
+    usdtPerWbnb: sqrtPriceX96ToUsdtPerWbnb(slot0.sqrtPriceX96, info.wbnbIsToken0),
+  };
+}
+
 async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
   const cached = ctx.state.get<PoolInfo | null>('poolInfo', null);
   if (cached && cached.pool) return cached;
@@ -439,18 +483,11 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
     return;
   }
 
-  const [wbnbBal, usdtBal, slot0] = await Promise.all([
-    erc20Balance(ctx, WBNB.address),
-    erc20Balance(ctx, USDT.address),
-    readSlot0(ctx, info.pool),
-  ]);
-  const availWbnb = wbnbBal > WBNB_DUST_RESERVE ? wbnbBal - WBNB_DUST_RESERVE : BigInt(0);
-  const availUsdt = usdtBal > USDT_DUST_RESERVE ? usdtBal - USDT_DUST_RESERVE : BigInt(0);
-  const price = sqrtPriceX96ToUsdtPerWbnb(slot0.sqrtPriceX96, info.wbnbIsToken0);
+  const { availWbnb, availUsdt, tick, usdtPerWbnb: price } = await readInventory(ctx, info);
   const wbnbUnits = Number(fromBaseUnits(availWbnb, WBNB.decimals));
   const usdtUnits = Number(fromBaseUnits(availUsdt, USDT.decimals));
 
-  if (wbnbUnits * price < MIN_MINT_LEG_USD || usdtUnits < MIN_MINT_LEG_USD) {
+  if (needsInventoryPrep(wbnbUnits, usdtUnits, price)) {
     ctx.log({
       event: 'mint-skipped',
       reason: 'insufficient-leg',
@@ -461,7 +498,7 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
     return;
   }
   // Defeat the sandwich: refuse to mint while spot price is skewed from TWAP.
-  if (!(await twapAligned(ctx, info.pool, slot0.tick))) {
+  if (!(await twapAligned(ctx, info.pool, tick))) {
     ctx.log({ event: 'mint-skipped', reason: 'twap-deviation' });
     return;
   }
@@ -470,7 +507,7 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
     return;
   }
 
-  const { tickLower, tickUpper } = snapRange(slot0.tick, pctToTickDelta(RANGE_PCT), info.tickSpacing);
+  const { tickLower, tickUpper } = snapRange(tick, pctToTickDelta(RANGE_PCT), info.tickSpacing);
   const wallet = new ChassisOphisWallet(ctx.account, ctx.publicClient, ctx.walletClient);
   try {
     await wallet.ensureErc20Allowance(USDT.address, POSITION_MANAGER, availUsdt);
@@ -522,7 +559,7 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
       tokenId: position.tokenId,
       tickLower,
       tickUpper,
-      currentTick: slot0.tick,
+      currentTick: tick,
       wbnbUnits,
       usdtUnits,
     });
@@ -602,12 +639,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
 }
 
 async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<void> {
-  const [wbnbBal, usdtBal, slot0] = await Promise.all([
-    erc20Balance(ctx, WBNB.address),
-    erc20Balance(ctx, USDT.address),
-    readSlot0(ctx, info.pool),
-  ]);
-  const price = sqrtPriceX96ToUsdtPerWbnb(slot0.sqrtPriceX96, info.wbnbIsToken0);
+  const { wbnbBal, usdtBal, usdtPerWbnb: price } = await readInventory(ctx, info);
   const leg = computeRebalanceLeg(
     Number(fromBaseUnits(wbnbBal, WBNB.decimals)),
     Number(fromBaseUnits(usdtBal, USDT.decimals)),
@@ -661,6 +693,84 @@ async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<vo
   ctx.log({ event: 'ophis-fill-poll-timeout', orderUid: result.orderUid });
 }
 
+/**
+ * Fund the missing leg before a first mint.
+ *
+ * Minting needs both tokens, but an interrupted rebalance leaves the wallet
+ * holding one of them (liquidity removed and returned as a single side, re-mint
+ * never landed). rebalanceInventory already knows how to trade back to 50/50,
+ * yet it was reachable only from the rebalance branch, which requires an
+ * existing position: a one-sided wallet with no position therefore had no way
+ * out and just logged mint-skipped/insufficient-leg every tick.
+ *
+ * This adds no trading budget. The swap is the same 50/50 leg under the same
+ * min-notional floor, refuses to stack on a live order, spends from the SAME
+ * daily 'rebalance' allowance, and stands down once the weekly rebalance budget
+ * is used up. It deliberately does not RECORD a rebalance: it neither opens nor
+ * closes a position, so counting it would misreport churn in status().
+ */
+async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void> {
+  /* A second order on top of an unfilled one would sell the same side twice. */
+  if ((await checkPendingOrder(ctx)) === 'pending') {
+    ctx.log({ event: 'inventory-prep-deferred', reason: 'ophis-order-pending' });
+    return;
+  }
+
+  const inv = await readInventory(ctx, info);
+  const wbnbUnits = Number(fromBaseUnits(inv.availWbnb, WBNB.decimals));
+  const usdtUnits = Number(fromBaseUnits(inv.availUsdt, USDT.decimals));
+  /* Both legs already fundable: mint as-is, no trade and no fee to pay. */
+  if (!needsInventoryPrep(wbnbUnits, usdtUnits, inv.usdtPerWbnb)) return;
+
+  /* Same leg rebalanceInventory will trade, checked here so the guards below
+   * (and the log) see the real notional before anything is submitted. */
+  const leg = computeRebalanceLeg(
+    Number(fromBaseUnits(inv.wbnbBal, WBNB.decimals)),
+    Number(fromBaseUnits(inv.usdtBal, USDT.decimals)),
+    inv.usdtPerWbnb,
+  );
+  if (!leg) {
+    ctx.log({
+      event: 'inventory-prep-skipped',
+      reason: 'imbalance-under-min-notional',
+      wbnbUnits,
+      usdtUnits,
+    });
+    return;
+  }
+
+  const now = Date.now();
+  const weekly = pruneWindow(ctx.state.get<number[]>('rebalanceTimes', []), now, WEEK_MS);
+  if (weekly.length >= MAX_REBALANCES_PER_WEEK) {
+    ctx.log({
+      event: 'inventory-prep-skipped',
+      reason: 'weekly-cap',
+      rebalancesThisWeek: weekly.length,
+    });
+    ctx.state.set('rebalanceTimes', weekly);
+    return;
+  }
+  if (!ctx.breakers.allowAction('rebalance', 2)) {
+    ctx.log({ event: 'inventory-prep-skipped', reason: 'daily-cap' });
+    return;
+  }
+
+  ctx.log({
+    event: 'inventory-prep',
+    sell: leg.sell,
+    amountUnits: leg.amountUnits,
+    notionalUsd: leg.notionalUsd,
+    wbnbUnits,
+    usdtUnits,
+    usdtPerWbnb: inv.usdtPerWbnb,
+  });
+  try {
+    await rebalanceInventory(ctx, info);
+  } catch (err) {
+    ctx.log({ event: 'inventory-prep-failed', error: String(err) });
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Agent module                                                        */
 /* ------------------------------------------------------------------ */
@@ -709,6 +819,9 @@ export const lpRangeAgent: AgentModule = {
     }
 
     if (!pos) {
+      // Prepare before minting: with nothing to rebalance, a wallet sitting on
+      // one token could never reach the swap that makes it mintable.
+      await prepareInventory(ctx, info);
       await tryMint(ctx, info);
       return;
     }
