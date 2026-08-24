@@ -12,6 +12,7 @@ import {
 } from '@agripinaa/agent-index';
 import { cacheLife } from 'next/cache';
 
+import { mergeAttestation } from './attestation-merge';
 import { getOnchainAttestation } from './onchain-rep';
 
 /** The marketplace currently serves BNB Smart Chain mainnet. */
@@ -27,6 +28,22 @@ const source = new MergedSource();
  * on each card.
  */
 const PINNED_AGENT_IDS = ['269703', '269704', '269705', '269706'];
+
+/**
+ * Reflect the on-chain ERC-8004 attestation on every card that renders a
+ * score. Used by both list paths so a category hub and a detail page cannot
+ * disagree about the same agent. A failed read leaves the indexer value in
+ * place rather than blanking the card.
+ */
+export async function withOnchainAttestation(
+  agents: AgentSummary[],
+): Promise<AgentSummary[]> {
+  return Promise.all(
+    agents.map(async (a) =>
+      mergeAttestation(a, await getOnchainAttestation(a.tokenId).catch(() => null)),
+    ),
+  );
+}
 
 export interface Directory {
   verified: AgentSummary[];
@@ -52,16 +69,7 @@ export async function listDirectory(category?: Category): Promise<Directory> {
   )
     .filter((a): a is NonNullable<typeof a> => a != null)
     .filter((a) => (category ? a.category === category : true));
-  // Reflect the on-chain ERC-8004 attestation on verified cards (the indexer
-  // lags our writes, so its score/feedback read 0 despite the attestation).
-  const enriched = await Promise.all(
-    verified.map(async (a) => {
-      const att = await getOnchainAttestation(a.tokenId).catch(() => null);
-      return att
-        ? { ...a, trust: { ...a.trust, totalScore: att.value, totalFeedbacks: att.count } }
-        : a;
-    }),
-  );
+  const enriched = await withOnchainAttestation(verified);
   const verifiedIds = new Set(enriched.map((a) => a.tokenId));
   const registry = rankAndDedupe(raw.items).filter((a) => !verifiedIds.has(a.tokenId));
   return { verified: enriched, registry, registrySource: raw.source, asOf: new Date().toISOString() };
@@ -93,8 +101,12 @@ export async function listAgents(
   )
     .filter((a): a is NonNullable<typeof a> => a != null)
     .filter((a) => (category ? a.category === category : true));
-  const pinnedIds = new Set(pinned.map((a) => a.tokenId));
-  const items = [...pinned, ...ranked.filter((a) => !pinnedIds.has(a.tokenId))].slice(0, limit);
+  const pinnedEnriched = await withOnchainAttestation(pinned);
+  const pinnedIds = new Set(pinnedEnriched.map((a) => a.tokenId));
+  const items = [
+    ...pinnedEnriched,
+    ...ranked.filter((a) => !pinnedIds.has(a.tokenId)),
+  ].slice(0, limit);
   return { ...raw, items };
 }
 

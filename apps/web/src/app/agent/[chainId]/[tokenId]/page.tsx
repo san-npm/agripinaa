@@ -188,7 +188,7 @@ async function AgentContent({
             <TrustStat
               label={attestation ? "Attested" : "Score"}
               value={
-                attestation
+                attestation && Number.isFinite(attestation.value)
                   ? String(attestation.value)
                   : agent.trust.totalScore != null
                     ? String(agent.trust.totalScore)
