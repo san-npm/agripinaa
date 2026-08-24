@@ -350,17 +350,21 @@ void _levelTypeCheck;
 
 import { maybeRecenter, MAX_RECENTERS_PER_DAY } from '../src/agents/grid';
 
-function fakeGridCtx(allow: () => boolean) {
+function fakeGridCtx(allow: (kind: string, maxPerDay: number) => boolean) {
   const store = new Map<string, unknown>();
+  const logs: Record<string, unknown>[] = [];
   return {
     store,
+    logs,
     ctx: {
       state: {
         get: <T,>(k: string, f: T) => (store.has(k) ? (store.get(k) as T) : f),
         set: (k: string, v: unknown) => void store.set(k, v),
       },
-      breakers: { allowAction: () => allow() },
-      log: () => {},
+      // Passed through rather than swallowed so a test can hold a real budget
+      // per action kind and prove the two re-center reasons share one.
+      breakers: { allowAction: (kind: string, maxPerDay: number) => allow(kind, maxPerDay) },
+      log: (e: Record<string, unknown>) => void logs.push(e),
     } as unknown as Parameters<typeof maybeRecenter>[0],
   };
 }
@@ -504,4 +508,301 @@ test('adapted clip: a starved WBNB sell leg shrinks to its own notional', () => 
   const clip = clipForLevel('sell', price, clipUsd);
   assert.equal(clip.token, 'WBNB');
   assert.ok(Number(clip.amount) <= wbnb, `sell clip ${clip.amount} exceeded the balance ${wbnb}`);
+});
+
+/* ------------------ staleness-driven re-center (drifted center) ------------ */
+
+import {
+  GRID_SPACING,
+  STALE_RECENTER_MS,
+  isGridStale,
+  isSuppressedByMark,
+  isWithinUnmarkBand,
+} from '../src/agents/grid';
+
+/**
+ * The live grid as of 2026-08-24: center pinned at 720.016 while price has sat
+ * in 703-708 for days. Levels buy:1 709.216, buy:2 698.416, sell:1 730.816;
+ * un-mark band 714.616 to 725.416. The whole observed range lies between buy:2
+ * and buy:1, so buy:1 is the only reachable level and once it is marked nothing
+ * can clear it: the band never reaches 714.616.
+ */
+const LIVE_CENTER = 720.016;
+const LIVE_PRICE = 705;
+const HOUR_MS = 3_600_000;
+const THREE_DAYS_MS = 72 * HOUR_MS;
+
+/** A real per-kind sliding budget, like Breakers.allowAction. */
+function budgetedAllow() {
+  const used = new Map<string, number>();
+  return {
+    used,
+    allow: (kind: string, maxPerDay: number) => {
+      const n = used.get(kind) ?? 0;
+      if (n >= maxPerDay) return false;
+      used.set(kind, n + 1);
+      return true;
+    },
+  };
+}
+
+/**
+ * The tick's stale branch, composed from the same exported functions in the
+ * same order the agent composes them: read the persisted fill anchor, test the
+ * drought and the suppressing mark, route through the one shared re-center path.
+ */
+function staleBranch(
+  ctx: Parameters<typeof maybeRecenter>[0],
+  store: Map<string, unknown>,
+  price: number,
+  nowMs: number,
+  inventoryNowUsd = 100,
+): boolean {
+  const center = store.get('center') as number;
+  const crossed = (store.get('crossedLevels') as string[] | undefined) ?? [];
+  const lastFillAtMs = (store.get('lastFillAt') as number | undefined) ?? null;
+  if (
+    lastFillAtMs !== null &&
+    isGridStale(nowMs, lastFillAtMs, price, center) &&
+    isSuppressedByMark(price, computeLevels(center), crossed)
+  ) {
+    const hoursSinceLastFill = (nowMs - lastFillAtMs) / HOUR_MS;
+    return maybeRecenter(ctx, price, inventoryNowUsd, 'stale', { hoursSinceLastFill });
+  }
+  return false;
+}
+
+function liveGrid(allow: (kind: string, maxPerDay: number) => boolean = () => true) {
+  const h = fakeGridCtx(allow);
+  h.store.set('center', LIVE_CENTER);
+  h.store.set('lastPrice', LIVE_PRICE);
+  h.store.set('inventoryStartUsd', 100);
+  h.store.set('crossedLevels', ['buy:1']);
+  h.store.set('lastFillAt', NOW - THREE_DAYS_MS);
+  return h;
+}
+
+test('the live grid really is stuck: only buy:1 is reachable and it is marked', () => {
+  // Pins the shape the staleness rule exists to break out of. If this ever
+  // stops holding, the scenario below is no longer the live one.
+  const levels = computeLevels(LIVE_CENTER);
+  const byKey = new Map(levels.map((l) => [l.key, l]));
+  approx(byKey.get('buy:1')!.price, 709.21576, 1e-6);
+  approx(byKey.get('buy:2')!.price, 698.41552, 1e-6);
+  approx(byKey.get('sell:1')!.price, 730.81624, 1e-6);
+
+  // Every price in the observed band lies between buy:2 and buy:1, and outside
+  // the un-mark band, so a marked buy:1 leaves nothing to trade and nothing to
+  // clear: exactly 1 fill, then silence.
+  for (const price of [703, 705, 706.5, 708]) {
+    assert.equal(detectCrossing(price, price, levels, ['buy:1']), null);
+    assert.equal(isWithinUnmarkBand(price, LIVE_CENTER), false);
+    assert.deepEqual(unmarkNearCenter(price, LIVE_CENTER, ['buy:1']), ['buy:1']);
+    // The mark, and only the mark, is what stops buy:1 trading.
+    assert.equal(isSuppressedByMark(price, levels, ['buy:1']), true);
+    assert.equal(detectCrossing(price, price, levels, [])?.level.key, 'buy:1');
+    // Nowhere near the 6 percent breakout that is the only other escape.
+    assert.equal(isTrendBreakout(price, LIVE_CENTER), false);
+  }
+});
+
+test('isSuppressedByMark: only a mark on a level price already satisfies counts', () => {
+  const levels = computeLevels(LIVE_CENTER);
+  // Nothing marked: the grid is waiting for a move, not suppressed.
+  assert.equal(isSuppressedByMark(LIVE_PRICE, levels, []), false);
+  // Marked, and price is beyond it.
+  assert.equal(isSuppressedByMark(LIVE_PRICE, levels, ['buy:1']), true);
+  assert.equal(isSuppressedByMark(LIVE_PRICE, levels, new Set(['buy:1'])), true);
+  // Marked, but price has not reached it: nothing is being held back.
+  assert.equal(isSuppressedByMark(712, levels, ['buy:1']), false);
+  assert.equal(isSuppressedByMark(LIVE_PRICE, levels, ['sell:1']), false);
+  // Sell side behaves the same way.
+  assert.equal(isSuppressedByMark(735, levels, ['sell:1']), true);
+  assert.equal(isSuppressedByMark(720, levels, ['sell:1']), false);
+});
+
+test('isSuppressedByMark implies the price is outside the un-mark band', () => {
+  // A level sits at least a full step from center, so price beyond one is
+  // always more than half a step out. Pins the two rules against each other.
+  const levels = computeLevels(LIVE_CENTER);
+  const keys = levels.map((l) => l.key);
+  for (let price = 640; price <= 800; price += 0.37) {
+    if (isSuppressedByMark(price, levels, keys)) {
+      assert.equal(isWithinUnmarkBand(price, LIVE_CENTER), false, `band at ${price}`);
+    }
+  }
+});
+
+test('stale re-center: the live scenario, 3 days without a fill at price 705', () => {
+  const { ctx, store, logs } = liveGrid();
+  assert.equal(isGridStale(NOW, NOW - THREE_DAYS_MS, LIVE_PRICE, LIVE_CENTER), true);
+
+  assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), true);
+  assert.equal(store.get('center'), LIVE_PRICE);
+  assert.equal(store.get('lastPrice'), LIVE_PRICE);
+  assert.deepEqual(store.get('crossedLevels'), []);
+  // The drawdown floor is still anchored to the original baseline.
+  assert.equal(store.get('inventoryStartUsd'), 100);
+
+  const log = logs.at(-1)!;
+  assert.equal(log.event, 'grid-recenter');
+  assert.equal(log.reason, 'stale');
+  assert.equal(log.previousCenter, LIVE_CENTER);
+  assert.equal(log.center, LIVE_PRICE);
+  assert.equal(log.hoursSinceLastFill, 72);
+});
+
+test('stale re-center: a fill inside the staleness window does NOT re-center', () => {
+  // Price is outside the un-mark band, so only the drought is missing.
+  for (const elapsed of [0, HOUR_MS, STALE_RECENTER_MS - 1]) {
+    const { ctx, store } = liveGrid();
+    store.set('lastFillAt', NOW - elapsed);
+    assert.equal(isWithinUnmarkBand(LIVE_PRICE, LIVE_CENTER), false);
+    assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), false);
+    assert.equal(store.get('center'), LIVE_CENTER);
+    assert.deepEqual(store.get('crossedLevels'), ['buy:1']);
+  }
+  // "At least a staleness window" is inclusive: exactly 12 hours is stale.
+  const { ctx, store } = liveGrid();
+  store.set('lastFillAt', NOW - STALE_RECENTER_MS);
+  assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), true);
+});
+
+test('stale re-center: price inside the un-mark band does NOT re-center', () => {
+  // The marked level can still clear on its own, so the grid is quiet, not
+  // dead, and must not spend re-center budget to fix itself.
+  for (const price of [LIVE_CENTER, 716, 720, 724]) {
+    const { ctx, store } = liveGrid();
+    assert.equal(isWithinUnmarkBand(price, LIVE_CENTER), true);
+    assert.deepEqual(unmarkNearCenter(price, LIVE_CENTER, ['buy:1']), []);
+    assert.equal(isGridStale(NOW, NOW - THREE_DAYS_MS, price, LIVE_CENTER), false);
+    assert.equal(staleBranch(ctx, store, price, NOW), false);
+    assert.equal(store.get('center'), LIVE_CENTER);
+  }
+});
+
+test('stale re-center: the band boundary is inclusive and shared with unmarkNearCenter', () => {
+  // Exact-boundary arithmetic, at a center where it is free of float artifacts.
+  const old = NOW - THREE_DAYS_MS;
+  assert.equal(isWithinUnmarkBand(100.75, 100), true);
+  assert.deepEqual(unmarkNearCenter(100.75, 100, ['sell:1']), []);
+  assert.equal(isGridStale(NOW, old, 100.75, 100), false);
+
+  assert.equal(isWithinUnmarkBand(100.8, 100), false);
+  assert.deepEqual(unmarkNearCenter(100.8, 100, ['sell:1']), ['sell:1']);
+  assert.equal(isGridStale(NOW, old, 100.8, 100), true);
+});
+
+test('stale re-center: a drought with nothing marked does NOT chase the price', () => {
+  // The grid is merely waiting for a 1.5 percent move. Re-centering here would
+  // reset the distance to the nearest level from 0.75 percent back to the full
+  // 1.5 percent and push the next fill further away. On the real BNB tape that
+  // is worth roughly half the fills, and it drains the shared re-center budget
+  // so a later genuine breakout halts the agent instead of re-arming it.
+  for (const price of [703, 705, 708, 712, 730]) {
+    const { ctx, store } = liveGrid();
+    store.set('crossedLevels', []);
+    assert.equal(isSuppressedByMark(price, computeLevels(LIVE_CENTER), []), false);
+    assert.equal(staleBranch(ctx, store, price, NOW), false);
+    assert.equal(store.get('center'), LIVE_CENTER);
+  }
+});
+
+test('stale re-center: a mark the price has NOT reached does not re-center', () => {
+  // 712 is outside the un-mark band, and the drought is three days old, but it
+  // sits above buy:1 at 709.216: no level is being held back, so there is
+  // nothing to rescue and the budget stays unspent.
+  const { ctx, store } = liveGrid();
+  assert.equal(isWithinUnmarkBand(712, LIVE_CENTER), false);
+  assert.equal(isGridStale(NOW, NOW - THREE_DAYS_MS, 712, LIVE_CENTER), true);
+  assert.equal(isSuppressedByMark(712, computeLevels(LIVE_CENTER), ['buy:1']), false);
+  assert.equal(staleBranch(ctx, store, 712, NOW), false);
+  assert.equal(store.get('center'), LIVE_CENTER);
+  assert.deepEqual(store.get('crossedLevels'), ['buy:1']);
+});
+
+test('stale re-center: a grid that has never filled is not stale', () => {
+  // No drought to measure from, and a fresh grid sits on its own center: an
+  // infinitely-stale reading would burn the daily budget off the first drift.
+  assert.equal(isGridStale(NOW, null, LIVE_PRICE, LIVE_CENTER), false);
+  const { ctx, store } = liveGrid();
+  store.delete('lastFillAt');
+  assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), false);
+  assert.equal(store.get('center'), LIVE_CENTER);
+});
+
+test('stale re-center: the daily cap is SHARED, a spent breakout budget refuses it', () => {
+  const { allow, used } = budgetedAllow();
+  const { ctx, store, logs } = liveGrid(allow);
+
+  // Spend the whole daily allowance on breakout re-centers.
+  for (let i = 0; i < MAX_RECENTERS_PER_DAY; i++) {
+    assert.equal(maybeRecenter(ctx, 800 + i, 100), true);
+  }
+  assert.equal(used.get('recenter'), MAX_RECENTERS_PER_DAY);
+  // Only the spent budget carries over; put the live geometry back.
+  store.set('center', LIVE_CENTER);
+  store.set('crossedLevels', ['buy:1']);
+  const logsBefore = logs.length;
+
+  assert.equal(isGridStale(NOW, NOW - THREE_DAYS_MS, LIVE_PRICE, LIVE_CENTER), true);
+  assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), false);
+  assert.equal(store.get('center'), LIVE_CENTER);
+  assert.deepEqual(store.get('crossedLevels'), ['buy:1']);
+  assert.equal(logs.length, logsBefore, 'a refused re-center must not log one');
+  assert.equal(used.get('recenter'), MAX_RECENTERS_PER_DAY, 'budget must not be exceeded');
+});
+
+test('stale re-center: the daily cap is SHARED in the other direction too', () => {
+  const { allow, used } = budgetedAllow();
+  const { ctx, store } = liveGrid(allow);
+
+  assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), true);
+  assert.equal(used.get('recenter'), 1);
+  // A stale re-center leaves the breakout path one fewer, never a fresh set.
+  for (let i = 0; i < MAX_RECENTERS_PER_DAY - 1; i++) {
+    assert.equal(maybeRecenter(ctx, 800 + i, 100), true);
+  }
+  assert.equal(maybeRecenter(ctx, 900, 100), false);
+  assert.equal(used.get('recenter'), MAX_RECENTERS_PER_DAY);
+});
+
+test('stale re-center: the new grid is symmetric around price and fully re-armed', () => {
+  const { ctx, store } = liveGrid();
+  assert.equal(staleBranch(ctx, store, LIVE_PRICE, NOW), true);
+
+  const center = store.get('center') as number;
+  const levels = computeLevels(center);
+  const byKey = new Map(levels.map((l) => [l.key, l]));
+  approx(byKey.get('buy:1')!.price, 694.425, 1e-9);
+  approx(byKey.get('sell:1')!.price, 715.575, 1e-9);
+  for (let i = 1; i <= 4; i++) {
+    approx(byKey.get(`sell:${i}`)!.price - center, center - byKey.get(`buy:${i}`)!.price, 1e-9);
+    approx(byKey.get(`sell:${i}`)!.price - center, center * GRID_SPACING * i, 1e-9);
+  }
+
+  // Previously marked levels are re-armed: buy:1 can fire again once price
+  // moves 1.5 percent down, where before it was marked forever.
+  const crossed = store.get('crossedLevels') as string[];
+  assert.deepEqual(crossed, []);
+  assert.equal(detectCrossing(LIVE_PRICE, 694, levels, crossed)?.level.key, 'buy:1');
+  assert.equal(detectCrossing(LIVE_PRICE, 716, levels, crossed)?.level.key, 'sell:1');
+
+  // And it does not immediately re-fire at the new center, nor read as stale
+  // again on the next tick, so it cannot loop through the daily budget.
+  assert.equal(detectCrossing(LIVE_PRICE, LIVE_PRICE, levels, crossed), null);
+  assert.equal(isGridStale(NOW, NOW - THREE_DAYS_MS, LIVE_PRICE, center), false);
+});
+
+test('STALE_RECENTER_MS is 12 hours and far exceeds the cooldown and tick', () => {
+  assert.equal(STALE_RECENTER_MS, 12 * 60 * 60_000);
+  assert.ok(STALE_RECENTER_MS > COOLDOWN_MS * 10, 'a merely quiet session must not trip it');
+});
+
+test('maybeRecenter still defaults to the breakout reason', () => {
+  const { ctx, store, logs } = fakeGridCtx(() => true);
+  store.set('center', 600);
+  assert.equal(maybeRecenter(ctx, 720, 850), true);
+  assert.equal(logs.at(-1)!.reason, 'breakout');
+  assert.equal(logs.at(-1)!.previousCenter, 600);
 });
