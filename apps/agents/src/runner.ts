@@ -9,7 +9,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MANAGED_TOKENS } from '@agripinaa/shared';
+import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN } from '@agripinaa/shared';
 
 import { buildContext } from './chassis';
 import { createAltanaClient } from './executor';
@@ -105,13 +105,16 @@ async function main() {
   // and drive a per-account router tick loop.
   // The PRIMARY managed token keeps the master key (so a live mandate keeps
   // running untouched); every other token derives its own distinct key, so the
-  // two tokens never share an on-chain key identity/expiry/revocation.
-  const PRIMARY_TOKEN = MANAGED_TOKENS[0];
+  // two tokens never share an on-chain key identity/expiry/revocation. Which
+  // token that is comes from PRIMARY_MANAGED_TOKEN, never from the first entry
+  // of the display array: that array is the wizard's button order, and a
+  // cosmetic reorder there used to move the master key off USDT, which would
+  // strand every live USDT mandate at the executor's signer check.
   const managers = new Map<string, ManagerSet>();
   const managerKeySets = new Map<string, ManagerKeySet>();
   for (const name of MANAGED_AGENTS) {
     if (!agents.has(name)) continue;
-    const keySet = buildManagerKeySet(name, MANAGED_TOKENS, PRIMARY_TOKEN);
+    const keySet = buildManagerKeySet(name, MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN);
     if (!keySet) {
       agents.get(name)!.ctx.log({
         event: 'managed-disabled',
