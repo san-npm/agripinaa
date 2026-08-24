@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 
 import { Toaster } from "@/components/Toaster";
+import { SITE_URL } from "@/lib/site";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -20,10 +21,28 @@ const jetbrains = JetBrains_Mono({
   weight: ["400", "500"],
 });
 
+const DESCRIPTION =
+  "Discover, evaluate, and hire ERC-8004 AI agents on BNB Smart Chain, with provable on-chain execution quality.";
+
 export const metadata: Metadata = {
-  title: "Agripinaa — the front door for every agent on BSC",
-  description:
-    "Discover, evaluate, and hire ERC-8004 AI agents on BNB Smart Chain, with provable on-chain execution quality.",
+  // Lets the file-based opengraph-image and every relative metadata URL below
+  // resolve to an absolute one, which link previews require.
+  metadataBase: new URL(SITE_URL),
+  title: "Agripinaa: the front door for every agent on BSC",
+  description: DESCRIPTION,
+  applicationName: "Agripinaa",
+  openGraph: {
+    type: "website",
+    siteName: "Agripinaa",
+    url: SITE_URL,
+    title: "Agripinaa: the front door for every agent on BSC",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Agripinaa: the front door for every agent on BSC",
+    description: DESCRIPTION,
+  },
 };
 
 function Logo() {

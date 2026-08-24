@@ -1,4 +1,5 @@
 import { bscScanAddress } from "@agripinaa/shared";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -7,10 +8,45 @@ import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
 import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
+import {
+  ACTIVATION_BLOCKED_COPY,
+  activationBlockedReason,
+  agentConsumesSession,
+  endpointIsLive,
+} from "@/lib/activatable";
+import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
+import { clampDescription } from "@/lib/site";
 import { VERIFIED_AGENTS } from "@/lib/verified";
+
+/**
+ * Every profile shipped under the one root title, so a shared link and a
+ * search result named the site instead of the agent. `getAgent` is the same
+ * `use cache` helper the page body calls, so this costs no extra fetch.
+ */
+export async function generateMetadata(
+  props: PageProps<"/agent/[chainId]/[tokenId]">,
+): Promise<Metadata> {
+  const { chainId, tokenId } = await props.params;
+  if (Number.parseInt(chainId, 10) !== CHAIN_ID) {
+    return { title: "Agent not found · Agripinaa" };
+  }
+  const agent = await getAgent(tokenId).catch(() => null);
+  if (!agent) return { title: "Agent not found · Agripinaa" };
+  const title = `${agent.name} · Agripinaa`;
+  const description = clampDescription(
+    agent.description ||
+      `ERC-8004 agent ${tokenId} on BNB Smart Chain, with its on-chain identity, reputation, and execution record.`,
+  );
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "profile" },
+    twitter: { title, description },
+  };
+}
 
 function Panel({
   title,
@@ -95,8 +131,16 @@ async function AgentContent({
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
   const verified = VERIFIED_AGENTS[agent.tokenId];
   const attestation = verified ? await getOnchainAttestation(agent.tokenId) : null;
-  // Prefer the on-chain attestation count for verified agents (indexer lags).
-  const feedbackCount = attestation ? attestation.count : agent.trust.totalFeedbacks;
+  // One merge rule for every surface that renders a score, so this page and a
+  // hub card cannot disagree about the same agent, and the stamp below names
+  // where each number actually came from.
+  const trust = mergeAttestation(agent, attestation).trust;
+  const blocked = activationBlockedReason({
+    tokenId: agent.tokenId,
+    endpointLive: await endpointIsLive(agent),
+    consumesSession: agentConsumesSession(agent.tokenId),
+  });
+  const blockedCopy = blocked ? ACTIVATION_BLOCKED_COPY[blocked] : null;
 
   return (
     <div className="max-w-4xl">
@@ -149,13 +193,39 @@ async function AgentContent({
             {agent.description || "No description provided by this agent."}
           </p>
         </div>
-        <Link
-          href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
-        >
-          Activate agent <ArrowIcon className="h-4 w-4" />
-        </Link>
+        {!blockedCopy ? (
+          <Link
+            href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
+          >
+            Activate agent <ArrowIcon className="h-4 w-4" />
+          </Link>
+        ) : blocked === "own-capital-only" ? (
+          // Not hireable, but observable: the execution panel below is the
+          // agent's on-chain record of what it did with its own funds.
+          <a
+            href="#execution"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+          >
+            {blockedCopy.ctaLabel} <ArrowIcon className="h-4 w-4" />
+          </a>
+        ) : (
+          <a
+            href={bscScanAddress(agent.chainId, agent.agentWallet ?? agent.owner)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+          >
+            {blockedCopy.ctaLabel} <ArrowIcon className="h-4 w-4" />
+          </a>
+        )}
       </div>
+
+      {blockedCopy && (
+        <p className="mt-4 max-w-2xl text-xs leading-relaxed text-muted-2">
+          {blockedCopy.body}
+        </p>
+      )}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Panel title="Identity">
@@ -188,23 +258,25 @@ async function AgentContent({
             <TrustStat
               label={attestation ? "Attested" : "Score"}
               value={
-                attestation
-                  ? String(attestation.value)
-                  : agent.trust.totalScore != null
-                    ? String(agent.trust.totalScore)
-                    : "—"
+                trust.totalScore != null && Number.isFinite(trust.totalScore)
+                  ? String(trust.totalScore)
+                  : "n/a"
               }
               highlight={!!attestation}
             />
-            <TrustStat label="Rank" value={agent.trust.rank != null ? `#${agent.trust.rank}` : "—"} />
-            <TrustStat label="Attestations" value={String(feedbackCount)} highlight={!!attestation} />
+            <TrustStat label="Rank" value={trust.rank != null ? `#${trust.rank}` : "n/a"} />
+            <TrustStat
+              label="Attestations"
+              value={String(trust.totalFeedbacks)}
+              highlight={!!attestation}
+            />
           </dl>
           <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-2">
             {attestation
               ? "Read live from the ERC-8004 ReputationRegistry on-chain. Validation registry (TEE/zkML) not deployed on BSC yet."
               : "Validation registry not yet deployed (ERC-8004 is draft). Trust here is reputation-based."}
           </p>
-          <FreshnessStamp asOf={agent.trust.asOf} source={agent.trust.source} />
+          <FreshnessStamp asOf={trust.asOf} source={trustProvenanceLabel(trust)} />
         </Panel>
       </div>
 
@@ -214,7 +286,8 @@ async function AgentContent({
         </div>
       )}
 
-      <div className="mt-4">
+      {/* Anchor target for the "See its execution record" CTA above. */}
+      <div id="execution" className="mt-4 scroll-mt-20">
         <Suspense
           fallback={
             <Panel title="Execution quality">

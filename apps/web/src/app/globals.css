@@ -190,7 +190,7 @@ h1, h2, h3 {
 
 /* Agent "working" state (aicss agent-UI): a soft shimmer sweeping across a
    panel signals the agent is live and deciding, not a static record. Meaning,
-   not decoration — only shown while a mandate is actively being managed. */
+   not decoration, only shown while a mandate is actively being managed. */
 @keyframes agp-shimmer {
   0% { transform: translateX(-130%); }
   100% { transform: translateX(330%); }

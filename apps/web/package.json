@@ -7,7 +7,9 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:icon": "tsx scripts/make-agent-icon.tsx",
+    "test": "tsx --conditions=react-server --test tests/*.test.ts"
   },
   "dependencies": {
     "@agripinaa/agent-index": "workspace:*",
@@ -31,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "typescript": "^5"
   },
   "packageManager": "pnpm@10.33.3"
