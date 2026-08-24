@@ -9,17 +9,27 @@ import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
 import { getStats, listDirectory } from "@/lib/data";
 
 async function StatsStrip() {
-  const stats = await getStats();
+  // listDirectory is a `use cache` entry keyed on its arguments, so the call
+  // VerifiedAgents makes below reuses this one rather than refetching.
+  const [stats, dir] = await Promise.all([getStats(), listDirectory()]);
   const items = [
     {
       value:
         stats.totalAgents != null
           ? stats.totalAgents.toLocaleString()
           : "—",
-      label: "ERC-8004 agents registered",
+      label: stats.chainScoped
+        ? "ERC-8004 agents registered on BSC"
+        : "ERC-8004 agents registered",
     },
-    { value: "4", label: "live Agripinaa agents on mainnet" },
-    { value: "provable", label: "execution quality per trade" },
+    {
+      value: String(dir.verified.length),
+      label: "live Agripinaa agents on mainnet",
+    },
+    {
+      value: String(dir.registry.length),
+      label: "indexed agents you can browse",
+    },
   ];
   return (
     <dl className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface">

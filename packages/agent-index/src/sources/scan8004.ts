@@ -162,6 +162,19 @@ async function keyedFetch<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * Headline agent count for one chain. The keyed /agents envelope carries a
+ * real per-chain total; the public /stats total is global. Prefer the keyed
+ * one, fall back to the global one rather than showing nothing, and let the
+ * caller label which of the two it got.
+ */
+export function chainScopedTotal(input: {
+  keyedTotal: number | null;
+  publicTotal: number | null;
+}): number | null {
+  return input.keyedTotal ?? input.publicTotal ?? null;
+}
+
 export class Scan8004Source implements AgentIndexSource {
   readonly name = API_KEY ? '8004scan-pro' : '8004scan';
 
@@ -296,12 +309,40 @@ export class Scan8004Source implements AgentIndexSource {
 
   async stats(chainId: number): Promise<IndexStats> {
     const asOf = new Date().toISOString();
-    const res = await scanFetch<Record<string, unknown>>('/stats', { chain_id: chainId });
-    const d = res.data;
     const num = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+
+    // The public /stats endpoint ignores chain_id upstream, so it reports the
+    // all-chains figure. When a key is present the keyed /agents envelope
+    // carries the real per-chain total; use that and label it BSC-scoped.
+    let keyedTotal: number | null = null;
+    if (API_KEY) {
+      try {
+        const res = await keyedFetch<{ items: unknown[]; total: number }>('/agents', {
+          chain_id: chainId,
+          limit: 1,
+          offset: 0,
+        });
+        keyedTotal = num(res.total);
+      } catch {
+        keyedTotal = null;
+      }
+    }
+
+    let publicTotal: number | null = null;
+    let totalFeedbacks: number | null = null;
+    try {
+      const res = await scanFetch<Record<string, unknown>>('/stats', { chain_id: chainId });
+      publicTotal = num(res.data['total_agents']) ?? num(res.data['agents']) ?? null;
+      totalFeedbacks = num(res.data['total_feedbacks']) ?? num(res.data['feedbacks']) ?? null;
+    } catch {
+      // The keyed total may still stand alone; a stats outage is not fatal.
+      if (keyedTotal == null) throw new Scan8004Error('8004scan /stats unavailable and no keyed total');
+    }
+
     return {
-      totalAgents: num(d['total_agents']) ?? num(d['agents']) ?? null,
-      totalFeedbacks: num(d['total_feedbacks']) ?? num(d['feedbacks']) ?? null,
+      totalAgents: chainScopedTotal({ keyedTotal, publicTotal }),
+      chainScoped: keyedTotal != null,
+      totalFeedbacks,
       asOf,
       source: this.name,
     };
