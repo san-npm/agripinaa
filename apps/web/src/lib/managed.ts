@@ -34,7 +34,7 @@ interface ExecResult {
 function assertConfirmed<T extends ExecResult>(result: T, action: string): T {
   if (result.status === 'CONFIRMED') return result;
   if (result.status === 'PENDING') {
-    throw new Error(`${action} is still pending on-chain — check your balance before retrying.`);
+    throw new Error(`${action} is still pending on-chain. Check your balance before retrying.`);
   }
   throw new Error(`${action} did not go through (reverted on-chain). No funds were moved.`);
 }
@@ -48,8 +48,8 @@ function assertConfirmed<T extends ExecResult>(result: T, action: string): T {
 export function destinationProblem(to: string, account: string, chainId: number): string | null {
   if (!isAddress(to)) return 'Enter a valid destination address.';
   const lc = to.toLowerCase();
-  if (lc === zeroAddress) return 'That is the zero address — funds sent there are burned.';
-  if (lc === account.toLowerCase()) return 'That is this same account — enter an external wallet.';
+  if (lc === zeroAddress) return 'That is the zero address; funds sent there are burned.';
+  if (lc === account.toLowerCase()) return 'That is this same account; enter an external wallet.';
   // Reject EVERY known managed contract on this chain (all routers + their
   // underlying/aToken/vToken + the Aave pool), not just the selected token's,
   // so a USDC withdrawal can't be mis-sent to a USDT contract (or vice versa).

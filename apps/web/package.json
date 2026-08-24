@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "gen:icon": "tsx scripts/make-agent-icon.tsx",
     "test": "tsx --conditions=react-server --test tests/*.test.ts"
   },
   "dependencies": {

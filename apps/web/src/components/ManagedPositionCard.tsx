@@ -65,7 +65,7 @@ export function ManagedPositionCard({
   const [dest, setDest] = useState<string>('');
 
   // Which stablecoin this position manages, derived from the UNIQUE known router
-  // in the session's allowlist on this chain — not just allowlist[0], so a
+  // in the session's allowlist on this chain, not just allowlist[0], so a
   // stale/extra entry can't silently mis-derive the token (e.g. render a USDC
   // position as USDT). If it doesn't resolve to exactly one known router, the
   // record is malformed and every managed action is disabled below.
@@ -149,7 +149,7 @@ export function ManagedPositionCard({
     if (r.status !== 'CONFIRMED') {
       throw new Error(
         r.status === 'PENDING'
-          ? 'Stopping the agent is still pending on-chain — retry shortly.'
+          ? 'Stopping the agent is still pending on-chain. Retry shortly.'
           : 'Stopping the agent did not go through (reverted on-chain).',
       );
     }
@@ -209,7 +209,7 @@ export function ManagedPositionCard({
       for (const sym of MANAGED_TOKENS) {
         const p = await readManagedPosition(meta.account as Hex, meta.chainId, sym);
         if (p.idleWei + p.deployedWei > USDT_DUST_WEI) {
-          throw new Error(`Withdraw your ${sym} first — sweeping BNB now could leave too little gas to move it.`);
+          throw new Error(`Withdraw your ${sym} first: sweeping BNB now could leave too little gas to move it.`);
         }
         nativeWei = p.nativeWei;
       }

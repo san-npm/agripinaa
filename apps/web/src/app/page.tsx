@@ -15,10 +15,13 @@ async function StatsStrip() {
   const [stats, dir] = await Promise.all([getStats(), listDirectory()]);
   const items = [
     {
+      // Explicit locale: this string is rendered on the server, so a bare
+      // toLocaleString() would group by whatever ICU locale the host happens
+      // to run under (278 802 on a French dev box, 278,802 on Vercel).
       value:
         stats.totalAgents != null
-          ? stats.totalAgents.toLocaleString()
-          : "—",
+          ? stats.totalAgents.toLocaleString("en-US")
+          : "n/a",
       label: stats.chainScoped
         ? "ERC-8004 agents registered on BSC"
         : "ERC-8004 agents registered",

@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { AgentCard } from "@/components/AgentCard";
 import { VerifiedIcon } from "@/components/icons";
 import { listDirectory } from "@/lib/data";
+
+export const metadata: Metadata = {
+  title: "All agents · Agripinaa",
+  description:
+    "Every AI agent registered in the ERC-8004 identity registry on BNB Smart Chain, with the ones we built and verified on-chain kept separate.",
+};
 
 async function Directory() {
   const dir = await listDirectory();
