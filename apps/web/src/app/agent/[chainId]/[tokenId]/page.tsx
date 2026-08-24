@@ -12,6 +12,7 @@ import {
   endpointIsLive,
   isActivatable,
 } from "@/lib/activatable";
+import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
@@ -100,8 +101,10 @@ async function AgentContent({
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
   const verified = VERIFIED_AGENTS[agent.tokenId];
   const attestation = verified ? await getOnchainAttestation(agent.tokenId) : null;
-  // Prefer the on-chain attestation count for verified agents (indexer lags).
-  const feedbackCount = attestation ? attestation.count : agent.trust.totalFeedbacks;
+  // One merge rule for every surface that renders a score, so this page and a
+  // hub card cannot disagree about the same agent, and the stamp below names
+  // where each number actually came from.
+  const trust = mergeAttestation(agent, attestation).trust;
   const activatable = isActivatable({
     tokenId: agent.tokenId,
     endpointLive: await endpointIsLive(agent),
@@ -214,23 +217,25 @@ async function AgentContent({
             <TrustStat
               label={attestation ? "Attested" : "Score"}
               value={
-                attestation && Number.isFinite(attestation.value)
-                  ? String(attestation.value)
-                  : agent.trust.totalScore != null
-                    ? String(agent.trust.totalScore)
-                    : "—"
+                trust.totalScore != null && Number.isFinite(trust.totalScore)
+                  ? String(trust.totalScore)
+                  : "n/a"
               }
               highlight={!!attestation}
             />
-            <TrustStat label="Rank" value={agent.trust.rank != null ? `#${agent.trust.rank}` : "—"} />
-            <TrustStat label="Attestations" value={String(feedbackCount)} highlight={!!attestation} />
+            <TrustStat label="Rank" value={trust.rank != null ? `#${trust.rank}` : "n/a"} />
+            <TrustStat
+              label="Attestations"
+              value={String(trust.totalFeedbacks)}
+              highlight={!!attestation}
+            />
           </dl>
           <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-2">
             {attestation
               ? "Read live from the ERC-8004 ReputationRegistry on-chain. Validation registry (TEE/zkML) not deployed on BSC yet."
               : "Validation registry not yet deployed (ERC-8004 is draft). Trust here is reputation-based."}
           </p>
-          <FreshnessStamp asOf={agent.trust.asOf} source={agent.trust.source} />
+          <FreshnessStamp asOf={trust.asOf} source={trustProvenanceLabel(trust)} />
         </Panel>
       </div>
 
