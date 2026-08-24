@@ -20,7 +20,10 @@
 - **On-chain writes (registration, attestation, funding) require the owner's explicit go-ahead in the session.** No task in this plan may broadcast a transaction without it.
 - **Agent display names require the owner's sign-off** before `register.ts` runs. Slugs in this plan (`grid-b`, `venus-guardian`, `weight-rebalancer`, `yield-b`) are internal identifiers and are fine to use in code.
 - **Test commands:** `pnpm -r test` (all workspaces), `pnpm --filter @agripinaa/web typecheck`, `pnpm --filter @agripinaa/web build`, `pnpm --filter @agripinaa/agents test`. Node's built-in runner is used via `tsx --test tests/*.test.ts`.
+- **`apps/web` tests run under the `react-server` condition** (`tsx --conditions=react-server --test tests/*.test.ts`, already wired into the web `test` script as of Task 1). Reason: `server-only` resolves to a bare `throw` under the default condition and to a no-op under `react-server`, which is how Next resolves it. Lib modules keep their `server-only` markers; the runner adapts. Settled once here, so no later task needs to revisit it: any web test importing a lib module with that marker works as long as the script keeps the flag.
 - **Never commit a `.env*` file or an API key.** `SCAN8004_API_KEY` lives in Vercel env and `.env.local`.
+- **`npx tsx` does not self-install here.** In a workspace that does not yet have `tsx` linked, `npx tsx` fails with `command not found` rather than fetching it. Use the monorepo's existing binary (`packages/shared/node_modules/.bin/tsx`) for a red-phase run that happens before the workspace's own devDependency is installed. This matters only for the first test in a workspace.
+- **Baseline as of Task 1 (2026-08-24):** `pnpm -r --if-present test` is 202 passing, 0 failing (shared 7, exec-metrics 25, agent-index 4, session-kit 37, web 3, agents 126). Any task that ends with a lower total in an untouched workspace has broken something.
 
 ## File Structure
 
@@ -1425,9 +1428,14 @@ Verified: agents tests (2 new) pass; typecheck green"
 - Modify: `packages/shared/src/agents.ts`, `apps/agents/src/runner.ts`
 
 **Interfaces:**
-- Produces: `venusGuardianAgent: AgentModule`, `planVenusRepay(input: { borrowUsd: number; collateralUsd: number; targetHf: number; liquidationThreshold: number }): { repayUsd: number }`.
+- Produces: `venusGuardianAgent: AgentModule`, `venusHfWad(input: { collateralUsdWad: bigint; borrowUsdWad: bigint; collateralFactorMantissa: bigint }): bigint`.
+- Consumes (REUSE, do not reimplement): `planRepair`, `scaleRepayToToken`, `hfWadToNumber`, `classifyHf`, `evaluateThresholds`, `MAX_UINT256`, `WARN_AT`, `ACT_AT`, `TARGET_HF` from `apps/agents/src/agents/health-factor.ts` (all already exported).
 
-**Context:** Read `apps/agents/src/agents/health-factor.ts` (the Aave guardian) first, especially `planRepayAmounts` and its test. Venus exposes `Comptroller.getAccountLiquidity(account)` returning `(error, liquidity, shortfall)` rather than Aave's `getUserAccountData` health factor, so the health measure must be derived from collateral, borrow, and the market's collateral factor. Venus vToken and Comptroller addresses on BSC already appear in `apps/agents/src/agents/yield.ts`.
+**Context:** Read `apps/agents/src/agents/health-factor.ts` (the Aave guardian) first, in full. Its decision logic is pure, bigint, and unit-tested, and it is deliberately protocol-agnostic once you have a 1e18-scaled health factor: `planRepair(hfWad, totalDebtBase, targetHf)` needs nothing Aave-specific. So the ONLY new pure logic here is deriving that health factor from Venus, which reports differently.
+
+Verified on-chain 2026-08-24 (do not re-derive, but do assert these at runtime): Venus Comptroller `0xfD36E2c2a6789Db23113685031d7F16329158384`, oracle `0x6592b5DE802159F3E74B2486b091D11a8256ab8A`, vBNB `0xA07c5b74C9B40447a954e1466938b865b6BBea36` with `collateralFactorMantissa` 0.80e18, vUSDT `0xfD5840Cd36d94D7229439859C0112a4185BC0255` (0.80e18), vUSDC `0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8` (0.825e18). Read the collateral factor from `Comptroller.markets(vToken)` at runtime rather than hardcoding it, since Venus governance can change it. Venus has no Aave-style health-factor call: `getAccountLiquidity` returns `(error, liquidity, shortfall)`, which tells you whether you are underwater but not by what ratio, so the ratio is computed from collateral value, borrow value, and the collateral factor.
+
+Do NOT write a float-based planner. The existing guardian works in base units throughout precisely because float USD math loses precision at repay sizing; matching that idiom is what lets this agent reuse the tested planner instead of shipping a second, weaker one.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1435,49 +1443,67 @@ Verified: agents tests (2 new) pass; typecheck green"
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { planVenusRepay } from '../src/agents/venus-guardian';
+import { MAX_UINT256, planRepair, hfWadToNumber } from '../src/agents/health-factor';
+import { venusHfWad } from '../src/agents/venus-guardian';
 
-test('repays enough to reach the target health factor', () => {
-  const { repayUsd } = planVenusRepay({
-    borrowUsd: 100,
-    collateralUsd: 160,
-    targetHf: 1.6,
-    liquidationThreshold: 0.8,
+const WAD = BigInt(10) ** BigInt(18);
+const usd = (n: number) => BigInt(Math.round(n * 1e6)) * (BigInt(10) ** BigInt(12));
+
+test('derives a 1e18-scaled health factor from venus values', () => {
+  // 160 collateral at 0.8 collateral factor against 100 debt = 1.28
+  const hf = venusHfWad({
+    collateralUsdWad: usd(160),
+    borrowUsdWad: usd(100),
+    collateralFactorMantissa: (WAD * BigInt(8)) / BigInt(10),
   });
-  const hfAfter = (160 * 0.8) / (100 - repayUsd);
-  assert.ok(Math.abs(hfAfter - 1.6) < 0.01, `hf after repay ${hfAfter}`);
+  assert.ok(Math.abs(hfWadToNumber(hf) - 1.28) < 0.0001, `got ${hfWadToNumber(hf)}`);
 });
 
-test('never plans a repay larger than the debt', () => {
-  const { repayUsd } = planVenusRepay({
-    borrowUsd: 10,
-    collateralUsd: 1,
-    targetHf: 1.6,
-    liquidationThreshold: 0.8,
+test('no debt reads as no risk', () => {
+  const hf = venusHfWad({
+    collateralUsdWad: usd(160),
+    borrowUsdWad: BigInt(0),
+    collateralFactorMantissa: (WAD * BigInt(8)) / BigInt(10),
   });
-  assert.ok(repayUsd <= 10);
-  assert.ok(repayUsd >= 0);
+  assert.equal(hf, MAX_UINT256);
 });
 
-test('plans nothing when already above target', () => {
-  const { repayUsd } = planVenusRepay({
-    borrowUsd: 10,
-    collateralUsd: 100,
-    targetHf: 1.6,
-    liquidationThreshold: 0.8,
+test('feeds the existing repay planner to land on target', () => {
+  const collateral = usd(160);
+  const debt = usd(100);
+  const cf = (WAD * BigInt(8)) / BigInt(10);
+  const hf = venusHfWad({ collateralUsdWad: collateral, borrowUsdWad: debt, collateralFactorMantissa: cf });
+  const repay = planRepair(hf, debt, 1.6);
+  const after = venusHfWad({
+    collateralUsdWad: collateral,
+    borrowUsdWad: debt - repay,
+    collateralFactorMantissa: cf,
   });
-  assert.equal(repayUsd, 0);
+  assert.ok(Math.abs(hfWadToNumber(after) - 1.6) < 0.001, `hf after repay ${hfWadToNumber(after)}`);
+});
+
+test('an underwater position still produces a bounded repay', () => {
+  const debt = usd(100);
+  const hf = venusHfWad({
+    collateralUsdWad: usd(50),
+    borrowUsdWad: debt,
+    collateralFactorMantissa: (WAD * BigInt(8)) / BigInt(10),
+  });
+  const repay = planRepair(hf, debt, 1.6);
+  assert.ok(repay > BigInt(0) && repay <= debt, `repay ${repay} out of bounds`);
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter @agripinaa/agents test`
-Expected: FAIL, module not found.
+Expected: FAIL, cannot find `../src/agents/venus-guardian`.
 
-- [ ] **Step 3: Implement the planner and module**
+- [ ] **Step 3: Implement**
 
-`planVenusRepay` solves `(collateralUsd * liquidationThreshold) / (borrowUsd - repayUsd) = targetHf` for `repayUsd`, clamped to `[0, borrowUsd]`. The module ticks every 60s, reads the Venus position, computes the health measure, and repays USDT toward `targetHf: 1.6` when it drops below `1.3` (warn at 1.5), capped at 6 repays/day through the existing breakers. Mirror `health-factor.ts` for logging, state, and error handling.
+`venusHfWad` returns `MAX_UINT256` when `borrowUsdWad` is zero (matching Aave's no-debt sentinel so `planRepair` short-circuits), else `(collateralUsdWad * collateralFactorMantissa) / borrowUsdWad / WAD`-scaled to 1e18. Keep it pure, integer-only, and free of any network or viem import so it stays unit-testable.
+
+The module then: ticks every 60s; reads the position through the Comptroller and oracle; builds `collateralUsdWad` and `borrowUsdWad` from `vToken.balanceOfUnderlying` / `borrowBalanceCurrent` times the oracle price; calls `venusHfWad`; runs the SAME `evaluateThresholds(prevZone, hf, WARN_AT, ACT_AT)` as the Aave guardian; and on `shouldRepair` repays USDT sized by `planRepair` then `scaleRepayToToken`, capped by the wallet balance exactly as `planRepayAmounts` does. Max 6 repays/day through the existing breakers. Mirror `health-factor.ts` for logging, state, and error handling.
 
 - [ ] **Step 4: Add the registry record and runner entry**
 
