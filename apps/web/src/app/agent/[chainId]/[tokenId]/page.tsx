@@ -7,6 +7,11 @@ import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
 import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
+import {
+  ACTIVATION_BLOCKED_COPY,
+  endpointIsLive,
+  isActivatable,
+} from "@/lib/activatable";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
@@ -97,6 +102,10 @@ async function AgentContent({
   const attestation = verified ? await getOnchainAttestation(agent.tokenId) : null;
   // Prefer the on-chain attestation count for verified agents (indexer lags).
   const feedbackCount = attestation ? attestation.count : agent.trust.totalFeedbacks;
+  const activatable = isActivatable({
+    tokenId: agent.tokenId,
+    endpointLive: await endpointIsLive(agent),
+  });
 
   return (
     <div className="max-w-4xl">
@@ -149,13 +158,30 @@ async function AgentContent({
             {agent.description || "No description provided by this agent."}
           </p>
         </div>
-        <Link
-          href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
-        >
-          Activate agent <ArrowIcon className="h-4 w-4" />
-        </Link>
+        {activatable ? (
+          <Link
+            href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
+          >
+            Activate agent <ArrowIcon className="h-4 w-4" />
+          </Link>
+        ) : (
+          <a
+            href={bscScanAddress(agent.chainId, agent.agentWallet ?? agent.owner)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+          >
+            Inspect on-chain identity <ArrowIcon className="h-4 w-4" />
+          </a>
+        )}
       </div>
+
+      {!activatable && (
+        <p className="mt-4 max-w-2xl text-xs leading-relaxed text-muted-2">
+          {ACTIVATION_BLOCKED_COPY}
+        </p>
+      )}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Panel title="Identity">
