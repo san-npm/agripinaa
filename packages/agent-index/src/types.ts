@@ -83,6 +83,13 @@ export interface Page<T> {
 
 export interface IndexStats {
   totalAgents: number | null;
+  /**
+   * True when `totalAgents` counts only the requested chain. 8004scan's public
+   * /stats endpoint ignores `chain_id` and answers with the all-chains figure,
+   * so a consumer must be able to tell a BSC total from a global one before it
+   * labels the number.
+   */
+  chainScoped: boolean;
   totalFeedbacks: number | null;
   asOf: string;
   source: string;
