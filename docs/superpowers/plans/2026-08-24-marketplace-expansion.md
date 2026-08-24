@@ -1072,6 +1072,27 @@ name; /agent-icon.png returns 200; unknown category 404s"
 
 ---
 
+## Phase 1 complete, 2026-08-24
+
+All nine tasks done plus three unplanned live-agent fixes and one security fix. Repo went from 202 to **270 passing, 0 failing** (web 32, agents 162, session-kit 37, exec-metrics 25, shared 7, agent-index 7).
+
+Judge-path state now: no stat tile renders `0` in served HTML (the culprit was `AnimatedNumber` initialising numeric state to `'0'`, so every tile shipped a zero regardless of value), the agent total is BSC-scoped at ~278k, the proof feed ships 14 rows on `/proof` and 5 on `/`, hub cards and detail pages agree on score, unactivatable agents lead with on-chain inspection instead of a wallet-funding dead end, and robots/sitemap/OG/per-page titles/custom 404 all serve.
+
+**Carry these into later tasks:**
+
+- **Do NOT add a root `loading.tsx`.** Measured both ways: with one, `/c/nonsense` answers 200 (soft 404); without, 404. Next streams once a Suspense fallback renders, so a root-level loading wrapper sends the status before `notFound()` runs. Segment-level loading files are fine where no `notFound()` path passes through them.
+- **`dynamicParams = false` is unusable in this app**: incompatible with `nextConfig.cacheComponents`.
+- **Provenance is per-field, not per-record.** `TrustData.scoreSource?: '8004scan' | 'registry'` marks where the score came from, because `mergeAttestation` overrides only `totalScore` and `totalFeedbacks` while `rank`, `healthScore`, `averageScore` and `breakdown` stay with the indexer, and no on-chain read produces a rank at all. `trustProvenanceLabel(trust)` renders both when they differ. Keep that shape when claims add a third source.
+- **`ACTIVATION_BLOCKED_COPY` asserts claim state that `isActivatable` does not evaluate.** It reads correctly only while claims do not exist. Task 19-21 must either pass claim state into `isActivatable` or rewrite that sentence.
+- `apps/web/src/lib/site.ts` now holds `SITE_URL`, `siteUrl()`, `clampDescription()`. Use it rather than hardcoding the origin again.
+- Satori (OG image, agent icon) resolves no CSS custom properties, so `globals.css` tokens are duplicated as literals in `opengraph-image.tsx` and `scripts/make-agent-icon.tsx`.
+
+**Funding, resolved 2026-08-24 18:42 CEST.** Owner sent 0.01409 BNB; treasury holds 0.01448 BNB, 0.01941 across all wallets (~$13.73). **Gas was never the constraint**: BSC is at 0.05 gwei, so an ERC-8004 registration costs $0.007 and a V3 mint $0.018, and Ophis orders are signed off-chain and solver-settled so agents pay nothing per swap. My earlier "19 swaps of gas" figure assumed 1 gwei and agent-paid swap gas; both were wrong by more than an order of magnitude. Treat the BNB as trading capital to be wrapped, not as a gas reserve. Transferred 1.5 USDT to the grid (`0xb7b862cd55d2020dfe87b18b5394eca8c089fe686e8a42e44f2ac0b4ffd6d7e1`) to restore its buy side; its inventory went 4.52 to 6.01 and it is armed for buy:2 at 698.4.
+
+Side effect worth knowing for Task 18: adding capital without resetting `inventoryStartUsd` (baseline 4.4928) loosens the drawdown guard, since the halt still triggers at inventory below 4.268, now a 29 percent fall rather than 5. The permanent-halt risk I flagged earlier is correspondingly lower, but the guard is now measuring something even less meaningful.
+
+---
+
 # Phase 2: Add-agent scaffold and four new agents
 
 ## Task 10: The shared agent registry
