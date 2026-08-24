@@ -5,21 +5,11 @@ import { assertSafeUrl } from '@agripinaa/shared/ssrf';
 import { kvGet } from './kv';
 
 /**
- * The runner's permanent public hostname, served by Tailscale Funnel from the
- * Aleph VM. Committed as the floor so the site resolves a stable endpoint with
- * no env var and no KV.
- *
- * This replaces a Cloudflare quick-tunnel hostname, which was the wrong kind of
- * default in two ways. It changed on every tunnel restart, and once released it
- * could be reassigned by Cloudflare to someone else, so falling back to it
- * meant falling back to a host this project does not control. Verified on
- * 2026-08-24: the quick-tunnel name recorded a week earlier no longer resolved
- * at all.
- *
- * Funnel needs no inbound port on the VM, which matters because the Aleph node
- * owns 80 and 443 on the instance's public IP and forwards only one port to us.
+ * Last-known runner base, committed as the floor so the site still resolves an
+ * endpoint with no env var and no KV. Rotations land in KV (see
+ * /api/ops/runner-url) and never require a redeploy.
  */
-export const DEFAULT_RUNNER_BASE = 'https://agripinaa-agents.tail565030.ts.net';
+export const DEFAULT_RUNNER_BASE = 'https://continuous-locator-four-christine.trycloudflare.com';
 
 export const RUNNER_URL_KEY = 'agripinaa:runner-url';
 
