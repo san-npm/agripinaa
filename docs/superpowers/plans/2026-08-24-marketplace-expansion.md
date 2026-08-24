@@ -22,6 +22,7 @@
 - **Test commands:** `pnpm -r test` (all workspaces), `pnpm --filter @agripinaa/web typecheck`, `pnpm --filter @agripinaa/web build`, `pnpm --filter @agripinaa/agents test`. Node's built-in runner is used via `tsx --test tests/*.test.ts`.
 - **`apps/web` tests run under the `react-server` condition** (`tsx --conditions=react-server --test tests/*.test.ts`, already wired into the web `test` script as of Task 1). Reason: `server-only` resolves to a bare `throw` under the default condition and to a no-op under `react-server`, which is how Next resolves it. Lib modules keep their `server-only` markers; the runner adapts. Settled once here, so no later task needs to revisit it: any web test importing a lib module with that marker works as long as the script keeps the flag.
 - **Never commit a `.env*` file or an API key.** `SCAN8004_API_KEY` lives in Vercel env and `.env.local`.
+- **`pnpm --filter @agripinaa/web lint` exits 1 at baseline.** Three pre-existing errors: `set-state-in-effect` in `dashboard/page.tsx` and `AnimatedNumber.tsx`, and an unused var in `managed.ts`. Lint is NOT a gate for any task in this plan. Do not fix unrelated lint errors as a side quest, and do not let a red lint run block a commit whose own files are clean.
 - **`npx tsx` does not self-install here.** In a workspace that does not yet have `tsx` linked, `npx tsx` fails with `command not found` rather than fetching it. Use the monorepo's existing binary (`packages/shared/node_modules/.bin/tsx`) for a red-phase run that happens before the workspace's own devDependency is installed. This matters only for the first test in a workspace.
 - **Baseline as of Task 1 (2026-08-24):** `pnpm -r --if-present test` is 202 passing, 0 failing (shared 7, exec-metrics 25, agent-index 4, session-kit 37, web 3, agents 126). Any task that ends with a lower total in an untouched workspace has broken something. After Tasks 2, 3, the SSRF hardening, and the lp-range fixes the total is **220 passing** (agents 135, web 12, agent-index 4, exec-metrics 25, session-kit 37, shared 7).
 - **Run ONE repo-writing task at a time.** Learned the hard way on 2026-08-24: two subagents working in parallel (Task 3 and the lp-range follow-up) collided in the git index. One used a broad `git add` that swept the other's files in, the other's commit retries failed with "no changes added to commit", one reset to recover, and a retry raced into that window, so a commit ended up with the wrong task's message attached to the wrong task's files. No work was lost (the tree and the test totals reconciled), but untangling it cost more than the parallelism saved. Different directories are NOT enough isolation, because the index and HEAD are shared. If parallel execution is genuinely needed, give each agent its own git worktree.
@@ -1016,7 +1017,12 @@ gate, a first-party agent's does not"
 
 **Context:** Read `node_modules/next/dist/docs/01-app/` on `generateMetadata`, `sitemap`, `robots`, and file-based OG images before writing. Metadata APIs changed in Next 16.
 
-While here, fix two pieces of existing copy: the root title in `layout.tsx` is currently `Agripinaa — the front door for every agent on BSC`, which uses an em dash (house style forbids it; use a colon or comma). Confirmed in the live HTML on 2026-08-24. Also verify the served homepage no longer renders `0` in any stat tile before hydration, which was the pre-Task-5 baseline.
+While here, fix three pieces of existing copy and one formatting bug:
+
+1. The root title in `layout.tsx` is `Agripinaa — the front door for every agent on BSC`, which uses an em dash (house style forbids it; use a colon or comma). Confirmed in the live HTML on 2026-08-24.
+2. `apps/web/src/app/proof/page.tsx:7` has a second one: `title: 'Live proof feed — Agripinaa'`. Found during Task 6 and deliberately left there rather than folding unrelated copy into that commit.
+3. **`toLocaleString()` with no explicit locale is non-deterministic across environments.** The Task 5 stats strip renders the agent total through it, which produced `278 802` on a French-locale dev machine and will produce `278,802` on Vercel. A server-rendered number must not depend on the host's ICU locale. Pass an explicit locale at the call site.
+4. Verify the served homepage still renders no `0` in any stat tile before hydration (the pre-Task-5 baseline had two) and that the proof feed still ships rows.
 
 - [ ] **Step 1: Add per-page metadata**
 
@@ -1795,7 +1801,17 @@ Diagnosed while Tasks 1 and 2 were running. Both live agents that produce Ophis 
 - Task 12 (proof harvest): the Ranger's committed attestation proof points at position #7173629 with the note "managed in range". That position has zero liquidity, so the claim does not survive a click. Refresh the proof refs after the agent mints again.
 - Task 17: the treasury cannot fund anything today. `spike-a` holds 1.54 USDT and 0.0004 BNB. Owner top-up of roughly 25 USDT and 0.045 BNB covers the Grid restart, the Ranger, all four new agents, and gas margin for eight agents through 2026-09-23.
 - Task 18: the cap raises stay proposed, but they are second-order. Capital and the self-heal are what actually restore a track record.
-- A deploy to the VM is required before any of the agent fixes take effect in production. That is a separate, explicit step: `./ops/deploy-aleph.sh root@46.247.131.210` (host `agripinaa-aleph` in ssh config, port 28092), which re-syncs code and restarts both systemd units. Do not run it as a side effect of a code task.
+- A deploy to the VM is required before any of the agent fixes take effect in production. That is a separate, explicit step: `./ops/deploy-aleph.sh agripinaa-aleph` (the script accepts a bare ssh_config alias; the VM is root@46.247.131.210 port 28092), which re-syncs code and restarts the runner while leaving the tunnel running so its URL stays stable. Do not run it as a side effect of a code task.
+
+**RESOLVED 2026-08-24 17:41 CEST.** Deployed at `8314ab3` (the four agent fixes cherry-picked to main; the web work stayed on the branch, so production Vercel is untouched and still serves the old static manifests). Both agents recovered, verified on-chain:
+
+- Ranger, 22 seconds from boot to working: `position-empty` cleared #7209976, the inventory-prep Ophis order filled, and it minted **#7248592**, which reads `liquidity = 2451189888573570005` on-chain against the three older positions still at 0. It has been range-checking the new position normally since.
+- Grid filled at 15:45:23 with `desiredClipUsd: 2, effectiveClipUsd: 1.9963839118921194`, its first trade since 2026-08-19 and the one that had been refused 1,559 times.
+- The public proof feed went from 9 events (all Ranger, newest 2 days old) to 12 with three timestamped that day across two agents.
+
+Post-recovery state confirms the capital analysis: Grid now holds 0.006379 WBNB and **zero USDT**, so it cannot buy again until its sell leg fills at 730.816 or a re-center re-arms it. One clip per side is the ceiling at this inventory, which is why a top-up should be sent as BNB (the starved sell leg) rather than USDT.
+
+**Also stale and NOT yet fixed:** `ops/launch.md`'s Aleph migration section still instructs `git add apps/agents/data && git commit` to hand off agent state, but `.gitignore` contains `apps/agents/data/`, so that procedure cannot work. State now lives only on the VM. Rewriting the hand-off narrative needs a decision about how state migrates and is not covered by any task in this plan.
 
 ---
 
