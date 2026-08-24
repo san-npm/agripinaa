@@ -161,6 +161,8 @@ export class MergedSource implements AgentIndexSource {
       const snapshot = await this.loadSnapshot(chainId);
       return {
         totalAgents: snapshot?.length ?? null,
+        // The snapshot is seeded per chain, so its length is already scoped.
+        chainScoped: snapshot != null,
         totalFeedbacks: null,
         asOf: new Date().toISOString(),
         source: 'snapshot',

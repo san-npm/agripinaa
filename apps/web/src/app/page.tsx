@@ -5,21 +5,35 @@ import { AgentCard } from "@/components/AgentCard";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ArrowIcon, CATEGORY_ICON, ReceiptIcon, ShieldIcon, VerifiedIcon } from "@/components/icons";
 import { ProofFeed } from "@/components/ProofFeed";
+import { ProofFeedLive } from "@/components/ProofFeedLive";
 import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
 import { getStats, listDirectory } from "@/lib/data";
 
 async function StatsStrip() {
-  const stats = await getStats();
+  // listDirectory is a `use cache` entry keyed on its arguments, so the call
+  // VerifiedAgents makes below reuses this one rather than refetching.
+  const [stats, dir] = await Promise.all([getStats(), listDirectory()]);
   const items = [
     {
+      // Explicit locale: this string is rendered on the server, so a bare
+      // toLocaleString() would group by whatever ICU locale the host happens
+      // to run under (278 802 on a French dev box, 278,802 on Vercel).
       value:
         stats.totalAgents != null
-          ? stats.totalAgents.toLocaleString()
-          : "—",
-      label: "ERC-8004 agents registered",
+          ? stats.totalAgents.toLocaleString("en-US")
+          : "n/a",
+      label: stats.chainScoped
+        ? "ERC-8004 agents registered on BSC"
+        : "ERC-8004 agents registered",
     },
-    { value: "4", label: "live Agripinaa agents on mainnet" },
-    { value: "provable", label: "execution quality per trade" },
+    {
+      value: String(dir.verified.length),
+      label: "live Agripinaa agents on mainnet",
+    },
+    {
+      value: String(dir.registry.length),
+      label: "indexed agents you can browse",
+    },
   ];
   return (
     <dl className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface">
@@ -102,7 +116,9 @@ export default function Home() {
       </section>
 
       <section className="mt-4">
-        <ProofFeed compact />
+        <Suspense fallback={<ProofFeed compact />}>
+          <ProofFeedLive compact />
+        </Suspense>
       </section>
 
       <section className="mt-10">

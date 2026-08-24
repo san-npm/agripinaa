@@ -14,7 +14,7 @@ import {
 } from '@agripinaa/exec-metrics';
 import { cacheLife } from 'next/cache';
 
-import gridManifest from '../../public/manifests/grid.json';
+import { runnerUrl } from './runner-url';
 
 const timedCowFetch: typeof fetch = (input, init) => fetch(input, {
   ...init,
@@ -29,14 +29,8 @@ const SYMBOL_BY_ADDRESS = new Map(
   Object.values(TOKENS_BSC).map((token) => [token.address.toLowerCase(), token.symbol]),
 );
 
-function proofEndpoint(): string {
-  const configured = process.env.AGENTS_BASE_URL?.trim();
-  const source = configured || gridManifest.x402.endpoint;
-  try {
-    return new URL('/proof', source).toString();
-  } catch {
-    return new URL('/proof', gridManifest.x402.endpoint).toString();
-  }
+async function proofEndpoint(): Promise<string> {
+  return runnerUrl('/proof');
 }
 
 function optionalNumber(value: unknown): number | undefined {
@@ -137,7 +131,7 @@ async function getOnchainTradeBackfill(): Promise<ProofEvent[]> {
 
 async function getRunnerEvents(): Promise<ProofEvent[]> {
   try {
-    const response = await fetch(proofEndpoint(), {
+    const response = await fetch(await proofEndpoint(), {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(5_000),
     });

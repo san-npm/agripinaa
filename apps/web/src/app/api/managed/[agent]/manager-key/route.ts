@@ -16,7 +16,7 @@ export async function GET(
   const token = new URL(request.url).searchParams.get('token');
   const suffix = token && /^[A-Za-z0-9]{1,10}$/.test(token) ? `?token=${token}` : '';
   try {
-    const upstream = await fetch(agentsUrl(`/${agent}/manager-key${suffix}`), {
+    const upstream = await fetch(await agentsUrl(`/${agent}/manager-key${suffix}`), {
       signal: AbortSignal.timeout(5_000),
     });
     // Treat the tunnel as untrusted: bound the response before parsing.

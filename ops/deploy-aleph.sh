@@ -39,18 +39,33 @@ S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync di
 S 'chmod 700 ~/agripinaa/wallets && chmod 600 ~/agripinaa/wallets/*.json'
 
 echo "== installing systemd services (user: $RUSER)…"
+# The checkout lives under the remote user's home, not a fixed path; every unit
+# path below is derived from it so nothing hardcodes /opt or /root.
+APPDIR="$RHOME/agripinaa"
 for UNIT in runner tunnel; do
   if [ "$UNIT" = runner ]; then
     DESC="Agripinaa reference agents"
     EXEC="/usr/bin/env pnpm --filter @agripinaa/agents start"
-    WD="WorkingDirectory=$RHOME/agripinaa"
+    WD="WorkingDirectory=$APPDIR"
+    EXTRA=""
   else
     DESC="Cloudflare tunnel for agent x402 endpoints"
     EXEC="/usr/bin/cloudflared tunnel --url http://localhost:4410"
     WD=""
+    # A quick tunnel gets a new hostname on every start, so the unit reports its
+    # own URL to the marketplace instead of leaving it to a manifest edit. The
+    # leading '-' on both lines matters: a missing env file or a failed report
+    # must not fail the unit, because Restart=always would then rotate the URL
+    # again and again. ops.env is operator-created and never committed.
+    # ExecStartPost runs inside the unit's start timeout (90s by default), and
+    # the reporter waits for cloudflared to print its hostname, so cap the wait
+    # well under that: 20 attempts x 2s, plus a bounded curl.
+    EXTRA="EnvironmentFile=-$APPDIR/ops/ops.env
+Environment=REPORT_ATTEMPTS=20
+ExecStartPost=-$APPDIR/ops/report-runner-url.sh"
   fi
-  printf '[Unit]\nDescription=%s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nUser=%s\n%s\nExecStart=%s\nRestart=always\nRestartSec=10\n[Install]\nWantedBy=multi-user.target\n' \
-    "$DESC" "$RUSER" "$WD" "$EXEC" | S "sudo tee /etc/systemd/system/agripinaa-$UNIT.service > /dev/null"
+  printf '[Unit]\nDescription=%s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nUser=%s\n%s\nExecStart=%s\n%s\nRestart=always\nRestartSec=10\n[Install]\nWantedBy=multi-user.target\n' \
+    "$DESC" "$RUSER" "$WD" "$EXEC" "$EXTRA" | S "sudo tee /etc/systemd/system/agripinaa-$UNIT.service > /dev/null"
 done
 # restart (not just enable --now, which is a no-op on an already-running unit)
 # so new code actually loads; the tunnel stays up to keep its URL stable.
@@ -60,4 +75,10 @@ S 'sudo systemctl --no-pager -q is-active agripinaa-runner agripinaa-tunnel'
 
 echo "== tunnel URL:"
 S 'sudo journalctl -u agripinaa-tunnel --since "3 min ago" 2>/dev/null | grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" | tail -1'
-echo "== next: ./ops/set-x402-endpoint.sh <that-url>"
+
+# The tunnel is deliberately started, not restarted, so its URL stays stable,
+# which also means ExecStartPost does not fire on a redeploy. Report it here so
+# a deploy still leaves the marketplace pointing at the live endpoint.
+echo "== reporting the tunnel URL to the marketplace…"
+S "set -a; . $APPDIR/ops/ops.env 2>/dev/null || true; set +a; REPORT_ATTEMPTS=5 $APPDIR/ops/report-runner-url.sh" \
+  || echo "   skipped (no OPS_TOKEN on the VM yet: see ops/launch.md)"

@@ -22,7 +22,16 @@ export interface TrustData {
   isVerified: boolean;
   /** Per-dimension breakdown (quality, popularity, activity, …) when available. */
   breakdown?: Record<string, number>;
+  /** Where the record as a whole was fetched from. */
   source: '8004scan' | 'registry';
+  /**
+   * Where `totalScore` / `totalFeedbacks` came from, when that is not the
+   * record's own source. Set when a direct ReputationRegistry read overrides a
+   * lagging indexer score: the two numbers then have a different provenance
+   * from `rank`, `healthScore`, and `starCount`, which no on-chain read
+   * produces. Absent means the whole record shares `source`.
+   */
+  scoreSource?: '8004scan' | 'registry';
   asOf: string;
 }
 
@@ -83,6 +92,13 @@ export interface Page<T> {
 
 export interface IndexStats {
   totalAgents: number | null;
+  /**
+   * True when `totalAgents` counts only the requested chain. 8004scan's public
+   * /stats endpoint ignores `chain_id` and answers with the all-chains figure,
+   * so a consumer must be able to tell a BSC total from a global one before it
+   * labels the number.
+   */
+  chainScoped: boolean;
   totalFeedbacks: number | null;
   asOf: string;
   source: string;
