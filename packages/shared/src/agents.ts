@@ -33,6 +33,7 @@ export type AgentSlug =
   | 'health-factor'
   | 'venus-guardian'
   | 'yield'
+  | 'yield-b'
   | 'lp-range'
   | 'weight-rebalancer';
 
@@ -343,6 +344,54 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         note: 'Read Venus 202 bps vs Aave 207 bps on-chain, supplied to the winner',
       },
     ],
+  },
+  /*
+   * Configured, not yet on-chain, same as grid-b and venus-guardian. This one
+   * carries `managed: true`, so Task 17 must also generate its master manager
+   * key (fund --gen creates wallets/agent-yield-b-session.json) before any
+   * depositor can grant it a session.
+   */
+  'yield-b': {
+    slug: 'yield-b',
+    tokenId: null,
+    name: 'Agripinaa Steward',
+    category: 'yield',
+    wallet: null,
+    walletFile: 'agent-yield-b.json',
+    managed: true,
+    backfillOphisTrades: false,
+    manifest: {
+      name: 'Agripinaa Steward',
+      description:
+        'Stablecoin yield rotation across BSC lending venues, run patiently. Compares live Venus and Aave supply rates every twelve hours and moves a deposit only when the other venue leads by 120 bps on three consecutive checks, and never more than once every two days. The same policy applies to its own capital and to every account it manages, and funds move through a router that can only ever pay them back to their owner.',
+      category: 'yield',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['session-keys', 'x402-status'],
+      execution: { asset: 'USDT', chainId: 56 },
+      /*
+       * The numbers the tick enforces, pinned to YIELD_B_PARAMS by
+       * tests/yield-b.test.ts. Same key names as the Harvester's where they
+       * mean the same thing, so the two are comparable side by side.
+       */
+      safety: {
+        maxMovesPerDay: 1,
+        hysteresisBps: 120,
+        confirmations: 3,
+        minHoursBetweenMoves: 48,
+        checkEveryHours: 12,
+        venues: ['venus', 'aave'],
+        custody:
+          'funds stay in the depositor account throughout; the agent holds a session key scoped to one router whose every recipient is hardcoded to that same account, so it can never send funds anywhere else and never withdraws to itself',
+        onRevoke:
+          'revoking the session stops all further moves; the position stays where it is and the depositor withdraws it themselves',
+      },
+      recommendedScope: { spendCapUsdtPerDay: '250', expiresHours: 720 },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    funding: { bnb: '0.0015', usdt: '1' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
   },
   'lp-range': {
     slug: 'lp-range',

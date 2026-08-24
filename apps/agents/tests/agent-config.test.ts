@@ -38,6 +38,9 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
       // and the WBNB leg is what a demo borrow position would be opened against.
       ['agent-venus-guardian', '0.0015', '2', '0.005', '0'],
       ['agent-yield', '0.0009', '2.5', '0', '0'],
+      // Budgeted, not yet sent: yield-b manages user deposits, so its own
+      // capital is a token position that gives it a track record of its own.
+      ['agent-yield-b', '0.0015', '1', '0', '0'],
       ['agent-lp-range', '0.0011', '1.5', '0.003', '0'],
       ['agent-weight-rebalancer', '0.0015', '2.5', '0.004', '0'],
       ['facilitator', '0.0008', '0', '0', '0'],
@@ -45,12 +48,16 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
   );
 });
 
-test('only the managed agent gets a companion session key', () => {
+test('every managed agent gets its own companion session key, and only those', () => {
+  // Two agents manage user funds now, competing on the same router, and each
+  // needs a master manager key of its own: sharing one would give both agents
+  // the same on-chain identity, so a depositor could not grant to one without
+  // granting to the other.
   assert.deepEqual(
     FUNDING_PLAN.filter((e) => e.sessionKey != null).map((e) => e.sessionKey),
-    ['agent-yield-session'],
+    ['agent-yield-session', 'agent-yield-b-session'],
   );
-  assert.deepEqual(MANAGED_AGENT_SLUGS, ['yield']);
+  assert.deepEqual(MANAGED_AGENT_SLUGS, ['yield', 'yield-b']);
 });
 
 test('no --only means the whole plan', () => {

@@ -6,7 +6,7 @@
  */
 import type { Client } from '@altananetwork/sdk';
 
-import { managedYieldTick } from './agents/yield';
+import { managedYieldTick, type ManagedPolicy } from './agents/yield';
 import { deploymentForEntry, managedExecutor } from './executor';
 import { loadManaged } from './managed';
 import type { ManagerKeySet } from './manager-key';
@@ -17,8 +17,14 @@ export async function tickManagedYield(opts: {
   client: Client;
   /** The agent's manager keys (one per token, keyed by symbol). */
   managerKeys: ManagerKeySet;
+  /**
+   * This agent's rotation policy. Required rather than defaulted: more than one
+   * agent manages funds on the same router now, and a caller that forgot to
+   * pass one would hand a depositor the other agent's policy without a word.
+   */
+  policy: ManagedPolicy;
 }): Promise<{ serviced: number; errors: number }> {
-  const { ctx, client, managerKeys } = opts;
+  const { ctx, client, managerKeys, policy } = opts;
   const entries = loadManaged(ctx.name);
   let serviced = 0;
   let errors = 0;
@@ -42,7 +48,7 @@ export async function tickManagedYield(opts: {
         continue;
       }
       const executor = managedExecutor({ client, managerKey: managerKey.privateKey, entry });
-      await managedYieldTick(ctx, executor);
+      await managedYieldTick(ctx, executor, policy);
       serviced += 1;
     } catch (err) {
       errors += 1;

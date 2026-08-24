@@ -16,6 +16,7 @@ test('every agent in the registry has a manifest, registered or not', () => {
       'venus-guardian',
       'weight-rebalancer',
       'yield',
+      'yield-b',
     ],
   );
 });
