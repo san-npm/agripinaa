@@ -10,6 +10,7 @@ import {
   type IndexStats,
   type Page,
 } from '@agripinaa/agent-index';
+import { AGENT_LIST } from '@agripinaa/shared/agents';
 import { cacheLife } from 'next/cache';
 
 import { mergeAttestation } from './attestation-merge';
@@ -26,8 +27,14 @@ const source = new MergedSource();
  * lane is rpc_only and lags fresh registrations; profiles for these ids
  * resolve via direct registry reads either way. Provenance stays visible
  * on each card.
+ *
+ * Read off the shared registry rather than restated here, so registering a new
+ * agent pins it automatically. Records with no `tokenId` are not on-chain yet
+ * and have nothing for `getAgent` to resolve, so they drop out.
  */
-const PINNED_AGENT_IDS = ['269703', '269704', '269705', '269706'];
+const PINNED_AGENT_IDS = AGENT_LIST.map((agent) => agent.tokenId).filter(
+  (id): id is string => id != null,
+);
 
 /**
  * Reflect the on-chain ERC-8004 attestation on every card that renders a
