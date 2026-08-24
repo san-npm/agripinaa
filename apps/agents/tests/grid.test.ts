@@ -390,3 +390,118 @@ test('maybeRecenter returns false and leaves center untouched once the daily cap
 test('re-center cap is a small positive number (a runaway trend still halts)', () => {
   assert.ok(MAX_RECENTERS_PER_DAY >= 1 && MAX_RECENTERS_PER_DAY <= 6);
 });
+
+/* --------------------- adaptive clip sizing (shrink only) ------------------ */
+
+import { CLIP_USD, MIN_CLIP_USD, effectiveClipUsd } from '../src/agents/grid';
+
+test('effectiveClipUsd: a funded wallet keeps the full clip', () => {
+  assert.equal(effectiveClipUsd(CLIP_USD, 10.11, MIN_CLIP_USD), CLIP_USD);
+  assert.equal(effectiveClipUsd(CLIP_USD, 2.538, MIN_CLIP_USD), CLIP_USD);
+  assert.equal(effectiveClipUsd(CLIP_USD, 1000, MIN_CLIP_USD), CLIP_USD);
+});
+
+test('effectiveClipUsd: the live incident, 1.9964 affordable against a $2 clip', () => {
+  assert.equal(effectiveClipUsd(2, 1.9964, 1), 1.9964);
+});
+
+test('effectiveClipUsd: affordable under the minimum cannot trade', () => {
+  assert.equal(effectiveClipUsd(2, 0.5, 1), 0);
+  assert.equal(effectiveClipUsd(2, 0.999999, 1), 0);
+});
+
+test('effectiveClipUsd: exact boundaries, affordable equal to desired and to min', () => {
+  assert.equal(effectiveClipUsd(2, 2, 1), 2);
+  assert.equal(effectiveClipUsd(2, 1, 1), 1);
+});
+
+test('effectiveClipUsd: a non-finite or empty balance cannot trade', () => {
+  // A non-finite balance is a corrupt read: fail safe and block, matching the
+  // tick's existing bad-read handling, rather than quoting against garbage.
+  assert.equal(effectiveClipUsd(2, Number.NaN, 1), 0);
+  assert.equal(effectiveClipUsd(2, Number.POSITIVE_INFINITY, 1), 0);
+  assert.equal(effectiveClipUsd(2, 0, 1), 0);
+  assert.equal(effectiveClipUsd(2, -1, 1), 0);
+});
+
+test('effectiveClipUsd ONLY EVER SHRINKS: never above desired, never above affordable', () => {
+  for (const affordable of [0, 0.4, 1, 1.5, 1.9964, 2, 2.5, 1000]) {
+    const got = effectiveClipUsd(CLIP_USD, affordable, MIN_CLIP_USD);
+    assert.ok(got <= CLIP_USD, `clip ${got} grew past the desired ${CLIP_USD}`);
+    assert.ok(got === 0 || got <= affordable, `clip ${got} exceeded affordable ${affordable}`);
+    assert.ok(got === 0 || got >= MIN_CLIP_USD, `clip ${got} fell under the floor`);
+  }
+});
+
+test('grid minimum clip matches the swap-notional floor the LP agent already uses', async () => {
+  // Mirrored, not imported, so pin the two together: a drift here would mean
+  // the two agents disagree on what is worth swapping on the same pair.
+  const { MIN_SWAP_NOTIONAL_USD } = await import('../src/agents/lp-range');
+  assert.equal(MIN_CLIP_USD, MIN_SWAP_NOTIONAL_USD);
+});
+
+/* The tick path end to end: size the clip, quote it, run the balance guard. */
+
+test('adapted clip: the 1.9964 USDT wallet now trades instead of blocking', () => {
+  // 1,559 trade-blocked events came from being short of a fixed $2 clip by
+  // about four tenths of a cent. The adapted clip spends what is actually held.
+  const clipUsd = effectiveClipUsd(CLIP_USD, 1.9964, MIN_CLIP_USD);
+  const clip = clipForLevel('buy', 705, clipUsd);
+  assert.deepEqual(clip, { token: 'USDT', amount: '1.9964' });
+
+  const res = evaluateGuards(
+    guardInput({
+      clipBaseUnits: toBaseUnits(clip.amount, 18),
+      balanceBaseUnits: toBaseUnits('1.9964', 18),
+    }),
+  );
+  assert.deepEqual(res, { ok: true });
+});
+
+test('adapted clip: the same wallet blocked under the old fixed $2 clip', () => {
+  const res = evaluateGuards(
+    guardInput({
+      clipBaseUnits: toBaseUnits(String(CLIP_USD), 18),
+      balanceBaseUnits: toBaseUnits('1.9964', 18),
+    }),
+  );
+  assert.deepEqual(res, { ok: false, reason: 'insufficient-balance', halt: false });
+});
+
+test('adapted clip: under the minimum still blocks with insufficient-balance', () => {
+  const clipUsd = effectiveClipUsd(CLIP_USD, 0.5, MIN_CLIP_USD);
+  assert.equal(clipUsd, 0);
+  // The tick quotes the DESIRED size when the effective clip is 0, so a wallet
+  // that cannot fund the floor blocks exactly as an empty one does today.
+  const clip = clipForLevel('buy', 705, clipUsd > 0 ? clipUsd : CLIP_USD);
+  const res = evaluateGuards(
+    guardInput({
+      clipBaseUnits: toBaseUnits(clip.amount, 18),
+      balanceBaseUnits: toBaseUnits('0.5', 18),
+    }),
+  );
+  assert.deepEqual(res, { ok: false, reason: 'insufficient-balance', halt: false });
+});
+
+test('adapted clip: a funded wallet is unchanged end to end', () => {
+  const clipUsd = effectiveClipUsd(CLIP_USD, 10.11, MIN_CLIP_USD);
+  const clip = clipForLevel('buy', 705, clipUsd);
+  assert.deepEqual(clip, { token: 'USDT', amount: '2' });
+  const res = evaluateGuards(
+    guardInput({
+      clipBaseUnits: toBaseUnits(clip.amount, 18),
+      balanceBaseUnits: toBaseUnits('10.11', 18),
+    }),
+  );
+  assert.deepEqual(res, { ok: true });
+});
+
+test('adapted clip: a starved WBNB sell leg shrinks to its own notional', () => {
+  const price = 705;
+  const wbnb = 0.0021; // about $1.48, under the $2 clip but over the $1 floor
+  const clipUsd = effectiveClipUsd(CLIP_USD, wbnb * price, MIN_CLIP_USD);
+  approx(clipUsd, 1.4805, 1e-9);
+  const clip = clipForLevel('sell', price, clipUsd);
+  assert.equal(clip.token, 'WBNB');
+  assert.ok(Number(clip.amount) <= wbnb, `sell clip ${clip.amount} exceeded the balance ${wbnb}`);
+});
