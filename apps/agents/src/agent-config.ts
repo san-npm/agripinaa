@@ -44,6 +44,25 @@ export function assertModulesRegistered(modules: readonly { name: string }[]): v
   }
 }
 
+/**
+ * True when this agent exists as configuration only: the registry has no wallet
+ * address for it, and `fund --gen` has not created its key file either.
+ *
+ * A record can legitimately be added before its wallet exists (the address is
+ * not knowable until the key is generated), and the runner must not treat that
+ * as a fatal misconfiguration: buildContext throws on a missing key file, and
+ * one unprovisioned agent would otherwise take every other agent's tick loop
+ * down with it at boot. A record that DOES carry a wallet address but has no
+ * key file is a different thing entirely, a provisioned agent whose secret is
+ * missing, and that must still fail loudly.
+ */
+export function isUnprovisioned(
+  record: Pick<AgentRecord, 'wallet'>,
+  walletFileExists: boolean,
+): boolean {
+  return record.wallet === null && !walletFileExists;
+}
+
 /** One wallet's share of the funding transfer, in whole units. */
 export interface FundingEntry {
   /** wallets/<name>.json, which is what `--only` selects on. */

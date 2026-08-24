@@ -9,21 +9,22 @@ import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN } from '@agripinaa/shared';
+import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN, agentBySlug } from '@agripinaa/shared';
 
-import { assertModulesRegistered, MANAGED_AGENT_SLUGS } from './agent-config';
-import { buildContext } from './chassis';
+import { assertModulesRegistered, isUnprovisioned, MANAGED_AGENT_SLUGS } from './agent-config';
+import { buildContext, hasAgentWallet } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { tickManagedYield } from './managed-runner';
 import { startX402Server, type ManagerIdentity, type ManagerSet } from './x402-server';
 import type { AgentContext, AgentModule } from './types';
 import { gridAgent } from './agents/grid';
+import { gridBAgent } from './agents/grid-b';
 import { healthFactorAgent } from './agents/health-factor';
 import { yieldAgent } from './agents/yield';
 import { lpRangeAgent } from './agents/lp-range';
 
-const ALL: AgentModule[] = [gridAgent, healthFactorAgent, yieldAgent, lpRangeAgent];
+const ALL: AgentModule[] = [gridAgent, gridBAgent, healthFactorAgent, yieldAgent, lpRangeAgent];
 /** Agents that can manage user funds (grant a scoped session to their manager key). */
 const MANAGED_AGENTS = MANAGED_AGENT_SLUGS;
 const PORT = Number(process.env.AGENTS_PORT ?? 4410);
@@ -92,6 +93,18 @@ async function main() {
   const agents = new Map<string, { module: AgentModule; ctx: AgentContext }>();
 
   for (const module of modules) {
+    // An agent may be configured before its wallet exists (the address is not
+    // knowable until the key is generated). Skip it with a line in the log
+    // rather than letting buildContext's missing-key throw take every other
+    // agent's tick loop down at boot. A record that already carries a wallet
+    // address still fails loudly, because then the key is genuinely missing.
+    const record = agentBySlug(module.name);
+    if (record && isUnprovisioned(record, hasAgentWallet(module.name))) {
+      console.log(
+        `${module.name}: skipped, no wallet yet (run fund --gen --only agent-${record.slug})`,
+      );
+      continue;
+    }
     const ctx = await buildContext(module.name);
     agents.set(module.name, { module, ctx });
     ctx.log({ event: 'boot', category: module.category, tickMs: module.tickIntervalMs });

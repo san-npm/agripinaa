@@ -66,8 +66,18 @@ function saveDisk(name: string, state: DiskState): void {
   renameSync(tmp, file);
 }
 
+/** Where an agent's own-capital key lives. Matches the registry's walletFile. */
+export function agentWalletPath(name: string): string {
+  return join(WALLETS_DIR, `agent-${name}.json`);
+}
+
+/** Whether the key exists yet. An agent can be configured before it is. */
+export function hasAgentWallet(name: string): boolean {
+  return existsSync(agentWalletPath(name));
+}
+
 export function loadAgentAccount(name: string): Account {
-  const file = join(WALLETS_DIR, `agent-${name}.json`);
+  const file = agentWalletPath(name);
   if (!existsSync(file)) {
     throw new Error(`missing wallet file ${file}; run: pnpm --filter @agripinaa/agents fund -- --gen ${name}`);
   }

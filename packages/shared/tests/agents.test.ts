@@ -12,10 +12,22 @@ test('the four live agents are registered with their on-chain ids', () => {
 });
 
 test('token ids and wallets are unique across agents', () => {
+  // Both are null until an agent is registered and its key generated, which is
+  // a legitimate state, so uniqueness is asserted over what has been assigned.
   const ids = AGENT_LIST.map((a) => a.tokenId).filter((id): id is string => id != null);
-  const wallets = AGENT_LIST.map((a) => a.wallet.toLowerCase());
+  const wallets = AGENT_LIST.map((a) => a.wallet)
+    .filter((w): w is `0x${string}` => w != null)
+    .map((w) => w.toLowerCase());
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(wallets).size, wallets.length);
+});
+
+test('an agent with a token id always has the wallet that minted it', () => {
+  // The reverse is fine (configured before funding), but an identity with no
+  // wallet would have no execution history to attribute to it.
+  for (const agent of AGENT_LIST) {
+    if (agent.tokenId != null) assert.ok(agent.wallet, `${agent.slug} has a token id but no wallet`);
+  }
 });
 
 test('every agent carries a manifest with a category matching its record', () => {
@@ -42,6 +54,11 @@ test('lookup helpers agree with the record map', () => {
  * mirrors buildManifest (endpoint first inside x402, everything else in
  * declaration order), so this fails the moment a registry edit would change
  * what an x402 client reads back.
+ *
+ * Only REGISTERED agents are pinned here. An agent still in configuration has
+ * no minted tokenURI to hold still for, and pinning its bytes would forbid the
+ * tuning it exists to receive; the test below it checks such a body is whole
+ * instead. Its bytes get captured here when Task 17 mints it.
  */
 const SERVED: Record<string, string> = {
   grid:
@@ -54,16 +71,53 @@ const SERVED: Record<string, string> = {
     '{"name":"Agripinaa Ranger","description":"Concentrated-liquidity range management on PancakeSwap V3 (WBNB/USDT). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.","category":"rebalancing","image":"https://agripinaa.vercel.app/agent-icon.png","capabilities":["trading","lp-management","x402-status"],"execution":{"venue":"pancakeswap-v3","rebalanceVenue":"ophis","pair":"WBNB/USDT","chainId":56},"safety":{"rangePct":5,"outOfRangeMinutes":30,"maxRebalancesPerDay":2,"maxRebalancesPerWeek":4},"x402":{"endpoint":"https://parity-fixture.example.com/lp-range/status","priceUsdt":"0.05","note":"live"}}',
 };
 
+const FIXTURE_BASE = 'https://parity-fixture.example.com';
+
+/** How the route composes a served body: endpoint first inside x402. */
+function serve(agent: (typeof AGENT_LIST)[number]): string {
+  return JSON.stringify({
+    ...agent.manifest,
+    x402: { endpoint: `${FIXTURE_BASE}/${agent.slug}/status`, ...agent.manifest.x402 },
+  });
+}
+
 test('registry manifests serialize to the exact bytes the minted tokenURIs resolve to', () => {
-  const base = 'https://parity-fixture.example.com';
-  for (const agent of AGENT_LIST) {
+  const registered = AGENT_LIST.filter((a) => a.tokenId != null);
+  assert.equal(registered.length, 4, 'a newly registered agent needs its bytes captured here');
+  for (const agent of registered) {
     const expected = SERVED[agent.slug];
     assert.ok(expected, `${agent.slug}: no captured body to compare against`);
-    const served = JSON.stringify({
-      ...agent.manifest,
-      x402: { endpoint: `${base}/${agent.slug}/status`, ...agent.manifest.x402 },
-    });
-    assert.equal(served, expected, `${agent.slug} manifest body drifted`);
+    assert.equal(serve(agent), expected, `${agent.slug} manifest body drifted`);
+  }
+});
+
+test('an agent still in configuration serves a whole manifest body', () => {
+  // Nothing is minted against these yet, so there are no bytes to hold still.
+  // What must hold is that the body is complete and self-consistent before a
+  // registration turns its URL into a permanent tokenURI: register.ts matches
+  // the served name against the record, and a hirer reads the rest of it.
+  for (const agent of AGENT_LIST.filter((a) => a.tokenId == null)) {
+    const served = JSON.parse(serve(agent)) as {
+      name: string;
+      description: string;
+      category: string;
+      image: string;
+      capabilities: string[];
+      execution: { chainId: number };
+      safety: Record<string, unknown>;
+      x402: Record<string, unknown>;
+    };
+    assert.equal(served.name, agent.name, `${agent.slug} name`);
+    assert.equal(served.category, agent.category, `${agent.slug} category`);
+    assert.ok(served.description.length > 40, `${agent.slug} description`);
+    assert.ok(served.image.startsWith('https://'), `${agent.slug} image`);
+    assert.ok(served.capabilities.length > 0, `${agent.slug} capabilities`);
+    assert.equal(served.execution.chainId, 56, `${agent.slug} chain`);
+    assert.ok(Object.keys(served.safety).length > 0, `${agent.slug} safety`);
+    // Same key order the route produces, so the captured bytes at registration
+    // time will match what is served afterwards.
+    assert.equal(Object.keys(served.x402)[0], 'endpoint', `${agent.slug} x402 key order`);
+    assert.equal(served.x402['endpoint'], `${FIXTURE_BASE}/${agent.slug}/status`);
   }
 });
 

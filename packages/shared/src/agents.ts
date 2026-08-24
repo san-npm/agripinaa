@@ -12,26 +12,34 @@
  *
  * Two rules for editing this file:
  *
- * 1. `manifest` is byte-sensitive. Each agent's manifest is served at
+ * 1. A REGISTERED agent's `manifest` is byte-sensitive. It is served at
  *    /manifests/<slug>.json, which is the tokenURI of an already-minted,
- *    immutable ERC-8004 identity. The served bytes must not change: not a
- *    value, not a key, not the ORDER of the keys, since the body is
- *    JSON.stringify'd in declaration order. tests/agents.test.ts pins the exact
- *    bytes of all four.
+ *    immutable ERC-8004 identity. Those bytes must not change: not a value,
+ *    not a key, not the ORDER of the keys, since the body is JSON.stringify'd
+ *    in declaration order. tests/agents.test.ts pins each registered agent's
+ *    exact bytes and checks that an unregistered one is at least whole.
  * 2. `wallet` is the agent's PUBLIC address. Signer secrets live only in
  *    wallets/*.json and are never read here.
  *
- * `tokenId` is nullable so an agent can exist in config, be funded, and be
- * tested before it is registered on-chain.
+ * `tokenId` and `wallet` are both nullable, so an agent can exist in config and
+ * be unit-tested before its key is generated and its identity minted. Such a
+ * record is inert everywhere it matters: no verified badge, no proof-feed
+ * identity, and the runner skips it rather than failing to boot.
  */
 
-export type AgentSlug = 'grid' | 'health-factor' | 'yield' | 'lp-range';
+export type AgentSlug = 'grid' | 'grid-b' | 'health-factor' | 'yield' | 'lp-range';
 
 /** Marketplace category. Matches @agripinaa/agent-index's `Category`. */
 export type AgentCategory = 'grid' | 'health-factor' | 'yield' | 'rebalancing';
 
-/** `safety` mixes numeric limits with allowlists (health-factor's `actions`). */
-export type SafetyValue = number | string[];
+/**
+ * `safety` mixes numeric limits with allowlists (health-factor's `actions`) and
+ * short policy statements, for the caps a number cannot express: what happens
+ * when a limit is breached, and what the limit is measured against. Those
+ * belong in the published manifest rather than only in the code, because the
+ * manifest is what a hirer reads before trusting the agent with capital.
+ */
+export type SafetyValue = number | string | string[];
 
 /** Execution shape varies per agent; only `chainId` is common to all four. */
 export interface ManifestExecution {
@@ -91,8 +99,13 @@ export interface AgentRecord {
   tokenId: string | null;
   name: string;
   category: AgentCategory;
-  /** The agent's public wallet: what it trades from, never a signer secret. */
-  wallet: `0x${string}`;
+  /**
+   * The agent's public wallet: what it trades from, never a signer secret.
+   * Null until `fund --gen` creates the key, since the address is not knowable
+   * before then. A record with a null wallet is configuration only: nothing
+   * funds it, nothing attributes proofs to it, and the runner skips it.
+   */
+  wallet: `0x${string}` | null;
   /** File under wallets/ holding this agent's own-capital key. */
   walletFile: string;
   /** Can manage user funds through a scoped session key on a router. */
@@ -146,6 +159,61 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         note: 'WBNB → USDT via batch auction, +48.61 bps surplus vs signed limit',
       },
     ],
+  },
+  /*
+   * Configured, not yet on-chain: no wallet, no token id, no registration, no
+   * attestation, no proofs. Task 17 fills those in after the owner signs off on
+   * the display name (which is PROVISIONAL below: register.ts mints it into a
+   * permanent tokenURI) and releases the funding.
+   */
+  'grid-b': {
+    slug: 'grid-b',
+    tokenId: null,
+    name: 'Agripinaa Grid B',
+    category: 'grid',
+    wallet: null,
+    walletFile: 'agent-grid-b.json',
+    managed: false,
+    backfillOphisTrades: true,
+    manifest: {
+      name: 'Agripinaa Grid B',
+      description:
+        'Mean-reversion grid trader on the WBNB/USDC pair, running a wider and slower ladder than Agripinaa Grid: five levels each side at 2.5 percent spacing, $1.50 clips, 8 trades a day at most, and 45 minutes between fills. Every swap executes through Ophis batch auctions (MEV-protected, a receipt for every fill). Halts itself on a trend breakout and on an inventory drawdown.',
+      category: 'grid',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['trading', 'x402-status'],
+      execution: { venue: 'ophis', pair: 'WBNB/USDC', chainId: 56 },
+      /*
+       * These are the numbers the tick enforces, not a summary of them:
+       * tests/grid-b.test.ts pins each field to GRID_B_PARAMS, so a parameter
+       * change that did not reach the manifest fails the build.
+       */
+      safety: {
+        maxTradesPerDay: 8,
+        perTradeClipUsd: 1.5,
+        minTradeClipUsd: 1,
+        gridSpacingPct: 2.5,
+        levelsPerSide: 5,
+        cooldownMinutes: 45,
+        trendHaltBandPct: 6,
+        lossHaltPct: 5,
+        maxRecentersPerDay: 3,
+        lossHaltBaseline:
+          'inventory value at the first tick, never re-baselined, so the 5 percent floor is cumulative over the agent lifetime rather than daily',
+        onHalt:
+          'trading stops and stays stopped until an operator clears the agent state file; there is no automatic resume',
+      },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    /*
+     * Budget as planned, with the stablecoin leg in the token this agent
+     * actually spends. Its buy side sells USDC, so USDT here would leave every
+     * buy blocked on an empty balance while the money sat in the wrong token.
+     */
+    funding: { bnb: '0.0015', usdc: '2', wbnb: '0.003' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
   },
   'health-factor': {
     slug: 'health-factor',
