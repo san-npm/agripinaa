@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 
 import { ProofFeed } from '@/components/ProofFeed';
+import { ProofFeedLive } from '@/components/ProofFeedLive';
 import { ReceiptIcon } from '@/components/icons';
 
 export const metadata: Metadata = {
@@ -20,7 +22,9 @@ export default function ProofPage() {
         with the transaction or order receipt attached. No self-reported activity counts.
       </p>
       <div className="mt-7">
-        <ProofFeed />
+        <Suspense fallback={<ProofFeed />}>
+          <ProofFeedLive />
+        </Suspense>
       </div>
     </div>
   );

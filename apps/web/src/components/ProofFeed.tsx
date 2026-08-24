@@ -63,6 +63,11 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
           <time
             dateTime={event.at}
             title={new Date(event.at).toLocaleString()}
+            // Rendered on the server now, so the elapsed time and the local
+            // timestamp are both computed twice against different clocks and
+            // time zones. dateTime carries the exact instant; the first poll
+            // re-renders both in the reader's own locale.
+            suppressHydrationWarning
             className="ml-auto text-[10px] text-muted-2"
           >
             {relativeTime(event.at)}
@@ -98,8 +103,20 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
   );
 }
 
-export function ProofFeed({ compact = false }: { compact?: boolean }) {
-  const [payload, setPayload] = useState<ProofFeedPayload | null>(null);
+export function ProofFeed({
+  compact = false,
+  initial,
+}: {
+  compact?: boolean;
+  /**
+   * Server-rendered starting point (see ProofFeedLive). Present, the feed has
+   * rows in the response body and the skeleton is never shown; absent, the
+   * component behaves exactly as it did before and fills in from the first
+   * poll. Polling replaces this value either way.
+   */
+  initial?: ProofFeedPayload;
+}) {
+  const [payload, setPayload] = useState<ProofFeedPayload | null>(initial ?? null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
