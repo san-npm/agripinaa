@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { assertSafeUrl } from '@agripinaa/shared/ssrf';
+
 import { kvGet } from './kv';
 
 /**
@@ -11,24 +13,36 @@ export const DEFAULT_RUNNER_BASE = 'https://continuous-locator-four-christine.tr
 
 export const RUNNER_URL_KEY = 'agripinaa:runner-url';
 
-const BLOCKED_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254']);
-
-/** https only, public host, sane length. The tunnel is an untrusted boundary. */
+/**
+ * https only, public host, sane length. The tunnel is an untrusted boundary:
+ * this value reaches server-side fetches, so a hostile one is an SSRF into the
+ * serverless environment.
+ *
+ * Host policy is delegated to the shared guard rather than kept as a second
+ * list here. That guard covers all of 127.0.0.0/8 and 169.254.0.0/16 (not just
+ * the two familiar literals), bracketed IPv6 loopback, ULA and link-local
+ * ranges, v4-mapped addresses, and CGNAT, each of which slipped past the
+ * hand-rolled set this replaces.
+ *
+ * DNS is deliberately NOT resolved here: this predicate is synchronous and runs
+ * on every read. A hostname that resolves to a private address is caught on the
+ * write path, where a candidate first enters (see /api/ops/runner-url), using
+ * assertResolvedHostPublic from the same module.
+ */
 export function isSafeRunnerUrl(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 300) return false;
+  // Check the scheme before delegating: the shared guard rewrites ipfs:// to an
+  // https gateway, which is right for a tokenURI and wrong for a runner base.
+  if (!value.startsWith('https://')) return false;
   let url: URL;
   try {
-    url = new URL(value);
+    url = assertSafeUrl(value);
   } catch {
     return false;
   }
-  if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
-  if (BLOCKED_HOSTS.has(host)) return false;
-  if (host.endsWith('.local') || host.endsWith('.internal')) return false;
-  if (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-    return false;
-  }
+  // Userinfo lets one string read as one host to a person and another to a
+  // parser downstream, so refuse it rather than reason about who wins.
+  if (url.username !== '' || url.password !== '') return false;
   return true;
 }
 
