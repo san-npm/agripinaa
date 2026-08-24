@@ -19,7 +19,7 @@ export async function POST(
     return Response.json({ error: 'body too large' }, { status: 413 });
   }
   try {
-    const upstream = await fetch(agentsUrl(`/${agent}/manage`), {
+    const upstream = await fetch(await agentsUrl(`/${agent}/manage`), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body,
