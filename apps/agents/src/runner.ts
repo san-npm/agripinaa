@@ -23,8 +23,16 @@ import { gridBAgent } from './agents/grid-b';
 import { healthFactorAgent } from './agents/health-factor';
 import { yieldAgent } from './agents/yield';
 import { lpRangeAgent } from './agents/lp-range';
+import { weightRebalancerAgent } from './agents/weight-rebalancer';
 
-const ALL: AgentModule[] = [gridAgent, gridBAgent, healthFactorAgent, yieldAgent, lpRangeAgent];
+const ALL: AgentModule[] = [
+  gridAgent,
+  gridBAgent,
+  healthFactorAgent,
+  yieldAgent,
+  lpRangeAgent,
+  weightRebalancerAgent,
+];
 /** Agents that can manage user funds (grant a scoped session to their manager key). */
 const MANAGED_AGENTS = MANAGED_AGENT_SLUGS;
 const PORT = Number(process.env.AGENTS_PORT ?? 4410);
