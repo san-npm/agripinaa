@@ -8,7 +8,7 @@ test('every agent in the registry has a manifest, registered or not', () => {
   // preflights the URL, and the tokenURI it mints is permanent.
   assert.deepEqual(
     [...MANIFEST_SLUGS].sort(),
-    ['grid', 'grid-b', 'health-factor', 'lp-range', 'yield'],
+    ['grid', 'grid-b', 'health-factor', 'lp-range', 'weight-rebalancer', 'yield'],
   );
 });
 

@@ -27,7 +27,13 @@
  * identity, and the runner skips it rather than failing to boot.
  */
 
-export type AgentSlug = 'grid' | 'grid-b' | 'health-factor' | 'yield' | 'lp-range';
+export type AgentSlug =
+  | 'grid'
+  | 'grid-b'
+  | 'health-factor'
+  | 'yield'
+  | 'lp-range'
+  | 'weight-rebalancer';
 
 /** Marketplace category. Matches @agripinaa/agent-index's `Category`. */
 export type AgentCategory = 'grid' | 'health-factor' | 'yield' | 'rebalancing';
@@ -343,6 +349,51 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         note: 'Concentrated-liquidity WBNB/USDT position, managed in range',
       },
     ],
+  },
+  /*
+   * Configured, not yet on-chain, same as grid-b: Task 17 fills in the wallet,
+   * token id, registration and attestation once the owner has signed off on the
+   * display name (PROVISIONAL below) and released the funding.
+   */
+  'weight-rebalancer': {
+    slug: 'weight-rebalancer',
+    tokenId: null,
+    name: 'Agripinaa Rebalancer',
+    category: 'rebalancing',
+    wallet: null,
+    walletFile: 'agent-weight-rebalancer.json',
+    managed: false,
+    backfillOphisTrades: true,
+    manifest: {
+      name: 'Agripinaa Rebalancer',
+      description:
+        'Portfolio-weight rebalancer holding WBNB and USDT at a 50/50 split by value. Checks the split every 10 minutes and, when drift leaves a 5 percent band, restores the target with a single Ophis batch-auction swap (MEV-protected, a receipt for every rebalance). Sized to the distance from target and no further, so it can neither overdraw a leg nor overshoot into the opposite drift.',
+      category: 'rebalancing',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['trading', 'x402-status'],
+      execution: { venue: 'ophis', pair: 'WBNB/USDT', chainId: 56 },
+      /*
+       * The numbers the tick enforces, pinned to the module's exported
+       * constants by tests/weight-rebalancer.test.ts.
+       */
+      safety: {
+        targetWeightPct: 50,
+        driftBandPct: 5,
+        maxRebalancesPerDay: 4,
+        minTradeUsd: 1,
+        cooldownMinutes: 35,
+        tickMinutes: 10,
+        maxTradeSize:
+          'the distance from the target weight, which is at most half the overweight side, never the whole balance',
+        onHalt:
+          'no automatic halt: the agent takes no directional view, so the daily cap, the cooldown and the minimum notional are the limits',
+      },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    funding: { bnb: '0.0015', usdt: '2.5', wbnb: '0.004' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
   },
 };
 

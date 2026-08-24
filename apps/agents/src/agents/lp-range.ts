@@ -5,6 +5,7 @@ import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
 
 import { ChassisOphisWallet } from '../ophis-wallet';
 import type { AgentContext, AgentModule } from '../types';
+import { valueGapUsd } from '../value-split';
 
 /* ------------------------------------------------------------------ */
 /* Pure decision logic (exported for tests, no I/O)                    */
@@ -118,6 +119,11 @@ export interface RebalanceLeg {
 /**
  * One swap that moves inventory to ~50/50 by value: sell half the value gap
  * from the heavy side. Returns null when the gap leg is <= minNotionalUsd.
+ *
+ * The gap itself comes from ../value-split, shared with the weight-rebalancer
+ * agent, which is the same measurement standing alone. At a target of 0.5 that
+ * function is bit-identical to the halved difference this used to compute
+ * inline, so the sizing of this agent's live swaps is unchanged.
  */
 export function computeRebalanceLeg(
   wbnbUnits: number,
@@ -125,7 +131,7 @@ export function computeRebalanceLeg(
   usdtPerWbnb: number,
   minNotionalUsd: number = MIN_SWAP_NOTIONAL_USD,
 ): RebalanceLeg | null {
-  const excessUsd = (wbnbUnits * usdtPerWbnb - usdtUnits) / 2;
+  const excessUsd = valueGapUsd(wbnbUnits * usdtPerWbnb, usdtUnits, 0.5);
   if (!Number.isFinite(excessUsd) || Math.abs(excessUsd) <= minNotionalUsd) return null;
   if (excessUsd > 0) {
     return { sell: 'WBNB', amountUnits: excessUsd / usdtPerWbnb, notionalUsd: excessUsd };

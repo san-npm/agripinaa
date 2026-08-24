@@ -36,6 +36,7 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
       ['agent-health-factor', '0.0011', '2', '0.005', '0'],
       ['agent-yield', '0.0009', '2.5', '0', '0'],
       ['agent-lp-range', '0.0011', '1.5', '0.003', '0'],
+      ['agent-weight-rebalancer', '0.0015', '2.5', '0.004', '0'],
       ['facilitator', '0.0008', '0', '0', '0'],
     ],
   );
