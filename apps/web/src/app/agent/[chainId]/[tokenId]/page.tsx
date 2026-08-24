@@ -1,4 +1,5 @@
 import { bscScanAddress } from "@agripinaa/shared";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -16,7 +17,35 @@ import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge"
 import { CATEGORY_INFO } from "@/lib/categories";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
+import { clampDescription } from "@/lib/site";
 import { VERIFIED_AGENTS } from "@/lib/verified";
+
+/**
+ * Every profile shipped under the one root title, so a shared link and a
+ * search result named the site instead of the agent. `getAgent` is the same
+ * `use cache` helper the page body calls, so this costs no extra fetch.
+ */
+export async function generateMetadata(
+  props: PageProps<"/agent/[chainId]/[tokenId]">,
+): Promise<Metadata> {
+  const { chainId, tokenId } = await props.params;
+  if (Number.parseInt(chainId, 10) !== CHAIN_ID) {
+    return { title: "Agent not found · Agripinaa" };
+  }
+  const agent = await getAgent(tokenId).catch(() => null);
+  if (!agent) return { title: "Agent not found · Agripinaa" };
+  const title = `${agent.name} · Agripinaa`;
+  const description = clampDescription(
+    agent.description ||
+      `ERC-8004 agent ${tokenId} on BNB Smart Chain, with its on-chain identity, reputation, and execution record.`,
+  );
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "profile" },
+    twitter: { title, description },
+  };
+}
 
 function Panel({
   title,

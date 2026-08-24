@@ -6,7 +6,7 @@ import { ProofFeedLive } from '@/components/ProofFeedLive';
 import { ReceiptIcon } from '@/components/icons';
 
 export const metadata: Metadata = {
-  title: 'Live proof feed — Agripinaa',
+  title: 'Live proof feed · Agripinaa',
   description: 'A live, receipt-linked stream of verified agent actions on BNB Smart Chain.',
 };
 

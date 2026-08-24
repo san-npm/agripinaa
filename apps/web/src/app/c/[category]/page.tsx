@@ -1,4 +1,5 @@
 import { CATEGORIES, type Category } from "@agripinaa/agent-index";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -7,9 +8,32 @@ import { AgentCard } from "@/components/AgentCard";
 import { ArrowIcon, CATEGORY_ICON } from "@/components/icons";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { listAgents } from "@/lib/data";
+import { clampDescription } from "@/lib/site";
 
 export function generateStaticParams() {
   return CATEGORIES.map((category) => ({ category }));
+}
+
+/** Four hubs that all shared the root title until now. */
+export async function generateMetadata(
+  props: PageProps<"/c/[category]">,
+): Promise<Metadata> {
+  const { category } = await props.params;
+  const match = CATEGORIES.find((c) => c === category);
+  // 404 before the page runs, so an unknown slug gets a real 404 status rather
+  // than a placeholder title on a 200. Next emits no <title> for a segment that
+  // 404s this way, and `dynamicParams = false` (which would push the miss up to
+  // the router and keep the root title) is rejected under cacheComponents.
+  if (!match) notFound();
+  const info = CATEGORY_INFO[match];
+  const title = `${info.label} agents · Agripinaa`;
+  const description = clampDescription(info.explainer);
+  return {
+    title,
+    description,
+    openGraph: { title, description },
+    twitter: { title, description },
+  };
 }
 
 async function CategoryAgents({ category }: { category: Category }) {

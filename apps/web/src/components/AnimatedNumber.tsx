@@ -36,8 +36,12 @@ export function AnimatedNumber({ value }: { value: string }) {
         const tick = (now: number) => {
           const progress = Math.min((now - start) / duration, 1);
           const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+          // Same explicit locale the server used to format `value`, so the
+          // counting frames and the final number group their digits alike.
           el.textContent =
-            progress < 1 ? Math.round(target * eased).toLocaleString() : value;
+            progress < 1
+              ? Math.round(target * eased).toLocaleString("en-US")
+              : value;
           if (progress < 1) frame = requestAnimationFrame(tick);
         };
         frame = requestAnimationFrame(tick);

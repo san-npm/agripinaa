@@ -71,7 +71,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
       )}
 
       <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs">
-        <Stat label="Score" value={agent.trust.totalScore != null ? String(agent.trust.totalScore) : "—"} />
+        <Stat label="Score" value={agent.trust.totalScore != null ? String(agent.trust.totalScore) : "n/a"} />
         <Stat label="Feedback" value={String(agent.trust.totalFeedbacks)} />
         {agent.x402Supported && (
           <span className="ml-auto rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
