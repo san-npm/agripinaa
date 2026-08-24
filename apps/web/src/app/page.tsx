@@ -5,6 +5,7 @@ import { AgentCard } from "@/components/AgentCard";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ArrowIcon, CATEGORY_ICON, ReceiptIcon, ShieldIcon, VerifiedIcon } from "@/components/icons";
 import { ProofFeed } from "@/components/ProofFeed";
+import { ProofFeedLive } from "@/components/ProofFeedLive";
 import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
 import { getStats, listDirectory } from "@/lib/data";
 
@@ -112,7 +113,9 @@ export default function Home() {
       </section>
 
       <section className="mt-4">
-        <ProofFeed compact />
+        <Suspense fallback={<ProofFeed compact />}>
+          <ProofFeedLive compact />
+        </Suspense>
       </section>
 
       <section className="mt-10">
