@@ -60,9 +60,30 @@ export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
 /** Every managed-yield router deployment. */
 export const YIELD_ROUTERS_BSC: RouterDeployment[] = [YIELD_ROUTER_BSC, YIELD_ROUTER_BSC_USDC];
 
-/** Managed stablecoins, in display order. */
+/**
+ * Managed stablecoins, in DISPLAY order. This array decides which token button
+ * the managed wizard renders first and nothing else. Reordering it is a
+ * cosmetic edit and must stay one: see PRIMARY_MANAGED_TOKEN.
+ */
 export const MANAGED_TOKENS = ['USDT', 'USDC'] as const;
 export type ManagedToken = (typeof MANAGED_TOKENS)[number];
+
+/**
+ * The managed token whose sessions are granted to the agent's MASTER manager
+ * key; every other managed token derives its own key from that master.
+ *
+ * Declared here, separately from MANAGED_TOKENS, because it is on-chain key
+ * identity rather than presentation. The runner used to read MANAGED_TOKENS[0],
+ * which coupled the two: swapping the array to put USDC first would have moved
+ * the master key from USDT to USDC, and since every live USDT mandate was
+ * granted to the master public key, the executor's signer check would then
+ * reject all of them and every user's funds would stop being managed. It fails
+ * closed on funds, but a button-order edit must not be able to cause it.
+ *
+ * Changing this value is a migration, not an edit: it needs every affected
+ * mandate re-granted to the new key.
+ */
+export const PRIMARY_MANAGED_TOKEN: ManagedToken = 'USDT';
 
 /**
  * The three (and only three) selectors a managed yield session may call. A
