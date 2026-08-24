@@ -11,6 +11,7 @@ dist/
 wallets/
 ops/run/
 ops/tunnel-url.txt
+ops/ops.env
 apps/agents/data/
 .audit/
 contracts/lib/

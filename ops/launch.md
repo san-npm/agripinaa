@@ -2,9 +2,9 @@
 
 The agents run as ONE Node process (`apps/agents`, `pnpm --filter @agripinaa/agents start`)
 plus a Cloudflare tunnel exposing the x402 status endpoints. Current hosting:
-the development Mac (documented tradeoff: zero new infrastructure, but the
-machine must stay awake through judging; `caffeinate` guards sleep). The
-process is host-agnostic: any Linux VPS runs the same two commands.
+the Aleph Cloud VM (see the migration section below), as two systemd units,
+`agripinaa-runner` and `agripinaa-tunnel`. The process is host-agnostic, and
+the commands below still run it on a development Mac.
 
 ## Start
 
@@ -14,14 +14,70 @@ process is host-agnostic: any Linux VPS runs the same two commands.
 tail -f apps/agents/data/*.log.jsonl
 ```
 
-The same tunnel also exposes the public, bounded `GET /proof` JSON feed. The
-web app derives that URL from the grid manifest's x402 endpoint, so the normal
-manifest update after a tunnel rotation updates both surfaces. `AGENTS_BASE_URL`
-is available as an optional deployment override.
+The same tunnel also exposes the public, bounded `GET /proof` JSON feed. The web
+app resolves that base URL once, in `apps/web/src/lib/runner-url.ts`, in this
+order: `AGENTS_BASE_URL` (deployment override) -> KV (self-reported by the VM)
+-> a committed default. The agent manifests are served from that same value, so
+one URL update reaches the proof feed, the x402 endpoints, and managed
+activation at once. No manifest file to edit, no redeploy.
 
-After the tunnel URL changes (each cold start), update the `x402.endpoint`
-field in `apps/web/public/manifests/*.json` and redeploy the web app so the
-manifests point at the live endpoints.
+## When the tunnel URL changes
+
+A quick tunnel takes a new hostname on every cold start. The VM reports it:
+
+```bash
+./ops/report-runner-url.sh                # discover from the tunnel log, then post
+./ops/report-runner-url.sh https://x.tld  # post a URL you already know
+./ops/report-runner-url.sh --dry-run      # discover and print it, post nothing
+```
+
+`deploy-aleph.sh` installs it as `ExecStartPost` on the `agripinaa-tunnel` unit
+and also runs it at the end of a deploy, so in normal operation nobody runs it
+by hand. It posts to `POST /api/ops/runner-url`, which checks the bearer token,
+requires https and a public host, resolves the hostname and rejects anything
+landing on a private address, then writes the value to KV.
+
+### Env vars this needs
+
+On Vercel (project settings, Production):
+
+| Var | Purpose |
+| --- | --- |
+| `OPS_TOKEN` | Shared secret for `/api/ops/runner-url`. Generate with `openssl rand -hex 32`. Until it is set the route answers 503 and accepts nothing. |
+| `KV_REST_API_URL` | Upstash REST endpoint. Without it a report is accepted and then dropped, so the route answers 503 rather than reporting success. |
+| `KV_REST_API_TOKEN` | Upstash REST token. |
+| `AGENTS_BASE_URL` | Optional. A fixed runner base that wins over KV, for local dev, incident response, or the Tailscale route below. |
+
+To provision the KV: Vercel dashboard -> the project -> Storage -> Create
+Database -> Upstash Redis. Connecting it to the project injects
+`KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically; redeploy so the
+running deployment picks them up.
+
+On the VM, create `ops/ops.env` (gitignored, and untracked files survive the
+`git reset --hard` in the deploy script):
+
+```bash
+ssh <host> 'umask 077 && echo "OPS_TOKEN=<the same value as on Vercel>" > ~/agripinaa/ops/ops.env'
+```
+
+Check it end to end with `./ops/report-runner-url.sh --dry-run` on the VM (which
+posts nothing), then without the flag. A 401 means the two tokens differ, a 503
+means Vercel is missing `OPS_TOKEN` or the KV vars.
+
+### Preferred: a permanent hostname instead
+
+Rotation only exists because quick tunnels are ephemeral. Tailscale Funnel
+gives the VM a stable public hostname and removes the problem entirely:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up                 # authenticate the machine to your tailnet
+sudo tailscale funnel 4410 on     # serves https://<host>.<tailnet>.ts.net
+```
+
+Set that URL once as `AGENTS_BASE_URL` on Vercel. It wins over KV, so the
+reporting path stays in place as a fallback but never has to run. Funnel needs
+HTTPS and the Funnel node attribute enabled in the tailnet policy file.
 
 ## One-time setup (already done in order)
 
@@ -39,7 +95,8 @@ commit BEFORE the VM starts (running both = double trading).
    is plenty) with the deploy public key from ~/.ssh/agripinaa-aleph.pub.
 2. On the Mac: `./ops/stop-agents.sh && git add apps/agents/data && git commit -m "state hand-off" && git push`
 3. `./ops/deploy-aleph.sh <user@host>`   # provisions, syncs secrets, systemd
-4. `./ops/set-x402-endpoint.sh <tunnel-url-it-prints>`
+4. Nothing: the deploy reports the tunnel URL itself once `ops/ops.env` exists
+   on the VM. Confirm from the line it prints, or re-run the reporter there.
 
 Re-running deploy-aleph.sh updates code and restarts services. From then on
 agent state lives on the VM; commit it back from there if migrating again.
