@@ -23,7 +23,9 @@
 - **`apps/web` tests run under the `react-server` condition** (`tsx --conditions=react-server --test tests/*.test.ts`, already wired into the web `test` script as of Task 1). Reason: `server-only` resolves to a bare `throw` under the default condition and to a no-op under `react-server`, which is how Next resolves it. Lib modules keep their `server-only` markers; the runner adapts. Settled once here, so no later task needs to revisit it: any web test importing a lib module with that marker works as long as the script keeps the flag.
 - **Never commit a `.env*` file or an API key.** `SCAN8004_API_KEY` lives in Vercel env and `.env.local`.
 - **`npx tsx` does not self-install here.** In a workspace that does not yet have `tsx` linked, `npx tsx` fails with `command not found` rather than fetching it. Use the monorepo's existing binary (`packages/shared/node_modules/.bin/tsx`) for a red-phase run that happens before the workspace's own devDependency is installed. This matters only for the first test in a workspace.
-- **Baseline as of Task 1 (2026-08-24):** `pnpm -r --if-present test` is 202 passing, 0 failing (shared 7, exec-metrics 25, agent-index 4, session-kit 37, web 3, agents 126). Any task that ends with a lower total in an untouched workspace has broken something.
+- **Baseline as of Task 1 (2026-08-24):** `pnpm -r --if-present test` is 202 passing, 0 failing (shared 7, exec-metrics 25, agent-index 4, session-kit 37, web 3, agents 126). Any task that ends with a lower total in an untouched workspace has broken something. After Tasks 2, 3, the SSRF hardening, and the lp-range fixes the total is **220 passing** (agents 135, web 12, agent-index 4, exec-metrics 25, session-kit 37, shared 7).
+- **Run ONE repo-writing task at a time.** Learned the hard way on 2026-08-24: two subagents working in parallel (Task 3 and the lp-range follow-up) collided in the git index. One used a broad `git add` that swept the other's files in, the other's commit retries failed with "no changes added to commit", one reset to recover, and a retry raced into that window, so a commit ended up with the wrong task's message attached to the wrong task's files. No work was lost (the tree and the test totals reconciled), but untangling it cost more than the parallelism saved. Different directories are NOT enough isolation, because the index and HEAD are shared. If parallel execution is genuinely needed, give each agent its own git worktree.
+- **Never use `git add -A`, `git add .`, or `git commit -a`.** Stage only the explicit paths the task owns. This is what turns a harmless collision into a mislabelled commit.
 
 ## File Structure
 
@@ -472,8 +474,10 @@ locally with the resolved endpoint"
 - Modify: `ops/launch.md` (document `OPS_TOKEN`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and the Tailscale Funnel alternative)
 
 **Interfaces:**
-- Consumes: `kvSet`, `RUNNER_URL_KEY`, `isSafeRunnerUrl`.
+- Consumes: `kvSet`, `RUNNER_URL_KEY`, `isSafeRunnerUrl`, and `assertResolvedHostPublic` from `@agripinaa/shared/ssrf`.
 - Produces: `POST /api/ops/runner-url` accepting `{ "url": "https://..." }` with header `authorization: Bearer <OPS_TOKEN>`.
+
+**Security requirement carried over from `f61723c`.** `isSafeRunnerUrl` is synchronous and runs on every read, so it validates the host literal but deliberately does not resolve DNS. That leaves one gap: a public-looking hostname whose A record points at a private address (169.254.169.254, 127.x, RFC1918). This route is where a candidate first enters the system, and it is already async, so close it here. After `isSafeRunnerUrl` passes, `await assertResolvedHostPublic(new URL(url))` and reject with 400 if it throws. That function is already written and tested in `packages/shared/src/ssrf.ts:54`; do not write a second resolver. Add a test for it using the injectable `LookupFn` parameter (a lookup returning `169.254.169.254` must be rejected), which is why that parameter exists.
 
 - [ ] **Step 1: Write the route**
 
@@ -1011,6 +1015,8 @@ gate, a first-party agent's does not"
 - Delete: `apps/web/public/{file,globe,next,vercel,window}.svg` (create-next-app leftovers)
 
 **Context:** Read `node_modules/next/dist/docs/01-app/` on `generateMetadata`, `sitemap`, `robots`, and file-based OG images before writing. Metadata APIs changed in Next 16.
+
+While here, fix two pieces of existing copy: the root title in `layout.tsx` is currently `Agripinaa — the front door for every agent on BSC`, which uses an em dash (house style forbids it; use a colon or comma). Confirmed in the live HTML on 2026-08-24. Also verify the served homepage no longer renders `0` in any stat tile before hydration, which was the pre-Task-5 baseline.
 
 - [ ] **Step 1: Add per-page metadata**
 
@@ -1777,6 +1783,22 @@ more agent cards"
 
 ---
 
+## Production incident, found 2026-08-24 during Phase 1
+
+Diagnosed while Tasks 1 and 2 were running. Both live agents that produce Ophis receipts were broken, which is why the marketplace shows 4 lifetime fills. The runner itself was healthy the whole time (VM up 5 days, all four tick loops logging).
+
+**Grid, starved since 2026-08-19.** `evaluateGuards` rejects with `insufficient-balance` when `balanceBaseUnits < clipBaseUnits`. `CLIP_USD` is 2 and the wallet holds 1.9964 USDT, so it is short by roughly four tenths of a cent. The journal carries **1,559 blocked attempts**. Its WBNB leg (0.0036) is likewise below a $2 sell clip. Nothing is wrong with the code: it is correctly refusing to trade capital it does not have. Fix is capital, or a smaller clip. Both need the owner's decision because both change live trading. Recorded here so Task 18 does not mistake this for a cap problem: raising `maxTradesPerDay` would not have produced a single extra fill.
+
+**Ranger, stuck since 2026-08-22.** Fixed in `b41cdf8` plus its follow-up. It removed liquidity mid-rebalance, never re-minted, and kept range-checking the emptied position because `tick` only revalidated a position on-chain when state had none. All three of its position NFTs read `liquidity 0`. Note the bug's permanence was price-dependent: the stale range happens to contain the current tick, so `inRange` stayed true forever. Had price left that range for 30 minutes, the rebalance branch would have self-cleared. Two older NFTs almost certainly resolved that way, which is why their `tokensOwed` are 0.
+
+**Consequences for later tasks:**
+- Task 12 (proof harvest): the Ranger's committed attestation proof points at position #7173629 with the note "managed in range". That position has zero liquidity, so the claim does not survive a click. Refresh the proof refs after the agent mints again.
+- Task 17: the treasury cannot fund anything today. `spike-a` holds 1.54 USDT and 0.0004 BNB. Owner top-up of roughly 25 USDT and 0.045 BNB covers the Grid restart, the Ranger, all four new agents, and gas margin for eight agents through 2026-09-23.
+- Task 18: the cap raises stay proposed, but they are second-order. Capital and the self-heal are what actually restore a track record.
+- A deploy to the VM is required before any of the agent fixes take effect in production. That is a separate, explicit step: `./ops/deploy-aleph.sh root@46.247.131.210` (host `agripinaa-aleph` in ssh config, port 28092), which re-syncs code and restarts both systemd units. Do not run it as a side effect of a code task.
+
+---
+
 ## Task 18: Track records that read as a working rail
 
 **Files:**
@@ -2103,7 +2125,12 @@ Assert that representative names and descriptions land in the right hub: "grid b
 
 - [ ] **Step 2: Broaden the keyword sets**
 
-Extend the regexes in `classify.ts` until the tests pass. Keep explicit `metadata.category` as the highest-priority signal, and never guess a category for text with no signal (null is correct, and honest about coverage).
+Extend the regexes in `classify.ts` until the tests pass. Keep explicit `metadata.category` as the highest-priority signal, and never guess a category for text with no signal (null is correct, and accurate about coverage).
+
+**Calibrate your expectations before you start.** Sampled the live keyed API on 2026-08-24 (`/api/index/agents?limit=20`, source `8004scan-pro`, total **278,592** BSC agents): all 20 returned rows had a name and a description, and **4 of 20 classified, all four of them ours**. The third-party names in that sample were `Novager7yec618du`, `Lang Thang`, `airdropblogspot.agent`, `rohit.agent`. That is airdrop-farming noise, not agents with a strategy to classify. Two consequences:
+
+1. The "Agent #id with no description" problem is mostly a **snapshot** problem, not a live-path problem. Re-seeding fixes the offline fallback tier; the live tier already returns names and descriptions.
+2. No keyword classifier can put `rohit.agent` in a category, because there is no signal to read. Do not chase a high classification rate, and do not loosen the regexes until they start guessing. Populated hubs come from our own eight agents plus claimed agents (Task 19-21), and the honest public number is how many agents are classified and probe-live, not what fraction of 278k we labelled.
 
 - [ ] **Step 3: Re-seed with the keyed API**
 
