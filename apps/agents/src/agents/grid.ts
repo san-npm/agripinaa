@@ -2,8 +2,9 @@
  * Grid: WBNB/USDT mean-reversion grid on BSC. Price reference is the deepest
  * PancakeSwap V3 WBNB/USDT pool; execution is Ophis (CoW) swaps only.
  * Four levels each side of the first-tick center at 1.5 percent spacing,
- * $2 clips, hard halts on a 6 percent trend breakout or a 5 percent
- * inventory drawdown. All sizing comes from live balances every tick.
+ * $2 clips shrunk to what the spending leg can actually fund (never grown),
+ * hard halts on a 6 percent trend breakout or a 5 percent inventory drawdown.
+ * All sizing comes from live balances every tick.
  */
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { TOKENS_BSC, toBaseUnits, fromBaseUnits } from '@agripinaa/shared';
@@ -50,7 +51,18 @@ const POOL_ABI = parseAbi([
 
 export const GRID_SPACING = 0.015;
 export const GRID_LEVELS_PER_SIDE = 4;
+/** Desired clip. The clip actually traded is this shrunk to what the wallet can
+ * fund, never more: see effectiveClipUsd. */
 export const CLIP_USD = 2;
+/**
+ * Floor for an adapted clip. Mirrors MIN_SWAP_NOTIONAL_USD in lp-range.ts,
+ * which is the minimum swap notional that agent already applies to this same
+ * pair on this same venue, so the two agents agree on what is worth swapping.
+ * Mirrored rather than imported because no agent module imports another: they
+ * are independently loaded units, and reaching into lp-range would drag its
+ * whole dependency chain in for one number.
+ */
+export const MIN_CLIP_USD = 1;
 // Must exceed the Ophis/CoW order validity (~30 min): otherwise a new clip can
 // be submitted while a prior order is still executable, and after a re-center
 // the two could fill against different grid regimes with unreserved balance.
@@ -177,7 +189,29 @@ function trimTrailingZeros(s: string): string {
   return s.replace(/0+$/, '').replace(/\.$/, '');
 }
 
-/** $2 notional clip: buys spend a fixed '2' USDT; sells move 2/price WBNB
+/**
+ * The largest clip that can actually trade. A fixed clip strands the agent the
+ * moment the wallet holds a hair less than it: the balance guard blocks every
+ * crossing forever while the capital sits idle. So take the desired size when
+ * the wallet affords it, otherwise fall back to the whole affordable balance
+ * while that still clears minUsd, otherwise 0 meaning this leg cannot fund even
+ * the floor and must block.
+ *
+ * ONLY EVER SHRINKS: the result is never above desiredUsd, which is what makes
+ * this risk-reducing rather than a change of strategy. Every breaker, cooldown,
+ * cap and halt is untouched and still decides whether the clip trades at all.
+ */
+export function effectiveClipUsd(
+  desiredUsd: number,
+  affordableUsd: number,
+  minUsd = MIN_CLIP_USD,
+): number {
+  if (!Number.isFinite(affordableUsd) || affordableUsd <= 0) return 0;
+  if (affordableUsd >= desiredUsd) return desiredUsd;
+  return affordableUsd >= minUsd ? affordableUsd : 0;
+}
+
+/** Notional clip: buys spend clipUsd USDT; sells move clipUsd/price WBNB
  * quoted to 6 significant digits. */
 export function clipForLevel(
   side: GridSide,
@@ -466,7 +500,20 @@ export const gridAgent: AgentModule = {
       return;
     }
 
-    const clip = clipForLevel(hit.level.side, price);
+    // Size the clip to what this leg can actually fund. A buy spends USDT, a
+    // sell spends WBNB, so only the leg being spent constrains the clip.
+    const affordableUsd = hit.level.side === 'buy' ? usdtWhole : wbnbWhole * price;
+    const clipUsd = effectiveClipUsd(CLIP_USD, affordableUsd, MIN_CLIP_USD);
+    const reducedClip = clipUsd > 0 && clipUsd < CLIP_USD;
+    // 0 means the leg cannot fund even the minimum. Quote the DESIRED size so
+    // the balance guard below blocks it with insufficient-balance exactly as an
+    // empty wallet does today; quoting 0 would throw in toSignificant instead.
+    const clip = clipForLevel(hit.level.side, price, clipUsd > 0 ? clipUsd : CLIP_USD);
+    // Carried on the existing trade events rather than a new event type, so the
+    // journal shows when a clip was shrunk to fit the wallet.
+    const clipAdaptation = reducedClip
+      ? { desiredClipUsd: CLIP_USD, effectiveClipUsd: clipUsd }
+      : {};
     const clipToken = clip.token === 'WBNB' ? WBNB : USDT;
     const clipBaseUnits = toBaseUnits(clip.amount, clipToken.decimals);
     const balanceBaseUnits = clip.token === 'WBNB' ? balances.wbnb : balances.usdt;
@@ -490,6 +537,7 @@ export const gridAgent: AgentModule = {
         price,
         center,
         inventoryNowUsd,
+        ...clipAdaptation,
       });
       if (guard.halt) ctx.breakers.halt(guard.reason);
       return;
@@ -507,6 +555,7 @@ export const gridAgent: AgentModule = {
       sellAmount: clip.amount,
       price,
       center,
+      ...clipAdaptation,
     });
 
     // Persist the cooldown anchor and level mark BEFORE submitting: a crash
@@ -534,6 +583,7 @@ export const gridAgent: AgentModule = {
       minBuyAmount: result.minBuyAmount,
       explorerUrl: result.explorerUrl,
       enrollmentWarning: result.enrollmentWarning ?? null,
+      ...clipAdaptation,
     });
 
     const fill: FillRecord = {
