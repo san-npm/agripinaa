@@ -3,13 +3,16 @@
  * ERC-8004 agent's on-chain tokenURI, which anyone can set to an internal
  * address). Allows only https (plus an ipfs:// -> gateway rewrite), blocks
  * private/loopback/link-local hosts, follows redirects manually while
- * re-validating each hop, and caps the response body.
+ * re-validating each hop, and caps the response body while it streams.
  */
 const IPFS_GATEWAY = 'https://ipfs.io/ipfs/';
 const MAX_BYTES = 256 * 1024;
 const MAX_REDIRECTS = 3;
 
 export class BlockedUrlError extends Error {}
+
+/** The body crossed the caller's cap; the stream was cancelled at that point. */
+export class OversizedBodyError extends Error {}
 
 function isPrivateIpv4(a: number, b: number): boolean {
   if (a === 10 || a === 127 || a === 0) return true;
@@ -142,39 +145,124 @@ export function assertSafeUrl(raw: string): URL {
 }
 
 /**
- * SSRF-safe JSON fetch: manual redirects (each re-validated), body-size cap,
- * caller-supplied timeout. Returns parsed JSON object or null on any failure.
+ * Read a body up to `maxBytes`, cancelling the stream (and with it the
+ * connection) the moment the cap is crossed. Checking the length after
+ * `arrayBuffer()` would buffer the whole body first, which lets one oversized
+ * upstream response exhaust the process before it is rejected; this bounds the
+ * memory cost to the cap plus one chunk.
+ */
+export async function readBodyCapped(
+  body: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (!body) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new OversizedBodyError(`body exceeds ${maxBytes} bytes`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+export interface SafeFetchOptions {
+  timeoutMs?: number;
+  /** Body cap in bytes, enforced while streaming. Defaults to 256 KB. */
+  maxBytes?: number;
+  /**
+   * Redirect hops to follow, each re-validated. Defaults to 3 for a GET and is
+   * always 0 for anything else: following a redirected POST would either
+   * replay the body to a host the caller never named or silently turn it into
+   * a GET, and neither is what a proxy should do.
+   */
+  maxRedirects?: number;
+  method?: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface SafeFetchResult {
+  status: number;
+  ok: boolean;
+  bytes: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * SSRF-safe fetch at the byte level: the initial URL and every redirect hop
+ * are validated (scheme, host literal, resolved addresses), and the body is
+ * capped as it streams. Returns whatever final status the upstream answered,
+ * so a proxy can pass a runner's own 4xx and message through. Throws
+ * BlockedUrlError when a URL or redirect is refused, OversizedBodyError when
+ * the body crosses the cap, and lets network and timeout errors propagate.
+ */
+export async function safeFetchBytes(raw: string, opts: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  const method = opts.method ?? 'GET';
+  const maxBytes = opts.maxBytes ?? MAX_BYTES;
+  const maxRedirects = method === 'GET' ? (opts.maxRedirects ?? MAX_REDIRECTS) : 0;
+  let url = assertSafeUrl(raw);
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    // Re-resolve+validate every hop so a hostname cannot rebind to a
+    // private address between the literal check and the connection.
+    await assertResolvedHostPublic(url);
+    const res = await fetch(url, {
+      method,
+      headers: opts.headers,
+      body: opts.body,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 5_000),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel();
+      const location = res.headers.get('location');
+      if (!location) throw new BlockedUrlError('redirect without a location');
+      // Validate the target even on the last permitted hop, so the error names
+      // a private destination when there is one.
+      url = assertSafeUrl(new URL(location, url).toString());
+      continue;
+    }
+    const bytes = await readBodyCapped(res.body, maxBytes);
+    return { status: res.status, ok: res.ok, bytes };
+  }
+  throw new BlockedUrlError(maxRedirects === 0 ? 'redirect refused' : 'too many redirects');
+}
+
+/**
+ * SSRF-safe JSON fetch: manual redirects (each re-validated), streamed
+ * body-size cap, caller-supplied timeout. Returns the parsed JSON object or
+ * null on any failure, including a non-2xx status.
  */
 export async function safeFetchJson(
   raw: string,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; maxBytes?: number } = {},
 ): Promise<Record<string, unknown> | null> {
   try {
-    let url = assertSafeUrl(raw);
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      // Re-resolve+validate every hop so a hostname cannot rebind to a
-      // private address between the literal check and the connection.
-      await assertResolvedHostPublic(url);
-      const res = await fetch(url, {
-        headers: { accept: 'application/json' },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 5_000),
-      });
-      if (res.status >= 300 && res.status < 400) {
-        const location = res.headers.get('location');
-        if (!location) return null;
-        url = assertSafeUrl(new URL(location, url).toString());
-        continue;
-      }
-      if (!res.ok) return null;
-      const buf = await res.arrayBuffer();
-      if (buf.byteLength > MAX_BYTES) return null;
-      const json = JSON.parse(new TextDecoder().decode(buf)) as unknown;
-      return typeof json === 'object' && json !== null
-        ? (json as Record<string, unknown>)
-        : null;
-    }
-    return null; // too many redirects
+    const res = await safeFetchBytes(raw, {
+      timeoutMs: opts.timeoutMs,
+      maxBytes: opts.maxBytes,
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const json = JSON.parse(new TextDecoder().decode(res.bytes)) as unknown;
+    return typeof json === 'object' && json !== null
+      ? (json as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
