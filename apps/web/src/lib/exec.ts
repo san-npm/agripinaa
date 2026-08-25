@@ -16,6 +16,13 @@ import { cacheLife } from 'next/cache';
 
 const cow = new CowOrderbookClient();
 
+/**
+ * How many of a wallet's most recent orders one fetch covers. Every figure
+ * derived from that fetch describes this window and nothing older, so the
+ * panels that print those figures import the number rather than restate it.
+ */
+export const EXEC_ORDER_WINDOW = 100;
+
 export interface ExecOrderRow {
   uid: string;
   status: string;
@@ -55,7 +62,9 @@ export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
       asOf: new Date().toISOString(),
     };
   }
-  const orders = await cow.getAccountOrders(owner as `0x${string}`, { limit: 100 });
+  const orders = await cow.getAccountOrders(owner as `0x${string}`, {
+    limit: EXEC_ORDER_WINDOW,
+  });
   const ophisOrders = orders.filter((o) => isOphisOrder(o));
   const summary = summarizeSurplus(ophisOrders);
   return {
@@ -86,9 +95,9 @@ export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
 }
 
 /**
- * One agent's cumulative settlement record, reduced to the four numbers a
- * reader compares across agents. Deliberately plain data: the leaderboard
- * ranks these side by side, so nothing page-specific belongs here.
+ * One agent's settlement record over the fetched window, reduced to the four
+ * numbers a reader compares across agents. Deliberately plain data: the
+ * leaderboard ranks these side by side, so nothing page-specific belongs here.
  *
  * `fills` counts settled orders. The other three describe that set and are
  * null when it is empty, so a fresh agent reads as "nothing yet" rather than
@@ -99,37 +108,35 @@ export interface TrackRecord {
   avgSurplusBps: number | null;
   /** Highest surplus of any single fill, which can be negative. */
   bestFillBps: number | null;
-  /** ISO timestamp of the earliest fill, the start of the record. */
+  /** ISO timestamp of the earliest fill in the window. */
   firstSeen: string | null;
 }
 
 /**
- * Pure reduction over execution rows, kept separate from the fetch so the
- * counting rules are testable without an orderbook.
+ * The two extremes of an agent's fill set: its best-priced fill and the date
+ * of its earliest one. Pure, so the rules are testable without an orderbook.
  *
- * Only `fulfilled` orders count: an open or expired order is an intention,
- * not a track record. Surplus averages over the fills that priced, so a fill
- * whose surplus is not computable still counts as a fill without dragging the
- * average toward zero.
+ * Only `fulfilled` orders qualify: an open or expired order is an intention,
+ * not a track record. The fill count and the average surplus are deliberately
+ * absent, because `summarizeSurplus` in `@agripinaa/exec-metrics` already
+ * computes both over the same orders, and a second implementation of the same
+ * two numbers would eventually disagree with the first.
  */
-export function aggregateTrackRecord(
+export function bestAndFirstFill(
   rows: readonly Pick<ExecOrderRow, 'status' | 'surplusBps' | 'creationDate'>[],
-): TrackRecord {
-  let fills = 0;
-  let bpsSum = 0;
-  let bpsCount = 0;
-  let best: number | null = null;
+): Pick<TrackRecord, 'bestFillBps' | 'firstSeen'> {
+  let bestFillBps: number | null = null;
   let firstSeen: string | null = null;
   let firstSeenAt = Number.POSITIVE_INFINITY;
 
   for (const row of rows) {
     if (row.status !== 'fulfilled') continue;
-    fills += 1;
 
-    if (row.surplusBps !== null && Number.isFinite(row.surplusBps)) {
-      bpsSum += row.surplusBps;
-      bpsCount += 1;
-      if (best === null || row.surplusBps > best) best = row.surplusBps;
+    // Same admission rule as summarizeSurplus: a fill whose surplus did not
+    // compute is still a fill, it just has no price to be best.
+    const bps = row.surplusBps;
+    if (bps !== null && (bestFillBps === null || bps > bestFillBps)) {
+      bestFillBps = bps;
     }
     // Upstream dates are ISO strings, but this list comes off a public API:
     // one unparseable date must not become the record's start.
@@ -140,17 +147,13 @@ export function aggregateTrackRecord(
     }
   }
 
-  return {
-    fills,
-    avgSurplusBps: bpsCount > 0 ? bpsSum / bpsCount : null,
-    bestFillBps: best,
-    firstSeen,
-  };
+  return { bestFillBps, firstSeen };
 }
 
 /**
- * Cumulative track record for one wallet, over the same cached Ophis-attributed
- * order fetch the execution panel reads.
+ * Track record for one wallet over the same cached Ophis-attributed order
+ * fetch the execution panel reads, so both panels print one set of numbers:
+ * the fill count and the average come straight off that fetch's summary.
  *
  * The address is lower-cased before it goes in, because the cache key is the
  * argument: the registry stores a checksummed wallet and the index serves the
@@ -161,7 +164,11 @@ export async function getTrackRecord(owner: string): Promise<TrackRecord> {
   'use cache';
   cacheLife('minutes');
   const exec = await getExecutionSummary(owner.toLowerCase());
-  return aggregateTrackRecord(exec.rows);
+  return {
+    fills: exec.summary.filledOrders,
+    avgSurplusBps: exec.summary.avgSurplusBps,
+    ...bestAndFirstFill(exec.rows),
+  };
 }
 
 export interface ReceiptPayload {
