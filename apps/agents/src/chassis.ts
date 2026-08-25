@@ -1,5 +1,6 @@
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -26,6 +27,38 @@ import type { AgentContext, AgentState, Breakers } from './types';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = join(ROOT, 'data');
 const WALLETS_DIR = join(ROOT, '..', '..', 'wallets');
+
+/**
+ * Owner-only, matching the wallet files these sit beside on the VM. State
+ * carries halt flags and rate-limit ledgers, logs carry every action taken;
+ * neither is key material, but nothing else on the host needs to read them.
+ */
+const DATA_DIR_MODE = 0o700;
+const DATA_FILE_MODE = 0o600;
+
+/** Create the data dir owner-only; an existing dir is left as it is. */
+export function ensureDataDir(dir: string = DATA_DIR): void {
+  mkdirSync(dir, { recursive: true, mode: DATA_DIR_MODE });
+}
+
+/**
+ * Atomic: write to a temp file then rename, so a crash mid-write cannot
+ * leave a truncated state file that reads as "not halted, caps reset". The
+ * mode passed to writeFileSync applies only when it creates the file, and a
+ * crash between write and rename leaves the temp file behind at whatever mode
+ * it had, so the mode is set outright before the rename carries it over.
+ */
+export function writeStateFile(file: string, contents: string): void {
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, contents, { mode: DATA_FILE_MODE });
+  chmodSync(tmp, DATA_FILE_MODE);
+  renameSync(tmp, file);
+}
+
+/** Append one JSONL line, creating the log owner-only on first write. */
+export function appendLogLine(file: string, line: string): void {
+  appendFileSync(file, line + '\n', { mode: DATA_FILE_MODE });
+}
 
 interface DiskState {
   halted?: { reason: string; at: string };
@@ -57,13 +90,8 @@ function loadDisk(name: string): DiskState {
 }
 
 function saveDisk(name: string, state: DiskState): void {
-  mkdirSync(DATA_DIR, { recursive: true });
-  // Atomic: write to a temp file then rename, so a crash mid-write cannot
-  // leave a truncated state file that reads as "not halted, caps reset".
-  const file = stateFile(name);
-  const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify(state, null, 2));
-  renameSync(tmp, file);
+  ensureDataDir();
+  writeStateFile(stateFile(name), JSON.stringify(state, null, 2));
 }
 
 /** Where an agent's own-capital key lives. Matches the registry's walletFile. */
@@ -99,11 +127,11 @@ export async function buildContext(name: string): Promise<AgentContext> {
   const publicClient = createPublicClient({ chain: bsc, transport });
   const walletClient = createWalletClient({ account, chain: bsc, transport });
 
-  mkdirSync(DATA_DIR, { recursive: true });
+  ensureDataDir();
   const logPath = join(DATA_DIR, `${name}.log.jsonl`);
   const log = (event: Record<string, unknown>) => {
     const line = JSON.stringify({ at: new Date().toISOString(), agent: name, ...event });
-    appendFileSync(logPath, line + '\n');
+    appendLogLine(logPath, line);
     console.log(line);
   };
 
