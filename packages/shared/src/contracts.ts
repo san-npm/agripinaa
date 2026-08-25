@@ -19,13 +19,17 @@ export interface RouterDeployment {
   aUsdt: `0x${string}`;
   aavePool: `0x${string}`;
   vUsdt: `0x${string}`;
-  /** Block the router was deployed at — the floor for Rotated-event log scans. */
+  /**
+   * Block the router's creation transaction landed in, and so the floor for
+   * Rotated-event log scans. Located by bisecting `eth_getCode` over an archive
+   * endpoint and confirmed against the creation receipt's `contractAddress`;
+   * the public dataseeds prune the state that bisection needs, which is why the
+   * result is recorded here rather than read back at render time.
+   */
   deployBlock: bigint;
   /**
-   * The day the router went live, ISO `YYYY-MM-DD`. Recorded here rather than
-   * derived from `deployBlock`, which is a scan floor a few hundred blocks
-   * below the creation block, and rather than read back from an RPC, since the
-   * public BNB Chain endpoints prune the state a historical `getCode` needs.
+   * The UTC day that creation transaction was mined, ISO `YYYY-MM-DD`. Recorded
+   * alongside the block so a page can print the date without an RPC round trip.
    */
   deployedOn: string;
 }
@@ -44,8 +48,11 @@ export const YIELD_ROUTER_BSC: RouterDeployment = {
   aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
-  // Deployed 2026-08-20 (~block 117084863 on BSC). A safe floor for log scans.
-  deployBlock: BigInt(117084000),
+  // Created by tx 0x161a2aaddb3f20a2ee4c23b7dcc42b05cd5dc5c7a9b56ff56c3fcf1c0907a051,
+  // mined 2026-08-20 13:45:00 UTC. This replaces an earlier hand-written floor of
+  // 117084000, which sat ~33.6k blocks ABOVE the creation block and would have
+  // hidden any rotation from the router's first nine hours (there was none).
+  deployBlock: BigInt(117050416),
   deployedOn: '2026-08-20',
 };
 
@@ -62,7 +69,9 @@ export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   aUsdt: '0x00901a076785e0906d1028c7d6372d247bec7d61',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
-  deployBlock: BigInt(117231000),
+  // Created by tx 0xc28a69ac38759e950042644570096b7a95a8ef854e569b3f9c529f2e5fac8c4a,
+  // mined 2026-08-21 12:22:09 UTC, located the same way.
+  deployBlock: BigInt(117231310),
   deployedOn: '2026-08-21',
 };
 

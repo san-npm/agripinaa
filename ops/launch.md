@@ -52,6 +52,7 @@ On Vercel (project settings, Production):
 | `KV_REST_API_URL` | Upstash REST endpoint. Without it a report is accepted and then dropped, so the route answers 503 rather than reporting success. |
 | `KV_REST_API_TOKEN` | Upstash REST token. |
 | `AGENTS_BASE_URL` | Optional. A fixed runner base that wins over KV, for local dev, incident response, or the Tailscale route below. |
+| `BSC_LOG_RPC_URLS` | Optional. The endpoints `/funds` scans the router's `Rotated` log with, replacing the free public ones compiled in. Comma separated, in the order to try them, each `url` or `url\|maxBlocksPerQuery` (default 9000). Set it to an endpoint you control: without it the page depends on someone else's public allowance, and when that throttles the panel shows its addresses and security notes with the balances marked unavailable. |
 
 To provision the KV: Vercel dashboard -> the project -> Storage -> Create
 Database -> Upstash Redis. Connecting it to the project injects

@@ -1,7 +1,7 @@
 import { bscScanAddress, bscScanTx } from '@agripinaa/shared';
 import type { RouterDeployment } from '@agripinaa/shared/contracts';
 
-import { groupDigits, readRouterFunds, type RotationRow } from '@/lib/funds';
+import { groupDigits, readRouterFunds, underManagementNote, type RotationRow } from '@/lib/funds';
 import { FreshnessStamp } from './FreshnessStamp';
 
 /** How many rotations the panel lists before it stops. */
@@ -62,8 +62,9 @@ function ExplorerLink({
  */
 export async function RouterPanel({ router }: { router: RouterDeployment }) {
   const funds = await readRouterFunds(router.symbol);
-  const scannedFrom = funds.scannedFrom ?? router.deployBlock.toString();
-  const fromDeployment = scannedFrom === router.deployBlock.toString();
+  const deployBlock = router.deployBlock.toString();
+  const scannedFrom = funds.scannedFrom ?? deployBlock;
+  const fromDeployment = scannedFrom === deployBlock;
 
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
@@ -79,9 +80,13 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
         </ExplorerLink>
       </div>
       <p className="mt-1 text-xs text-muted-2">
-        Live on BNB Smart Chain since {router.deployedOn}. Rotation history below is
-        scanned from block {groupDigits(scannedFrom)}
-        {fromDeployment ? ', the floor for this deployment' : ', the oldest block this scan reaches'}.
+        Live on BNB Smart Chain since {router.deployedOn}, created in block{' '}
+        {groupDigits(deployBlock)}.
+        {funds.scannedFrom == null
+          ? ''
+          : fromDeployment
+            ? ' The rotation history below covers every block since.'
+            : ` The rotation history below is scanned from block ${groupDigits(scannedFrom)}, the oldest block this scan reaches.`}
       </p>
 
       {funds.managed || funds.custody != null ? (
@@ -92,13 +97,11 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
                 label="Under management"
                 value={funds.managed.total}
                 unit={router.symbol}
-                note={
-                  funds.managed.accounts === 0
-                    ? 'This router has rotated no account yet, so there is nothing to total.'
-                    : `Held right now by the ${funds.managed.accounts} account${
-                        funds.managed.accounts === 1 ? '' : 's'
-                      } this router has rotated, in Aave, in Venus, or idle in the account itself.`
-                }
+                note={underManagementNote({
+                  accounts: funds.managed.accounts,
+                  scannedFrom: funds.scannedFrom,
+                  deployBlock,
+                })}
               />
               <Stat
                 label="Working in a venue"

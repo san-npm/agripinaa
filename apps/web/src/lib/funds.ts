@@ -20,26 +20,67 @@ const stateClient = createPublicClient({
   transport: fallback(BSC_MAINNET.rpcUrls.map((u) => http(u))),
 });
 
+/** One log endpoint, and the widest block range it answers in a single query. */
+export interface LogSourceSpec {
+  url: string;
+  maxSpan: bigint;
+}
+
+/** Span assumed for an endpoint that names none: the common free-tier cap. */
+const DEFAULT_LOG_SPAN = BigInt(9000);
+
 /**
+ * The endpoints used when `BSC_LOG_RPC_URLS` is not set.
+ *
  * Historical getLogs needs an endpoint that keeps the receipts around AND lets
  * a query span enough blocks to cover a whole deployment: the public dataseeds
  * answer "limit exceeded" or "archive requests require a personal token" for
  * anything but the recent head, and a 5000-block cap turns this scan into
- * hundreds of round trips.
+ * hundreds of round trips. Each endpoint therefore carries its own span cap,
+ * which rules out one viem `fallback` over all of them (a fallback sends every
+ * transport the same block range). They are tried in order instead, widest span
+ * first.
  *
- * Each endpoint therefore carries its own span cap, which rules out one viem
- * `fallback` over all of them (a fallback sends every transport the same block
- * range). They are tried in order instead, widest span first. NodeReal's entry
- * is the public BNB Chain endpoint published in the chain's own RPC docs, not a
- * credential of ours; the two behind it are what lib/managed.ts scans with per
- * account. That module is a client module (it pulls in the Altana SDK), so the
- * list is redeclared here rather than imported.
+ * None of the three belongs to us and none owes this page an allowance. As
+ * measured on 2026-08-25 the NodeReal entry answers a 50,000-block archive
+ * query in about 0.2 s while drpc and 1rpc were both returning their public
+ * tier's rate limit, so treat the list as best effort and set the environment
+ * variable to point the scan at an endpoint you control.
  */
-const LOG_SOURCES = [
+const DEFAULT_LOG_SOURCES: LogSourceSpec[] = [
   { url: 'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3', maxSpan: BigInt(50000) },
-  { url: 'https://bsc.drpc.org', maxSpan: BigInt(9000) },
-  { url: 'https://1rpc.io/bnb', maxSpan: BigInt(9000) },
-].map((source) => ({
+  { url: 'https://bsc.drpc.org', maxSpan: DEFAULT_LOG_SPAN },
+  { url: 'https://1rpc.io/bnb', maxSpan: DEFAULT_LOG_SPAN },
+];
+
+/**
+ * Parse the `BSC_LOG_RPC_URLS` override: comma separated entries, each `url` or
+ * `url|maxBlocksPerQuery`, in the order they should be tried. Set it in the
+ * host's environment and swapping in an owned key stops being a code change.
+ *
+ * An entry that is not an http(s) URL is dropped rather than failing a render,
+ * and an entry with no span gets the conservative default, since a span wider
+ * than the endpoint allows makes every chunk of the scan error.
+ */
+export function parseLogSources(spec: string | undefined): LogSourceSpec[] {
+  return (spec ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [rawUrl = '', rawSpan = ''] = entry.split('|');
+      const span = /^\d+$/.test(rawSpan.trim()) ? BigInt(rawSpan.trim()) : BigInt(0);
+      return { url: rawUrl.trim(), maxSpan: span > BigInt(0) ? span : DEFAULT_LOG_SPAN };
+    })
+    .filter((source) => /^https?:\/\/\S+$/.test(source.url));
+}
+
+// An override with nothing usable in it (a typo, an empty string) leaves the
+// defaults in place, so a bad edit degrades to the public endpoints rather
+// than to no endpoint at all.
+const configuredSources = parseLogSources(process.env.BSC_LOG_RPC_URLS);
+
+const LOG_SOURCES = (configuredSources.length > 0 ? configuredSources : DEFAULT_LOG_SOURCES).map((source) => ({
   maxSpan: source.maxSpan,
   // One retry, so a rate-limited endpoint hands over to the next quickly
   // instead of backing off three times on every chunk of the scan.
@@ -125,6 +166,36 @@ export function formatStableAmount(value: bigint, decimals = 18): string {
     cents = BigInt(0);
   }
   return `${negative ? '-' : ''}${groupDigits(whole.toString())}.${cents.toString().padStart(2, '0')}`;
+}
+
+/**
+ * The sentence printed under the "Under management" figure.
+ *
+ * The accounts in that figure are whoever appears in the Rotated log the scan
+ * reached, and the scan floor is the deployment block only while the endpoint's
+ * span still covers it. Once the floor rises above the deployment, an account
+ * whose last rotation is older drops out of both the count and the total, so
+ * the copy states the floor instead of asserting how many accounts this router
+ * has rotated.
+ */
+export function underManagementNote(input: {
+  accounts: number;
+  scannedFrom: string | null;
+  deployBlock: string;
+}): string {
+  // A null floor means no scan ran, and then this note is not rendered at all;
+  // treat it as complete rather than inventing a block number for the copy.
+  const coversDeployment = input.scannedFrom == null || input.scannedFrom === input.deployBlock;
+  const floor = `block ${groupDigits(input.scannedFrom ?? input.deployBlock)}, the oldest block this scan reaches`;
+  if (input.accounts === 0) {
+    return coversDeployment
+      ? 'This router has rotated no account yet, so there is nothing to total.'
+      : `No account has rotated since ${floor}, so there is nothing to total. Anything rotated before that block is not counted.`;
+  }
+  const accounts = `${input.accounts} account${input.accounts === 1 ? '' : 's'}`;
+  return coversDeployment
+    ? `Held right now by the ${accounts} this router has rotated, in Aave, in Venus, or idle in the account itself.`
+    : `Held right now by the ${accounts} that ${input.accounts === 1 ? 'has' : 'have'} rotated since ${floor}. An account whose last rotation is older is not counted, so this is a floor.`;
 }
 
 /**
