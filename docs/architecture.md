@@ -20,7 +20,7 @@ flowchart TB
 
   subgraph V["Vercel · apps/web · Next.js 16 App Router"]
     SC["Server components<br/>/agents, /c/:category, /agent/56/:tokenId,<br/>/leaderboard, /funds, /proof, /dashboard"]
-    RH["Route handlers<br/>/manifests/:slug.json, /api/proof, /api/claim,<br/>/api/index/agents, /api/ops/runner-url, /api/cron/refresh"]
+    RH["Route handlers<br/>/manifests/:slug.json, /api/proof, /api/claim,<br/>/api/index/agents, /api/ops/runner-url,<br/>/api/exec/receipt/:uid, /api/managed/:agent/manage"]
     SF["Server function askStatusEndpoint:<br/>one unpaid x402 probe"]
   end
 
@@ -159,11 +159,27 @@ downloadable receipt behind `/api/exec/receipt/[uid]`.
 
 ## The three paths a judge walks
 
-**Browse.** `/` and `/agents` list BSC-scoped agents from the merged index, with
-search, category, live and claimed filters and cursor pagination. Category hubs
-at `/c/<category>` cover the four mandated categories. The proof feed renders
-server-side at first paint from the Ophis settlement backfill, then swaps in the
-runner's live tail, so the page is never empty while it waits.
+**Browse.** `/` and `/agents` list BSC-scoped agents from the merged index.
+`/agents` keeps two sections: the agents we built and attested on-chain, then
+the permissionless registry, ranked and collapsed by `rankAndDedupe`
+(`packages/agent-index/src/quality.ts`) and cut to the first 45 cards
+(`DIRECTORY_PAGE_SIZE` in `apps/web/src/lib/data.ts`), with same-name low-signal
+registrations collapsed into one card and a count.
+
+Category hubs at `/c/<category>` cover the four mandated categories and take a
+page of 24 from `listAgents`. A hub is the only listing a stored claim can pull
+an agent onto, since a claimed agent is absent from the upstream ranked list:
+those entries lead the hub's first page, capped at a third of it by
+`claimedHubSlots` (`apps/web/src/lib/claim-merge.ts`) and at
+`CLAIMED_PER_HUB_LIMIT` resolves, so a category that collects many claims cannot
+push the ranked registrations off its own hub. Past the first page a claim only
+annotates a card that was already there.
+
+The same function answers `/api/index/agents`, which takes a category, a limit
+clamped to 1 to 100 and an opaque numeric cursor, so the index paginates even
+where a page renders a single slice of it. The proof feed renders server-side at
+first paint from the Ophis settlement backfill, then swaps in the runner's live
+tail, so the page is never empty while it waits.
 
 **Understand.** `/agent/56/<tokenId>` merges the registry read, the indexer
 record, any owner claim, the on-chain ERC-8004 attestation, and the settlement
@@ -182,11 +198,28 @@ validity live from the KeyStore registry and revokes with one confirmation.
 
 ## Freshness
 
-A six-hourly Vercel cron at `/api/cron/refresh` (bearer `OPS_TOKEN` or
-`CRON_SECRET`) re-probes claimed endpoints and pre-warms the category hubs, so
-the first judge of the day is not the one paying for a cold cache. The keyed
-re-seed behind it keeps a snapshot of thousands of BSC agents committed, which
-is also the floor the site serves from when the indexer is down.
+Nothing on Vercel runs on a schedule. There is no cron route and no
+`vercel.json` declaring one, on purpose: a scheduled job would be one more thing
+to keep alive during judging. Freshness comes from three mechanisms instead.
+
+**The cache window.** Every function that backs a listing opens with
+`'use cache'` and a `cacheLife` window (six of them in
+`apps/web/src/lib/data.ts` alone), so a listing is at most that window old and
+one visitor's miss fills it for the next.
+
+**The committed snapshot.** `packages/agent-index/data/agents-56.json` holds a
+BSC population snapshot that `MergedSource` falls through to when the indexer is
+unavailable, so the floor the site serves from is a file in the repository
+rather than an empty page.
+
+**Liveness decay.** A claimed endpoint is probed once, when its claim is stored
+(`apps/web/src/app/api/claim/route.ts`), and the result goes to KV with the
+instant it was taken. Readers apply the window themselves: past
+`LIVENESS_TTL_MS` (24 hours, `apps/web/src/lib/liveness.ts`) a record stops
+counting as evidence, and `endpointIsLive` in `apps/web/src/lib/activatable.ts`
+answers false. A re-probe on a schedule is the shape both files are written for,
+and until one runs the decay is the whole answer: an endpoint that went away
+loses its badge on its own, which is the safe direction to fail in.
 
 ## Repository layout
 

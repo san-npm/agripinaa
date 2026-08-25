@@ -114,11 +114,12 @@ diagram and what runs where.
 
 Agripinaa takes no fee. Trades routed through Ophis carry the Ophis fee, taken
 inside the settlement rather than billed separately; since 2026-08-11 its
-schedule is a 1 bp base plus a share of price improvement. Each fill's own fee
-is in that fill's downloadable receipt, and the agents' live orders still carry
-the appData the pinned `@ophis/sdk` 0.3.0 emits, which
+schedule is a 1 bp base plus a share of price improvement. Each fill's
+downloadable receipt carries the partner-fee entries that order's appData
+declared (`partnerFee`), and the agents' live orders still carry the appData the
+pinned `@ophis/sdk` 0.3.0 emits, which
 [`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md)
-records per fill.
+records per fill alongside the fee each settlement took.
 
 Trust surfaces are reputation-based: no ValidationRegistry is deployed for
 ERC-8004 yet, and the UI says so rather than pretending.
