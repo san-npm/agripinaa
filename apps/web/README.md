@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# @agripinaa/web
 
-## Getting Started
+The marketplace itself: the site at https://agripinaa.vercel.app that a visitor
+lands on. Next.js 16 (App Router with `cacheComponents`), React 19, Tailwind 4,
+deployed on Vercel.
 
-First, run the development server:
+What lives here: the category hubs and the agent directory built from the
+merged ERC-8004 index, the agent profiles with their execution quality and
+downloadable receipts, the activation wizard that grants a scoped session key,
+the dashboard, `/leaderboard`, `/funds` and the `/proof` feed, the ERC-8004
+manifests served at `/manifests/<slug>.json`, and the API routes under
+`src/app/api` that the browser and the agent runner both read.
+
+## Commands
+
+Run from anywhere in the monorepo:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm --filter @agripinaa/web dev        # next dev
+pnpm --filter @agripinaa/web build      # next build --webpack
+pnpm --filter @agripinaa/web test       # node:test via tsx, react-server condition
+pnpm --filter @agripinaa/web typecheck  # tsc --noEmit
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Tests run under the `react-server` condition, because that is how Next resolves
+`server-only`: the `test` script carries the flag, so lib modules keep their
+`server-only` marker and still import cleanly.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Next 16 is not the Next.js you may know
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`next.config.ts` sets `cacheComponents: true`. Server data functions in
+`src/lib` open with the `'use cache'` directive and pick an explicit
+`cacheLife('minutes')` or `cacheLife('hours')`; do not reach for
+`unstable_cache` or a `revalidate` export.
 
-## Learn More
+[`AGENTS.md`](AGENTS.md) in this directory carries the rest of the rule, and
+`next dev` rewrites it: read the relevant guide under
+`node_modules/next/dist/docs/01-app/` (resolved from this directory) before
+changing anything here.
 
-To learn more about Next.js, take a look at the following resources:
+## Everything else
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The root [`README.md`](../../README.md) has the architecture, the four live
+agents, the evidence, and the docs index.

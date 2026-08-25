@@ -51,7 +51,7 @@ On Vercel (project settings, Production):
 | `OPS_TOKEN` | Shared secret for `/api/ops/runner-url`. Generate with `openssl rand -hex 32`. Until it is set the route answers 503 and accepts nothing. |
 | `KV_REST_API_URL` | Upstash REST endpoint. Without it a report is accepted and then dropped, so the route answers 503 rather than reporting success. |
 | `KV_REST_API_TOKEN` | Upstash REST token. |
-| `AGENTS_BASE_URL` | Optional. A fixed runner base that wins over KV, for local dev, incident response, or the Tailscale route below. |
+| `AGENTS_BASE_URL` | Optional. A fixed runner base that wins over KV, for local dev or incident response. |
 | `BSC_LOG_RPC_URLS` | Optional. The endpoints `/funds` scans the router's `Rotated` log with, replacing the free public ones compiled in. Comma separated, in the order to try them, each `url` or `url\|maxBlocksPerQuery` (default 9000). Set it to an endpoint you control: without it the page depends on someone else's public allowance, and when that throttles the panel shows its addresses and security notes with the balances marked unavailable. |
 
 To provision the KV: Vercel dashboard -> the project -> Storage -> Create
@@ -72,20 +72,20 @@ Check it end to end with `./ops/report-runner-url.sh --dry-run` on the VM (which
 posts nothing), then without the flag. A 401 means the two tokens differ, a 503
 means Vercel is missing `OPS_TOKEN` or the KV vars.
 
-### Preferred: a permanent hostname instead
+### Why a rotating hostname is the settled answer
 
-Rotation only exists because quick tunnels are ephemeral. Tailscale Funnel
-gives the VM a stable public hostname and removes the problem entirely:
+The quick tunnel is the decision, not a stopgap. Nothing in the project pins a
+permanent hostname: the marketplace resolves the runner base per request
+(`AGENTS_BASE_URL`, then KV, then the committed default), the manifests inject
+it at serve time, and the VM reports a new one within seconds of any restart.
+That path is exercised on every tunnel start, so it is the tested one, whereas
+a fixed hostname would be a second mechanism to keep working and a domain,
+account, or tailnet policy to keep alive through judging.
 
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up                 # authenticate the machine to your tailnet
-sudo tailscale funnel 4410 on     # serves https://<host>.<tailnet>.ts.net
-```
-
-Set that URL once as `AGENTS_BASE_URL` on Vercel. It wins over KV, so the
-reporting path stays in place as a fallback but never has to run. Funnel needs
-HTTPS and the Funnel node attribute enabled in the tailnet policy file.
+Set `AGENTS_BASE_URL` only to pin the base deliberately: pointing a local web
+dev server at a running Mac runner, or overriding KV during an incident. It
+wins over KV, so remember to unset it afterwards or the site will keep serving
+a hostname that has since rotated.
 
 ## One-time setup (already done in order)
 
@@ -95,19 +95,39 @@ HTTPS and the Funnel node attribute enabled in the tailnet policy file.
 
 ## Aleph Cloud migration (preferred)
 
-Order matters: agent state (grid center, LP position tokenId, breakers) is
-git-tracked, so the hand-off travels through git and the Mac must stop and
-commit BEFORE the VM starts (running both = double trading).
+Order matters: whichever host runs the agents owns their state (grid center, LP
+position tokenId, breakers), and the Mac must stop BEFORE the VM starts
+(running both = double trading).
+
+That state lives in `apps/agents/data`, which is gitignored, so it never
+travels through git. It travels by copy, and it survives a redeploy on its own:
+`deploy-aleph.sh` updates the checkout with `git reset --hard origin/main`,
+which leaves untracked files alone.
 
 1. Create a Debian/Ubuntu instance at console.aleph.cloud (2 vCPU / 2-4 GB
    is plenty) with the deploy public key from ~/.ssh/agripinaa-aleph.pub.
    Pin its host keys before the first deploy, since that connection ships the
    wallet keys: `ssh-keyscan -p <port> <ip> >> ops/known_hosts`, review, commit.
    The deploy script checks them strictly and refuses an unknown or changed key.
-2. On the Mac: `./ops/stop-agents.sh && git add apps/agents/data && git commit -m "state hand-off" && git push`
-3. `./ops/deploy-aleph.sh <user@host>`   # provisions, syncs secrets, systemd
-4. Nothing: the deploy reports the tunnel URL itself once `ops/ops.env` exists
+2. On the Mac: `./ops/stop-agents.sh`.
+3. Only when state is being handed over: seed the VM before its first deploy, so
+   the runner never ticks on an empty data directory. Clone by hand, then copy
+   the state in over the same pinned host keys the deploy uses.
+
+   ```bash
+   SSH="ssh -i ~/.ssh/agripinaa-aleph -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$PWD/ops/known_hosts"
+   $SSH <user@host> 'git clone https://github.com/san-npm/agripinaa.git ~/agripinaa'
+   rsync -av -e "$SSH" apps/agents/data/ <user@host>:agripinaa/apps/agents/data/
+   ```
+
+   The deploy script clones only when `~/agripinaa/.git` is missing, so it
+   adopts this checkout rather than replacing it. On a fresh start with nothing
+   to migrate, skip the whole step.
+4. `./ops/deploy-aleph.sh <user@host>`   # provisions, syncs secrets, systemd
+5. Nothing: the deploy reports the tunnel URL itself once `ops/ops.env` exists
    on the VM. Confirm from the line it prints, or re-run the reporter there.
 
-Re-running deploy-aleph.sh updates code and restarts services. From then on
-agent state lives on the VM; commit it back from there if migrating again.
+Re-running deploy-aleph.sh updates code and restarts services, and leaves the
+data directory untouched. From then on agent state lives on the VM: copy it back
+the same way if the agents ever move again, and take a copy before rebuilding
+the instance, since nothing else holds it.
