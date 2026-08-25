@@ -15,9 +15,10 @@ const MAX_BODY_BYTES = 64 * 1024;
  * before anything else happens: resolving the runner base may spend a KV
  * command, and a slug nobody registered has no endpoint to be forwarded to.
  * `agentBySlug` reads own keys only, so `constructor` and `__proto__` are not
- * agents. The proxy itself is `lib/proxy-runner.ts`, shared with the
- * manager-key route and the x402 status function, which is what keeps the
- * three of them answering a dead tunnel the same way.
+ * agents. The refusal stays the 400 this route has always given; only the set
+ * of slugs it covers grew. The proxy itself is `lib/proxy-runner.ts`, shared
+ * with the manager-key route and the x402 status function, which is what keeps
+ * the three of them answering a dead tunnel the same way.
  */
 export async function POST(
   request: Request,
@@ -25,7 +26,7 @@ export async function POST(
 ): Promise<Response> {
   const { agent } = await ctx.params;
   if (!agentBySlug(agent)) {
-    return Response.json({ error: 'unknown agent' }, { status: 404 });
+    return Response.json({ error: 'invalid agent' }, { status: 400 });
   }
   const body = await request.text();
   if (body.length > MAX_BODY_BYTES) {
