@@ -2,6 +2,7 @@ import type { AgentSummary } from "@agripinaa/agent-index";
 import Link from "next/link";
 
 import { CATEGORY_INFO } from "@/lib/categories";
+import { claimProvenanceLabel } from "@/lib/claim-merge";
 import { isVerified } from "@/lib/verified";
 import { CATEGORY_ICON, TokenLogo, VerifiedIcon } from "./icons";
 
@@ -9,6 +10,10 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
   const cat = agent.category ? CATEGORY_INFO[agent.category] : null;
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
   const verified = isVerified(agent.tokenId);
+  // Names the fields this agent's owner filled in, so owner-written text is
+  // never mistaken for indexed metadata. Unrelated to the verified treatment:
+  // a claim says who wrote the copy, not that anyone vouches for the agent.
+  const ownerProvided = claimProvenanceLabel(agent);
   // Tokens this agent works with (only known for our verified agents).
   const tokens = verified && cat ? cat.tokens : null;
 
@@ -58,6 +63,10 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
       <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-sm text-muted">
         {agent.description || "No description provided by this agent."}
       </p>
+
+      {ownerProvided && (
+        <p className="mt-1.5 font-mono text-[10px] text-muted-2">{ownerProvided}</p>
+      )}
 
       {tokens && (
         <div className="mt-3 flex items-center gap-2">
