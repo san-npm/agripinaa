@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { AgentSummary } from '@agripinaa/agent-index';
+import { CATEGORIES, type AgentSummary } from '@agripinaa/agent-index';
 
 import type { ClaimRecord } from '../src/lib/claims';
-import { applyClaim, claimProvenanceLabel } from '../src/lib/claim-merge';
+import {
+  applyClaim,
+  claimForCategory,
+  claimProvenanceLabel,
+  claimedHubSlots,
+} from '../src/lib/claim-merge';
 
 /**
  * Partial records throughout: `applyClaim` reads five fields and must not
@@ -103,4 +108,40 @@ test('an unclaimed agent, and a claim that filled nothing, get no label', () => 
     fields: { description: 'Owner text.', category: 'yield' },
   } as unknown as ClaimRecord);
   assert.equal(claimProvenanceLabel(merged), null);
+});
+
+test('a hub takes a claimed agent only when the merged listing lands in that hub', () => {
+  const claim = {
+    fields: { description: 'Owner text.', category: 'yield' },
+  } as unknown as ClaimRecord;
+  // Nothing indexed for category, so the claim fills it and the hub is right.
+  assert.equal(claimForCategory(bare, claim, 'yield')?.category, 'yield');
+  assert.equal(claimForCategory(bare, claim, 'grid'), null);
+
+  // Indexed metadata already says grid, and metadata wins the merge, so the
+  // owner's yield claim buys no placement it would render a grid chip on.
+  const grid = { ...bare, category: 'grid' } as unknown as AgentSummary;
+  assert.equal(claimForCategory(grid, claim, 'yield'), null);
+  const kept = claimForCategory(grid, claim, 'grid');
+  assert.equal(kept?.category, 'grid', 'it still belongs to the hub it declares');
+  assert.equal(kept?.claimed, true, 'and it still carries the owner description');
+});
+
+test('a claim of other buys no hub placement at all', () => {
+  const claim = {
+    fields: { description: 'Does several things.', category: 'other' },
+  } as unknown as ClaimRecord;
+  for (const category of CATEGORIES) {
+    assert.equal(claimForCategory(bare, claim, category), null, category);
+  }
+});
+
+test('injected claims take at most a third of a hub page', () => {
+  // A hub asks for 24: 8 slots for claimed entries, 16 left for the ranked
+  // registrations, which is what stops a flood of claims taking the page.
+  assert.equal(claimedHubSlots(24), 8);
+  assert.equal(claimedHubSlots(45), 15);
+  // A page too small to divide still shows one, rather than hiding every claim.
+  assert.equal(claimedHubSlots(2), 1);
+  assert.equal(claimedHubSlots(0), 1);
 });
