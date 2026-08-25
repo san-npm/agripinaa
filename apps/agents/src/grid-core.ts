@@ -1,7 +1,7 @@
 /**
  * The shared grid core.
  *
- * Two agents run this strategy: `grid` on WBNB/USDT and `grid-b` on WBNB/USDC,
+ * Two agents run this strategy: `grid` on WBNB/USDT and `grid-b` on BTCB/USDT,
  * with different spacing, clips, cooldowns and daily caps. Everything that
  * decides WHAT a grid does, the ladder geometry, crossing detection, clip
  * sizing, the guard chain, the re-center rule, and the pool, price and balance
@@ -436,9 +436,14 @@ export const PANCAKE_V3_FACTORY = '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865' a
 
 /**
  * The tiers a grid will consider. Deliberately excludes fee 10000, whose
- * WBNB/USDT book holds about $14: a reference pool that shallow is cheap to
- * skew, and the price read here is what every level and halt is measured
- * against.
+ * WBNB/USDT book holds about $14 and whose BTCB/USDT book about $38 (probed
+ * 2026-08-25): a reference pool that shallow is cheap to skew, and the price
+ * read here is what every level and halt is measured against.
+ *
+ * The eligible tiers are probed in full and the deepest wins, so the two grids
+ * land on different ones from the same list: WBNB/USDT settles on fee 100,
+ * BTCB/USDT on fee 500 (about 9.46 million USDT against 47.6 BTCB on
+ * 0x46Cf1cF8c69595804ba91dFdd8d6b960c9B0a7C4, same probe).
  */
 export const FEE_TIERS = [100, 500, 2500] as const;
 
@@ -468,10 +473,15 @@ export interface ReferencePool {
   address: `0x${string}`;
   fee: number;
   /**
-   * Whether the BASE token is token0. The field keeps its original name because
-   * the live grid agent has this object persisted under state key
-   * `referencePool`; a rename would read back as undefined on the next boot and
-   * silently invert the price. Both grids quote WBNB, so the name is accurate.
+   * Whether the BASE token is token0.
+   *
+   * DO NOT RENAME THIS FIELD. It reads as a misnomer now that grid-b quotes
+   * BTCB rather than WBNB, but the live `grid` agent has this object persisted
+   * on the VM under state key `referencePool`, written with this key. A rename
+   * would read back as undefined on the next boot, which is falsy, so the price
+   * would silently invert and every level, halt band and drawdown floor would
+   * be measured against its own reciprocal. The name is stale; the behaviour it
+   * protects is real money. Read it as "the base token is token0".
    */
   wbnbIsToken0: boolean;
 }
@@ -491,7 +501,7 @@ export async function resolveReferencePool(
 
   // priceFromSqrtPriceX96 reads the raw slot0 ratio with no decimal
   // correction, which is only right when both sides carry the same decimals
-  // (they do for WBNB/USDT and WBNB/USDC on BSC, all 18). Refuse rather than
+  // (they do for WBNB/USDT and BTCB/USDT on BSC, all 18). Refuse rather than
   // quote a price that is wrong by a power of ten.
   if (pair.base.decimals !== pair.quote.decimals) {
     throw new Error(

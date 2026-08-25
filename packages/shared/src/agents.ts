@@ -93,12 +93,19 @@ export interface AgentAttestation {
   feedbackHash: string;
 }
 
-/** One-time funding transfer sizes, in whole units. */
+/**
+ * One-time funding transfer sizes, in whole units. Every optional leg here must
+ * also appear in the transfer loop of apps/agents/src/fund.ts, or the budget is
+ * planned and silently never sent; tests/agent-config.test.ts pins the plan
+ * field by field for exactly that reason.
+ */
 export interface AgentFunding {
   bnb: string;
   usdt?: string;
   usdc?: string;
   wbnb?: string;
+  /** Bitcoin BEP20, the sell-side leg of a grid quoting BTCB. */
+  btcb?: string;
 }
 
 export interface AgentRecord {
@@ -186,11 +193,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     manifest: {
       name: 'Agripinaa Grid B',
       description:
-        'Mean-reversion grid trader on the WBNB/USDC pair, running a wider and slower ladder than Agripinaa Grid: five levels each side at 2.5 percent spacing, $1.50 clips, 8 trades a day at most, and 45 minutes between fills. Every swap executes through Ophis batch auctions (MEV-protected, a receipt for every fill). Halts itself on a trend breakout and on an inventory drawdown.',
+        'Mean-reversion grid trader on the BTCB/USDT pair, running a wider and slower ladder than Agripinaa Grid: five levels each side at 2.5 percent spacing, $1.50 clips, 8 trades a day at most, and 45 minutes between fills. Every swap executes through Ophis batch auctions (MEV-protected, a receipt for every fill). Halts itself on a trend breakout and on an inventory drawdown.',
       category: 'grid',
       image: 'https://agripinaa.vercel.app/agent-icon.png',
       capabilities: ['trading', 'x402-status'],
-      execution: { venue: 'ophis', pair: 'WBNB/USDC', chainId: 56 },
+      execution: { venue: 'ophis', pair: 'BTCB/USDT', chainId: 56 },
       /*
        * These are the numbers the tick enforces, not a summary of them:
        * tests/grid-b.test.ts pins each field to GRID_B_PARAMS, so a parameter
@@ -214,11 +221,19 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       x402: { priceUsdt: '0.05', note: 'pending registration' },
     },
     /*
-     * Budget as planned, with the stablecoin leg in the token this agent
-     * actually spends. Its buy side sells USDC, so USDT here would leave every
-     * buy blocked on an empty balance while the money sat in the wrong token.
+     * One leg per side of the pair, since a grid spends both: the buy side
+     * sells USDT and the sell side sells BTCB, so a leg funded in any other
+     * token would leave that whole direction blocked on an empty balance while
+     * the money sat somewhere the agent never reaches. WBNB is gone from this
+     * budget because it is no longer on the pair.
+     *
+     * 0.000025 BTCB was about $1.97 at the price the fee-500 pool reported on
+     * 2026-08-25 (78,851 USDT per BTCB), so it funds one full $1.50 clip, which
+     * is the same shape the USDC/WBNB budget had. NOTE FOR THE OPERATOR: the
+     * spike-a wallet this transfers from holds no BTCB today, so this leg has to
+     * be acquired before `fund --execute` reaches it.
      */
-    funding: { bnb: '0.0015', usdc: '2', wbnb: '0.003' },
+    funding: { bnb: '0.0015', usdt: '2', btcb: '0.000025' },
     registrationTx: null,
     attestation: null,
     proofs: [],

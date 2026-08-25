@@ -63,7 +63,14 @@ export function isUnprovisioned(
   return record.wallet === null && !walletFileExists;
 }
 
-/** One wallet's share of the funding transfer, in whole units. */
+/**
+ * One wallet's share of the funding transfer, in whole units.
+ *
+ * Every ERC20 field here has to be listed in fund.ts's transfer loop as well.
+ * A leg that exists in the plan but not in that loop is budgeted, printed by
+ * `--plan`, and then never sent, which looks like a funded agent right up until
+ * its first trade blocks on an empty balance.
+ */
 export interface FundingEntry {
   /** wallets/<name>.json, which is what `--only` selects on. */
   name: string;
@@ -71,6 +78,7 @@ export interface FundingEntry {
   usdt: string;
   wbnb: string;
   usdc: string;
+  btcb: string;
   /**
    * Companion manager session key to generate alongside this wallet, or null.
    * It needs no funding of its own (the user's account pays gas).
@@ -91,11 +99,20 @@ export const FUNDING_PLAN: FundingEntry[] = [
     usdt: agent.funding.usdt ?? '0',
     wbnb: agent.funding.wbnb ?? '0',
     usdc: agent.funding.usdc ?? '0',
+    btcb: agent.funding.btcb ?? '0',
     // Derived from managerKeyFile so fund --gen writes exactly the file the
     // runner later loads; a mismatch disables managed mode silently.
     sessionKey: agent.managed ? basename(managerKeyFile(agent.slug), '.json') : null,
   })),
-  { name: 'facilitator', bnb: '0.0008', usdt: '0', wbnb: '0', usdc: '0', sessionKey: null },
+  {
+    name: 'facilitator',
+    bnb: '0.0008',
+    usdt: '0',
+    wbnb: '0',
+    usdc: '0',
+    btcb: '0',
+    sessionKey: null,
+  },
 ];
 
 /**
