@@ -77,3 +77,35 @@ test('both routes still pass the runner status and body through', async () => {
   assert.equal(reg.status, 200);
   assert.deepEqual(await reg.json(), { ok: true, managedCount: 2 });
 });
+
+test('an echoed runner body is labelled application/json and marked nosniff', async () => {
+  // The bytes come off the tunnel and are echoed unread, so the browser must
+  // not be left to sniff a content type out of them.
+  const stub = recordingFetch(newState(), () => new Response('{"ok":true}', { status: 200 }));
+  for (const res of [
+    await withFetch(stub, () => managerKey(keyRequest(), ctx('yield'))),
+    await withFetch(stub, () => manage(manageRequest(), ctx('yield'))),
+  ]) {
+    assert.equal(res.headers.get('content-type'), 'application/json');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  }
+});
+
+/**
+ * The slug arrives in the URL path. A plain-object lookup answers `constructor`
+ * and `__proto__` from Object.prototype, so the gate has to be an own-key one:
+ * anything else spends a KV read and a tunnel fetch on an attacker's path.
+ */
+test('both routes refuse a slug outside the registry before any lookup or fetch', async () => {
+  const state = newState();
+  const stub = recordingFetch(state, () => new Response('{"ok":true}', { status: 200 }));
+  for (const slug of ['constructor', '__proto__', 'toString', 'nope', 'grid/status', '']) {
+    const key = await withFetch(stub, () => managerKey(keyRequest(), ctx(slug)));
+    assert.equal(key.status, 404, `manager-key ${JSON.stringify(slug)}`);
+    assert.deepEqual(await key.json(), { error: 'unknown agent' });
+    const reg = await withFetch(stub, () => manage(manageRequest(), ctx(slug)));
+    assert.equal(reg.status, 404, `manage ${JSON.stringify(slug)}`);
+    assert.deepEqual(await reg.json(), { error: 'unknown agent' });
+  }
+  assert.deepEqual(state.calls, []);
+});

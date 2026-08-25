@@ -57,8 +57,9 @@ function ExplorerLink({
 
 /**
  * One deployed router, in public: its address, when it went live, what the
- * accounts it manages are holding, and every rotation it has recorded. Server
- * component, so a visitor sees all of it without connecting a wallet.
+ * accounts it manages are holding, and its most recent rotations (the list is
+ * capped at MAX_ROWS, and the footer under it names the total the scan found).
+ * Server component, so a visitor sees all of it without connecting a wallet.
  */
 export async function RouterPanel({ router }: { router: RouterDeployment }) {
   const funds = await readRouterFunds(router.symbol);
@@ -85,7 +86,7 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
         {funds.scannedFrom == null
           ? ''
           : fromDeployment
-            ? ' The rotation history below covers every block since.'
+            ? ' The rotation scan below covers every block since.'
             : ` The rotation history below is scanned from block ${groupDigits(scannedFrom)}, the oldest block this scan reaches.`}
       </p>
 

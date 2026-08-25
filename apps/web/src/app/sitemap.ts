@@ -24,6 +24,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: siteUrl("/agents"), lastModified: BUILT_AT, changeFrequency: "daily", priority: 0.9 },
     { url: siteUrl("/proof"), lastModified: BUILT_AT, changeFrequency: "hourly", priority: 0.8 },
     { url: siteUrl("/funds"), lastModified: BUILT_AT, changeFrequency: "hourly", priority: 0.8 },
+    { url: siteUrl("/leaderboard"), lastModified: BUILT_AT, changeFrequency: "hourly", priority: 0.8 },
     ...CATEGORIES.map((category) => ({
       url: siteUrl(`/c/${category}`),
       lastModified: BUILT_AT,
