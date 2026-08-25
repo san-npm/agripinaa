@@ -3,7 +3,13 @@ import { test } from 'node:test';
 
 import { ROUTER_ACTIONS, YIELD_ROUTERS_BSC } from '@agripinaa/shared/contracts';
 
-import { decodeRotationRows, formatStableAmount, type RotationLogLike } from '../src/lib/funds';
+import {
+  decodeRotationRows,
+  formatStableAmount,
+  parseLogSources,
+  underManagementNote,
+  type RotationLogLike,
+} from '../src/lib/funds';
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 
@@ -83,10 +89,71 @@ test('amounts are grouped and rounded to cents without a locale', () => {
   assert.equal(formatStableAmount(BigInt('999999999999999999999999')), '1,000,000.00');
 });
 
-test('every router deployment states the day it went live', () => {
-  // The funds page prints this date next to each address, so a deployment
-  // added without one would put a blank where the reader expects a date.
+test('every router deployment states the block and the day it went live', () => {
+  // The funds page prints both next to each address, so a deployment added
+  // without them would put a blank where the reader expects a date and block.
   for (const router of YIELD_ROUTERS_BSC) {
     assert.match(router.deployedOn, /^\d{4}-\d{2}-\d{2}$/, `${router.symbol} has no deployedOn`);
+    assert.equal(typeof router.deployBlock, 'bigint', `${router.symbol} has no deployBlock`);
+    assert.ok(router.deployBlock > BigInt(0), `${router.symbol} deployBlock is not a block`);
   }
+});
+
+test('the under-management note only claims a full account set when the scan reached the deployment', () => {
+  const deployBlock = '117050416';
+  const complete = underManagementNote({ accounts: 1, scannedFrom: deployBlock, deployBlock });
+  assert.match(complete, /the 1 account this router has rotated/);
+
+  // Once the floor rises above the deployment block the count is a floor: the
+  // note has to name the floor and stop asserting how many accounts exist.
+  const partial = underManagementNote({ accounts: 3, scannedFrom: '117200000', deployBlock });
+  assert.ok(!partial.includes('this router has rotated,'), partial);
+  assert.match(partial, /117,200,000/);
+  assert.match(partial, /is not counted, so this is a floor/);
+  assert.match(partial, /3 accounts that have rotated/);
+
+  const partialOne = underManagementNote({ accounts: 1, scannedFrom: '117200000', deployBlock });
+  assert.match(partialOne, /1 account that has rotated/);
+});
+
+test('an empty account set is only called empty when the scan reached the deployment', () => {
+  const deployBlock = '117231310';
+  assert.match(
+    underManagementNote({ accounts: 0, scannedFrom: deployBlock, deployBlock }),
+    /has rotated no account yet/,
+  );
+
+  const partial = underManagementNote({ accounts: 0, scannedFrom: '117900000', deployBlock });
+  assert.ok(!partial.includes('has rotated no account yet'), partial);
+  assert.match(partial, /117,900,000/);
+
+  // No scan means no floor to quote, and the panel hides the note anyway.
+  assert.match(
+    underManagementNote({ accounts: 0, scannedFrom: null, deployBlock }),
+    /has rotated no account yet/,
+  );
+});
+
+test('the log endpoints can be replaced from the environment', () => {
+  assert.deepEqual(parseLogSources(undefined), []);
+  assert.deepEqual(parseLogSources('   '), []);
+  assert.deepEqual(
+    parseLogSources('https://first.example/v1/key|50000, https://second.example'),
+    [
+      { url: 'https://first.example/v1/key', maxSpan: BigInt(50000) },
+      { url: 'https://second.example', maxSpan: BigInt(9000) },
+    ],
+  );
+  // A span that is not a positive integer falls back to the safe one rather
+  // than making every chunk of the scan error.
+  assert.deepEqual(parseLogSources('https://third.example|lots'), [
+    { url: 'https://third.example', maxSpan: BigInt(9000) },
+  ]);
+  assert.deepEqual(parseLogSources('https://fourth.example|0'), [
+    { url: 'https://fourth.example', maxSpan: BigInt(9000) },
+  ]);
+  // Anything that is not an http(s) URL is dropped, not rendered as an endpoint.
+  assert.deepEqual(parseLogSources('not-a-url, wss://fifth.example, https://sixth.example'), [
+    { url: 'https://sixth.example', maxSpan: BigInt(9000) },
+  ]);
 });
