@@ -67,7 +67,12 @@ function stubbed(
 
 const claimUrl = (query: string) => `https://agripinaa.test/api/claim?${query}`;
 
-const rpcCalls = (state: FetchState) => state.calls.filter((c) => !c.url.startsWith(KV_BASE));
+/** A public IP literal, so probing it costs no dns lookup and no live request. */
+const ENDPOINT = 'https://203.0.113.20/status';
+
+const offKvCalls = (state: FetchState) => state.calls.filter((c) => !c.url.startsWith(KV_BASE));
+const rpcCalls = (state: FetchState) => offKvCalls(state).filter((c) => c.url !== ENDPOINT);
+const probeCalls = (state: FetchState) => offKvCalls(state).filter((c) => c.url === ENDPOINT);
 
 test('GET answers the stored claim, leading zeros and all, without one rpc call', async () => {
   const { GET } = await import('../src/app/api/claim/route');
@@ -130,7 +135,54 @@ test('POST stores a claim signed by the owner the registry reports', async () =>
     description: 'A yield agent that rotates between BSC lending venues.',
     category: 'yield',
     website: 'https://example.com',
-    endpoint: 'https://agent.example.com/status',
+    endpoint: ENDPOINT,
+    issuedAt: new Date().toISOString(),
+  });
+  const body = JSON.stringify({
+    fields,
+    signature: await account.signTypedData(buildClaimMessage(fields)),
+  });
+
+  const store = new Map<string, string>();
+  const state = newState();
+  const res = await withFetch(
+    stubbed(state, store, (url) =>
+      url === ENDPOINT
+        ? Response.json({ ok: true })
+        : Response.json({ jsonrpc: '2.0', id: 1, result: asWord(account.address) }),
+    ),
+    () => POST(new Request(claimUrl(''), { method: 'POST', body })),
+  );
+
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { stored: boolean }).stored, true);
+  assert.equal(store.has(CLAIM_KEY), true);
+  assert.deepEqual(JSON.parse(store.get('agripinaa:claims:index')!), ['56:297380']);
+  assert.equal(rpcCalls(state).length, 1, 'one ownerOf read and nothing else');
+  // The claimed endpoint is probed once the claim is stored, so a fresh claim
+  // does not wait for the next re-probe to show what its endpoint answered.
+  assert.equal(probeCalls(state).length, 1, 'the claimed endpoint was probed once');
+  const liveness = JSON.parse(store.get('agripinaa:liveness:56:297380')!) as {
+    url: string;
+    live: boolean;
+    status: number;
+    checkedAt: string;
+  };
+  assert.equal(liveness.url, ENDPOINT);
+  assert.equal(liveness.live, true);
+  assert.equal(liveness.status, 200);
+  assert.ok(Number.isFinite(Date.parse(liveness.checkedAt)), 'the result is timestamped');
+});
+
+test('POST probes nothing for a claim that carries no endpoint', async () => {
+  const { POST } = await import('../src/app/api/claim/route');
+  const fields = sanitizeFields({
+    chainId: 56,
+    tokenId: '297380',
+    description: 'A yield agent that rotates between BSC lending venues.',
+    category: 'yield',
+    website: 'https://example.com',
+    endpoint: '',
     issuedAt: new Date().toISOString(),
   });
   const body = JSON.stringify({
@@ -148,10 +200,9 @@ test('POST stores a claim signed by the owner the registry reports', async () =>
   );
 
   assert.equal(res.status, 200);
-  assert.equal(((await res.json()) as { stored: boolean }).stored, true);
   assert.equal(store.has(CLAIM_KEY), true);
-  assert.deepEqual(JSON.parse(store.get('agripinaa:claims:index')!), ['56:297380']);
-  assert.equal(rpcCalls(state).length, 1, 'one ownerOf read and nothing else');
+  assert.equal(rpcCalls(state).length, 1, 'the ownerOf read, and nothing fetched after it');
+  assert.equal([...store.keys()].some((k) => k.startsWith('agripinaa:liveness:')), false);
 });
 
 test('POST answers 503 when the chain cannot be read, so the browser retries', async () => {

@@ -76,6 +76,14 @@ export interface AgentSummary {
   /** Owner-provided links, set only where the indexed record carried none. */
   website?: string;
   endpoint?: string;
+  /**
+   * True when a probe of `endpoint` answered inside the freshness window. Set
+   * by the site from its own stored probe results, never by the index: the
+   * registry records an endpoint, it does not say whether anything is behind
+   * it. Absent means no fresh result, which is not the same as an endpoint that
+   * was probed and did not answer.
+   */
+  endpointLive?: boolean;
 }
 
 export interface AgentDetail extends AgentSummary {

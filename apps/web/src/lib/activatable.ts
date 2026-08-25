@@ -1,6 +1,8 @@
 import type { AgentDetail } from '@agripinaa/agent-index';
 import { agentByTokenId } from '@agripinaa/shared/agents';
 
+import { countsAsLive, getLiveness } from './liveness';
+
 /**
  * Whether anything on our side will read a session granted to this agent.
  *
@@ -82,15 +84,24 @@ export const ACTIVATION_BLOCKED_COPY: Record<ActivationBlockedReason, Activation
 };
 
 /**
- * Whether this agent's own endpoint answered a liveness probe. The probe itself
- * lands with lib/liveness.ts; until then nothing third-party counts as live,
- * which fails in the safe direction: activation is withheld rather than offered
- * for an agent that cannot act. Both the detail page and the activate gate
- * resolve liveness here, so wiring the probe in is a one-place change.
+ * Whether this agent's own endpoint answered a liveness probe. Both the detail
+ * page and the activate gate resolve liveness here, so there is one answer per
+ * agent whichever way a visitor arrives.
+ *
+ * Read only, never a probe: probing on a render would put an unrelated host in
+ * front of every page load, and it would let anyone aim this site's fetches by
+ * reloading a page. The probe runs when a claim is saved and from the re-probe
+ * cron; here a result that nobody refreshed inside the window decays to false,
+ * which fails in the safe direction (activation withheld, not offered).
+ *
+ * A first-party agent is not resolved this way at all. Its runner is ours, and
+ * what decides whether a granted session gets consumed is the registry's
+ * `managed` flag, which `agentConsumesSession` already answers.
  */
-export async function endpointIsLive(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the probe reads the agent record; kept so wiring it in touches this body only
-  agent: AgentDetail,
-): Promise<boolean> {
-  return false;
+export async function endpointIsLive(agent: AgentDetail): Promise<boolean> {
+  if (agentByTokenId(agent.tokenId)) return false;
+  const endpoint = agent.endpoint?.trim();
+  if (!endpoint) return false;
+  const record = await getLiveness(agent.chainId, agent.tokenId).catch(() => null);
+  return countsAsLive(record, endpoint);
 }

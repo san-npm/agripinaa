@@ -22,6 +22,7 @@ import {
   normalizeAgentId,
   type ClaimRecord,
 } from './claims';
+import { withLiveness } from './liveness';
 import { getOnchainAttestation } from './onchain-rep';
 
 /** The marketplace currently serves BNB Smart Chain mainnet. */
@@ -192,7 +193,7 @@ export async function listDirectory(category?: Category): Promise<Directory> {
     : [];
   // Claimed entries lead the unverified list so the page's slice reaches them,
   // bounded to a share of that page so the ranked registrations keep most of it.
-  const registry = [...claimed, ...indexed];
+  const registry = await withLiveness([...claimed, ...indexed]);
   return { verified: enriched, registry, registrySource: raw.source, asOf: new Date().toISOString() };
 }
 
@@ -213,7 +214,8 @@ export async function listAgents(
   // Past the first page a claim only annotates: injecting there would repeat on
   // every page the visitor walks through.
   if (cursor) {
-    return { ...raw, items: ranked.slice(0, limit).map((a) => withClaim(a, claims)) };
+    const page = ranked.slice(0, limit).map((a) => withClaim(a, claims));
+    return { ...raw, items: await withLiveness(page) };
   }
 
   // Pinned reference agents resolve through getAgent (enriched from the
@@ -242,7 +244,7 @@ export async function listAgents(
   // and capped at a third of the page so they cannot take it; still behind the
   // pinned ones, which are the only verified cards here.
   const items = [...pinnedEnriched, ...claimed, ...indexed].slice(0, limit);
-  return { ...raw, items };
+  return { ...raw, items: await withLiveness(items) };
 }
 
 export async function getAgent(tokenId: string): Promise<AgentDetail | null> {
