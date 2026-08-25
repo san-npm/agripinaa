@@ -126,6 +126,76 @@ test('an Ophis order uid is harvested as a tx-kind proof', () => {
   assert.equal(proofs[0]!.ref, '0x' + 'b'.repeat(112));
 });
 
+/*
+ * An Ophis order is a promise, not an execution. A signed order sits in the
+ * batch auction for about thirty minutes and can expire untouched, so a
+ * `*-submitted` line says only that the agent asked. attest.ts turns the newest
+ * harvested proof into an ERC-8004 feedbackHash that cannot be taken back, and
+ * an attestation anchored to an order that never settled would be a claim about
+ * an execution that never happened. So a uid counts only once a line records
+ * the fill.
+ */
+test('a submitted order uid is not a proof until a line records the fill', () => {
+  const uid = '0x' + 'c'.repeat(112);
+  const submitted = JSON.stringify({
+    agent: 'grid-b',
+    event: 'trade-submitted',
+    at: '2026-08-24T10:00:00.000Z',
+    orderUid: uid,
+    summary: 'BTCB to USDT through Ophis',
+  });
+  assert.deepEqual(harvestProofs([submitted]), []);
+
+  const proofs = harvestProofs([
+    submitted,
+    JSON.stringify({
+      agent: 'grid-b',
+      event: 'ophis-order-filled',
+      at: '2026-08-24T10:04:00.000Z',
+      orderUid: uid,
+    }),
+  ]);
+  assert.equal(proofs.length, 1);
+  assert.equal(proofs[0]!.ref, uid);
+  assert.equal(proofs[0]!.kind, 'tx');
+  // Anchored at the fill, which is the moment the execution is a fact.
+  assert.equal(proofs[0]!.at, '2026-08-24T10:04:00.000Z');
+});
+
+test('only the order that filled is harvested, not the one beside it', () => {
+  const filled = '0x' + 'd'.repeat(112);
+  const expired = '0x' + 'e'.repeat(112);
+  const proofs = harvestProofs([
+    JSON.stringify({ agent: 'weight-rebalancer', event: 'rebalance-submitted', at: '2026-08-24T10:00:00.000Z', orderUid: filled }),
+    JSON.stringify({ agent: 'weight-rebalancer', event: 'rebalance-submitted', at: '2026-08-24T11:00:00.000Z', orderUid: expired }),
+    JSON.stringify({ agent: 'weight-rebalancer', event: 'ophis-order-filled', at: '2026-08-24T10:05:00.000Z', orderUid: filled }),
+  ]);
+  assert.deepEqual(proofs.map((proof) => proof.ref), [filled]);
+});
+
+test('a fill for one agent does not vouch for another agent uid', () => {
+  const uid = '0x' + 'f'.repeat(112);
+  const proofs = harvestProofs([
+    JSON.stringify({ agent: 'grid', event: 'trade-submitted', at: '2026-08-24T10:00:00.000Z', orderUid: uid }),
+    JSON.stringify({ agent: 'lp-range', event: 'ophis-order-filled', at: '2026-08-24T10:05:00.000Z', orderUid: uid }),
+  ]);
+  assert.deepEqual(proofs.map((proof) => proof.slug), ['lp-range']);
+});
+
+test('a settlement tx hash on a submitted line stands on its own', () => {
+  // The fill requirement is about order uids: a tx hash is the settlement.
+  const proofs = harvestProofs([
+    JSON.stringify({
+      agent: 'yield-b',
+      event: 'supply',
+      at: '2026-08-24T10:00:00.000Z',
+      txHash: '0x' + '9'.repeat(64),
+    }),
+  ]);
+  assert.equal(proofs.length, 1);
+  assert.equal(proofs[0]!.ref, '0x' + '9'.repeat(64));
+});
+
 test('a settlement tx hash outranks an order uid logged on the same line', () => {
   const proofs = harvestProofs([
     JSON.stringify({
