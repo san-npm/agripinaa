@@ -4,6 +4,7 @@ import { AGENTS, type AgentSlug } from '@agripinaa/shared/agents';
 import { useState } from 'react';
 
 import { listStoredSessions } from '@/lib/session-store';
+import { askStatusEndpoint, type StatusEndpointAnswer } from '@/lib/x402-status';
 import {
   checkPayTo,
   decodeChallenge,
@@ -14,9 +15,9 @@ import {
 } from '@/lib/x402-demo';
 
 /**
- * How long the browser waits on the proxy. The route gives the runner 5 s and
- * answers 502 when that passes; this guard covers a stalled function so the
- * panel can never sit on a spinner that does not resolve.
+ * How long the browser waits on the server function. It gives the runner 5 s
+ * and answers "unreachable" when that passes; this guard covers a stalled
+ * function so the panel can never sit on a spinner that does not resolve.
  */
 const CLIENT_TIMEOUT_MS = 7_000;
 
@@ -28,23 +29,41 @@ type Outcome =
   | { kind: 'challenge'; ask: X402Ask; payTo: PayToCheck; storedSession: boolean }
   /** A 200, which only a paid request gets; shown as the runner returned it. */
   | { kind: 'paid'; payload: unknown }
-  /** No answer from the runner within the timeout, or the proxy said so. */
+  /** No answer from the runner within the timeout, or the server function said so. */
   | { kind: 'offline' }
   | { kind: 'unexpected'; detail: string };
 
+/** The server function's answer after the client guard: `timeout` when it did not settle in time. */
+function askWithGuard(slug: AgentSlug): Promise<StatusEndpointAnswer | { kind: 'timeout' }> {
+  return Promise.race([
+    askStatusEndpoint(slug),
+    new Promise<{ kind: 'timeout' }>((resolve) =>
+      setTimeout(() => resolve({ kind: 'timeout' }), CLIENT_TIMEOUT_MS),
+    ),
+  ]);
+}
+
 async function fetchStatus(slug: AgentSlug, tokenId: string): Promise<Outcome> {
-  let res: Response;
+  let answer: StatusEndpointAnswer | { kind: 'timeout' };
   try {
-    res = await fetch(`/api/x402/${slug}/status`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(CLIENT_TIMEOUT_MS),
-    });
+    answer = await askWithGuard(slug);
   } catch {
+    // A failed POST, or a stale action id after a redeploy; either way no answer.
     return { kind: 'offline' };
   }
-  const body: unknown = await res.json().catch(() => null);
-  if (res.status === 402) {
-    const ask = decodeChallenge(body);
+  switch (answer.kind) {
+    case 'unreachable':
+    case 'timeout':
+      return { kind: 'offline' };
+    case 'oversized':
+      return { kind: 'unexpected', detail: 'The runner answered with a body larger than a status can be.' };
+    case 'unknown-agent':
+      return { kind: 'unexpected', detail: 'This agent is not in the registry the server holds.' };
+    case 'answered':
+      break;
+  }
+  if (answer.status === 402) {
+    const ask = decodeChallenge(answer.body);
     if (!ask) return { kind: 'unexpected', detail: 'The runner answered 402 with a challenge this page could not read.' };
     // Read only: which sessions exist is the one thing this panel learns from
     // storage, and it is never written back or sent anywhere.
@@ -53,9 +72,8 @@ async function fetchStatus(slug: AgentSlug, tokenId: string): Promise<Outcome> {
     );
     return { kind: 'challenge', ask, payTo: checkPayTo(slug, ask.payTo), storedSession };
   }
-  if (res.ok) return { kind: 'paid', payload: body };
-  if (res.status === 502) return { kind: 'offline' };
-  return { kind: 'unexpected', detail: `The runner answered ${res.status}.` };
+  if (answer.status >= 200 && answer.status < 300) return { kind: 'paid', payload: answer.body };
+  return { kind: 'unexpected', detail: `The runner answered ${answer.status}.` };
 }
 
 /** The status tag beside the heading, in the proof feed's wording. */
