@@ -104,8 +104,19 @@ export function conservativeRotation(
     : { action: 'hold', target: input.venue, edgeBps, nextStreak };
 }
 
+/**
+ * The same numbers on a depositor's mandate as on the agent's own capital.
+ *
+ * `checkIntervalMs` is the one that needs saying out loud. The own-capital tick
+ * runs on tickIntervalMs, so twelve hours between checks is simply what the
+ * runner does there; a mandate is swept every five minutes instead, and three
+ * confirmations at sweep speed would be fifteen minutes rather than the day and
+ * a half yield-b's manifest publishes. Carrying the same interval here is what
+ * keeps checkEveryHours: 12 accurate on both paths.
+ */
 export const YIELD_B_POLICY: ManagedPolicy = {
   decide: (input) => conservativeRotation(input),
+  checkIntervalMs: YIELD_B_PARAMS.tickIntervalMs,
   minRotationIntervalMs: YIELD_B_PARAMS.minRotationIntervalMs,
   maxRotationsPerDay: 1,
 };
