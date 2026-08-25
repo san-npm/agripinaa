@@ -21,6 +21,13 @@ export interface RouterDeployment {
   vUsdt: `0x${string}`;
   /** Block the router was deployed at — the floor for Rotated-event log scans. */
   deployBlock: bigint;
+  /**
+   * The day the router went live, ISO `YYYY-MM-DD`. Recorded here rather than
+   * derived from `deployBlock`, which is a scan floor a few hundred blocks
+   * below the creation block, and rather than read back from an RPC, since the
+   * public BNB Chain endpoints prune the state a historical `getCode` needs.
+   */
+  deployedOn: string;
 }
 
 /**
@@ -39,6 +46,7 @@ export const YIELD_ROUTER_BSC: RouterDeployment = {
   vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
   // Deployed 2026-08-20 (~block 117084863 on BSC). A safe floor for log scans.
   deployBlock: BigInt(117084000),
+  deployedOn: '2026-08-20',
 };
 
 /**
@@ -55,6 +63,7 @@ export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
   deployBlock: BigInt(117231000),
+  deployedOn: '2026-08-21',
 };
 
 /** Every managed-yield router deployment. */
