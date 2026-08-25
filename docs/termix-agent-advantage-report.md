@@ -15,7 +15,8 @@ carries the full order uids the tables below abbreviate.
 
 ## How to read the price figures
 
-Two different measures appear below, and they are not interchangeable.
+Two different measures of a fill appear below, and they are not
+interchangeable. A third convention governs every dollar figure in the document.
 
 - **Surplus vs the signed limit.** What the wallet received over the buy amount
   it signed for, computed by `surplusBps` in `@agripinaa/exec-metrics`. This is
@@ -27,10 +28,16 @@ Two different measures appear below, and they are not interchangeable.
   (`SLIPPAGE_BPS` in `apps/agents/src/agents/grid.ts` and the `slippageBps: 100`
   in `lp-range.ts`); the 2026-08-18 order in Task 1 was signed at 50 bps
   (`packages/spikes/scripts/spike-a.ts`).
+- **Dollars.** BNB moved about 15% across the week, so no amount here is priced
+  at a single spot rate. Anything a fill produced (its notional, its surplus,
+  its fee) is valued at that fill's own executed USDT/WBNB rate. Anything else
+  denominated in BNB (gas) names the rate it uses and where that rate comes
+  from, on the line itself. Each fill's rate is in the attached pull under
+  `derived.executedUsdtPerWbnb`, alongside the dollar amounts derived from it.
 
-Both are stated for every fill. A settlement that beats the signed limit can
-still land below the quote it was signed against, and two of the eight fills
-below did.
+The two price measures are stated for every fill. A settlement that beats the
+signed limit can still land below the quote it was signed against, and two of
+the eight fills below did.
 
 ## Task 1: Execute a WBNB → USDT swap (trading task)
 
@@ -42,8 +49,8 @@ Sent from wallet `0x053fff26d28ff4e94dfe862b184f918a50c6f706`.
 - Executed 0.0008 WBNB into 0.482844230664355319 USDT (603.5553 USDT per WBNB),
   fee tier 100, at block 116705948 (2026-08-18T18:40:49Z).
 - Cost: 28,940 gas on the approval plus 146,806 on the swap, 175,746 units at
-  0.05 gwei, so 0.0000087873 BNB, about $0.0053 at that day's rate. Both receipts
-  re-read on-chain for this refresh.
+  0.05 gwei, so 0.0000087873 BNB, about $0.0053 at this swap's own executed rate
+  of 603.5553. Both receipts re-read on-chain for this refresh.
 - Time: 2.021 s of transaction latency. A person driving a wallet UI adds
   minutes of attention on top of that, every single time.
 - Output quality: two transaction hashes (approve
@@ -69,8 +76,9 @@ and settles it.
   `0x4c7b847b75ae82337ac28655db861a5cd512e0de77c820f64dc58bbaa50523d1`
   (block 116687812) submitted by solver `0x95480d3f…`. The wallet paid no BNB:
   the winning solver submits and pays for the settlement.
-- Fee: 0.000043920324779203 WBNB taken inside the settlement (21.96 bps of the
-  amount sold, about $0.031). The surplus figure above is already net of it.
+- Fee: 0.000043920324779203 WBNB taken inside the settlement, 21.96 bps of the
+  amount sold, about $0.0265 at this fill's own executed rate of 602.8648 USDT
+  per WBNB. The surplus figure above is already net of it.
 - Output quality: a downloadable receipt JSON (attached,
   `evidence/task1-receipt.json`) carrying executed against signed amounts, the
   settlement transaction and block, and the partner-fee disclosure.
@@ -107,7 +115,8 @@ through Ophis, all from agent wallets with no human in the loop, all fulfilled.
   so no other order was batched alongside ours in these particular auctions.
 - Cost per fill: no BNB leaves the agent wallet, and the network fee reported
   inside the settlement ranged from 27.88 to 63.32 bps of notional, which is
-  $0.0045 to $0.0127 in absolute terms. At clip sizes of $1.25 to $2.00 that
+  $0.0045 to $0.0127 with each fill's fee valued at that fill's own executed
+  rate (`derived.feeUsdAtFillPrice`). At clip sizes of $1.25 to $2.00 that
   percentage is dominated by the fixed cost of settling, and it is the same
   order of magnitude as the $0.0053 of gas the manual baseline paid.
 - Every order declares a CIP-75 volume partner fee of 5 bps to the Ophis
@@ -169,8 +178,11 @@ agent can move that position between Venus, Aave, and idle and nowhere else.
   `0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb`: 2026-08-21T00:02:40Z, block
   117132749, action `toVenus`, 3 USDT, tx
   [`0xe00c6c1f`](https://bscscan.com/tx/0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb).
-  Cost 509,470 gas at 0.05 gwei, 0.0000254735 BNB, about $0.018, paid from the
-  account's own gas allowance under the session's native-gas cap.
+  Cost 509,470 gas at 0.05 gwei, 0.0000254735 BNB, about $0.017. A rotation is
+  not a swap, so it has no executed rate of its own: that dollar figure uses
+  676.6936 USDT per WBNB, the rate our own fill executed at later the same day
+  (the 08-21 Ranger row above). The gas came out of the account's own allowance
+  under the session's native-gas cap.
 - That position reads 113.44 vUSDT at block 118027877, which is
   3.000859683081289 USDT of underlying at the market's exchange rate:
   0.000859683 USDT accrued in 4.664 days, 224.27 bps annualized.
@@ -186,7 +198,7 @@ hours with no human involvement, against a manual comparison that costs
 attention every time it is repeated and is stale immediately. Cost: one
 approval and one supply on entry, then nothing until an edge clears 50 bps
 twice, so the fee floor stays below the yield it is chasing. On the managed
-side one rotation cost $0.018 of gas to move a position between venues.
+side one rotation cost $0.017 of gas to move a position between venues.
 Quality: the choice is a logged on-chain read with both rates, the block cadence
 it derived, and the transaction it produced, and the custody model means the
 agent cannot send the money anywhere except back to its owner.
@@ -221,8 +233,9 @@ Seven days later, re-read for this refresh:
 
 - The position is still open and still unattended. At block 118027877 it holds
   $2.79958953 of collateral against $1.13254818 of debt, health factor
-  **1.853954**. It drifted up rather than down because the WBNB collateral
-  appreciated over the week.
+  **1.853954**. Those two dollar amounts are Aave's own base-currency figures
+  from `Pool.getUserAccountData`, not a conversion of ours. It drifted up rather
+  than down because the WBNB collateral appreciated over the week.
 - The agent's USDT balance reads 3.131940353310033115. Its balance at the drill
   was 3.45 and it repaid 0.318059646689966885, and 3.45 minus that repay is
   exactly 3.131940353310033115. It has therefore spent nothing since: no second
@@ -276,7 +289,8 @@ section is part of the submission rather than an appendix.
 Everything cited above is in this repository under `docs/evidence/`:
 
 - `2026-08-25-refresh.json`: the full pull behind this refresh. Per-fill order
-  uids, signed and executed amounts, fees, surplus and vs-quote figures,
+  uids, signed and executed amounts, fees, surplus and vs-quote figures, each
+  fill's own executed rate and the dollar amounts derived from it (`derived`),
   settlement transactions, solvers and latencies; the Ranger's four positions
   with pool ticks; agent balances and Aave account data; the Harvester's
   accrual; live Venus and Aave rates; the router rotations; the four ERC-8004
