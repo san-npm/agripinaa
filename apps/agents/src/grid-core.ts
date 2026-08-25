@@ -447,6 +447,17 @@ export const PANCAKE_V3_FACTORY = '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865' a
  */
 export const FEE_TIERS = [100, 500, 2500] as const;
 
+/**
+ * The floor a reference pool's liquidity() must sit ABOVE to be priced against,
+ * in the pool's own L units. Zero is the weakest claim that still means
+ * something: a pool whose book is empty quotes a slot0 that no trade backs, and
+ * the grid would measure its center, its halt band and its drawdown floor
+ * against it. A pair with a measured depth to defend can raise it through
+ * GridPair.minLiquidity; nothing here converts L into dollars, so a number
+ * larger than this belongs to whoever measured that pair.
+ */
+export const MIN_REFERENCE_LIQUIDITY = BigInt(0);
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const FACTORY_ABI = parseAbi([
@@ -467,6 +478,8 @@ export interface GridPair {
   base: TokenInfo;
   quote: TokenInfo;
   feeTiers?: readonly number[];
+  /** Liquidity floor for this pair's reference pool; MIN_REFERENCE_LIQUIDITY by default. */
+  minLiquidity?: bigint;
 }
 
 export interface ReferencePool {
@@ -487,17 +500,124 @@ export interface ReferencePool {
 }
 
 /**
+ * Why a cached reference pool was not kept. 'ok' is the only verdict that
+ * keeps it; every other one drops the cache and re-resolves through the
+ * factory, and is logged under that name.
+ */
+type PoolCacheVerdict =
+  | 'ok'
+  /** The stored value is not shaped like a ReferencePool (older schema, hand edit). */
+  | 'malformed'
+  /** Nothing on chain answered the pool reads at that address. */
+  | 'unreadable'
+  | 'pair-mismatch'
+  | 'fee-mismatch'
+  | 'orientation-mismatch'
+  | 'shallow';
+
+/**
+ * Read a cached value back as a ReferencePool, or null when it is not one.
+ *
+ * A missing `wbnbIsToken0` is the case this exists for: the field is a boolean
+ * that decides whether slot0 is read as the price or as its reciprocal, and
+ * undefined is falsy, so a state file written under an older key would price
+ * the pair upside down with nothing in the log. Refuse the value instead.
+ */
+function cachedPoolOf(value: unknown): ReferencePool | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const pool = value as Partial<ReferencePool>;
+  const wellFormed =
+    typeof pool.address === 'string' &&
+    /^0x[0-9a-fA-F]{40}$/.test(pool.address) &&
+    typeof pool.fee === 'number' &&
+    typeof pool.wbnbIsToken0 === 'boolean';
+  return wellFormed ? (pool as ReferencePool) : null;
+}
+
+/**
+ * Re-read a cached pool from the chain and say whether it is still the book
+ * this pair should be priced against: it exists, it is on this pair, it is at
+ * the fee tier the cache claims, it is oriented the way the cache claims, and
+ * its book clears the floor.
+ */
+async function checkCachedPool(
+  ctx: AgentContext,
+  pair: GridPair,
+  pool: ReferencePool,
+): Promise<PoolCacheVerdict> {
+  let token0: string;
+  let token1: string;
+  let poolFee: number;
+  let liquidity: bigint;
+  try {
+    [token0, token1, poolFee, liquidity] = await Promise.all([
+      ctx.publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: 'token0' }),
+      ctx.publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: 'token1' }),
+      ctx.publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: 'fee' }),
+      ctx.publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: 'liquidity' }),
+    ]);
+  } catch {
+    // No contract there, or one that does not answer a pool's reads.
+    return 'unreadable';
+  }
+  const found = [token0.toLowerCase(), token1.toLowerCase()].sort().join('/');
+  const expected = [pair.base.address.toLowerCase(), pair.quote.address.toLowerCase()]
+    .sort()
+    .join('/');
+  if (found !== expected) return 'pair-mismatch';
+  if (poolFee !== pool.fee) return 'fee-mismatch';
+  if (pool.wbnbIsToken0 !== (token0.toLowerCase() === pair.base.address.toLowerCase())) {
+    return 'orientation-mismatch';
+  }
+  if (liquidity <= (pair.minLiquidity ?? MIN_REFERENCE_LIQUIDITY)) return 'shallow';
+  return 'ok';
+}
+
+/**
+ * Pools this process has already re-read from the chain, keyed by the context
+ * they were checked for (one context per agent per run, built at boot). The
+ * check costs four reads, and the answer cannot change under a live pool
+ * address, so it runs once per boot rather than once per tick.
+ */
+const validatedPools = new WeakMap<AgentContext, string>();
+
+/**
  * Resolve the deepest valid pool for the pair through the factory, and cache
  * it. Validates the token pair and the fee tier the pool reports before it is
  * eligible, so neither a stale address nor a factory answer for the wrong book
  * can be traded against.
+ *
+ * The CACHE gets the same treatment on the first call of a run. It is a state
+ * file that outlives any decision that wrote it: grid-b's pair changed once
+ * already (WBNB/USDC to BTCB/USDT), and a state file written before that would
+ * otherwise price BTCB against the WBNB book forever, with the center, the halt
+ * band and the drawdown floor all measured on the wrong market and not one line
+ * in the log. So a cached pool is re-read from the chain and dropped unless it
+ * still answers for this pair, at that fee, in that orientation, with a book
+ * above the floor.
  */
 export async function resolveReferencePool(
   ctx: AgentContext,
   pair: GridPair,
 ): Promise<ReferencePool> {
-  const cached = ctx.state.get<ReferencePool | null>('referencePool', null);
-  if (cached) return cached;
+  const stored = ctx.state.get<unknown>('referencePool', null);
+  if (stored !== null) {
+    const cached = cachedPoolOf(stored);
+    if (cached && validatedPools.get(ctx) === cached.address.toLowerCase()) return cached;
+    const verdict = cached ? await checkCachedPool(ctx, pair, cached) : 'malformed';
+    if (cached && verdict === 'ok') {
+      validatedPools.set(ctx, cached.address.toLowerCase());
+      ctx.log({ event: 'pool-cache-validated', address: cached.address, fee: cached.fee });
+      return cached;
+    }
+    ctx.log({
+      event: 'pool-cache-dropped',
+      reason: verdict,
+      address: cached?.address ?? null,
+      fee: cached?.fee ?? null,
+      pair: `${pair.base.symbol}/${pair.quote.symbol}`,
+    });
+  }
 
   // priceFromSqrtPriceX96 reads the raw slot0 ratio with no decimal
   // correction, which is only right when both sides carry the same decimals
@@ -532,6 +652,12 @@ export async function resolveReferencePool(
       ctx.log({ event: 'pool-mismatch', address, fee, token0, token1, poolFee });
       continue;
     }
+    // Same floor the cache is re-checked against, so a book the agent would
+    // drop on the next boot is never selected on this one.
+    if (liquidity <= (pair.minLiquidity ?? MIN_REFERENCE_LIQUIDITY)) {
+      ctx.log({ event: 'pool-shallow', address, fee, liquidity: liquidity.toString() });
+      continue;
+    }
     ctx.log({ event: 'pool-probe', address, fee, liquidity: liquidity.toString() });
     const pool: ReferencePool = {
       address,
@@ -546,6 +672,8 @@ export async function resolveReferencePool(
     );
   }
   ctx.state.set('referencePool', best.pool);
+  // Just read from the chain, so the boot check has nothing left to confirm.
+  validatedPools.set(ctx, best.pool.address.toLowerCase());
   ctx.log({ event: 'pool-selected', ...best.pool, liquidity: best.liquidity.toString() });
   return best.pool;
 }
