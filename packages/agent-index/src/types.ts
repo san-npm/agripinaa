@@ -35,6 +35,14 @@ export interface TrustData {
   asOf: string;
 }
 
+/**
+ * A field an agent's on-chain owner supplied through a signed claim, because
+ * the indexed registration carried nothing for it. Per-field like
+ * `TrustData.scoreSource`, so a card can label exactly the owner-provided parts
+ * of a listing instead of tarring the whole record with one badge.
+ */
+export type ClaimedField = 'description' | 'category' | 'website' | 'endpoint';
+
 export interface AgentSummary {
   /** Stable id: `${chainId}-${tokenId}` (subgraph-shaped). */
   id: string;
@@ -57,6 +65,17 @@ export interface AgentSummary {
    * description). Collapsed for a legible directory; the count is shown.
    */
   duplicateCount?: number;
+  /**
+   * True once the identity's on-chain owner has signed a claim for this
+   * listing. Says who filled the gaps, not that anyone vouches for the agent:
+   * a claimed registry listing stays unverified.
+   */
+  claimed?: boolean;
+  /** Which fields on this record came from that claim rather than from chain. */
+  claimedFields?: ClaimedField[];
+  /** Owner-provided links, set only where the indexed record carried none. */
+  website?: string;
+  endpoint?: string;
 }
 
 export interface AgentDetail extends AgentSummary {

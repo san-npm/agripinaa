@@ -18,7 +18,7 @@ import {
 } from "@/lib/activatable";
 import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
-import { getClaim } from "@/lib/claims";
+import { claimProvenanceLabel } from "@/lib/claim-merge";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
 import { clampDescription } from "@/lib/site";
@@ -144,15 +144,12 @@ async function AgentContent({
   // party matches nothing here and simply gets no track record panel.
   const registryRecord = agentByTokenId(agent.tokenId);
   const registryWallet = registryRecord?.wallet ?? null;
-  // Only a third-party listing can be claimed, so the KV read below is skipped
-  // entirely for our own agents. A claim signed by a previous owner does not
-  // count as one, which is what passing the current owner to `getClaim` decides.
+  // Only a third-party listing can be claimed. Whether one already has been is
+  // read off the merged record: `getAgent` applies the claim for every surface
+  // at once, and drops a claim signed by an owner who has since transferred it.
   const claimable = registryRecord === undefined;
-  const claimed =
-    claimable &&
-    (await getClaim(agent.chainId, agent.tokenId, { currentOwner: agent.owner }).catch(
-      () => null,
-    )) !== null;
+  const claimed = agent.claimed === true;
+  const ownerProvided = claimProvenanceLabel(agent);
   const blocked = activationBlockedReason({
     tokenId: agent.tokenId,
     endpointLive: await endpointIsLive(agent),
@@ -210,6 +207,9 @@ async function AgentContent({
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
             {agent.description || "No description provided by this agent."}
           </p>
+          {ownerProvided && (
+            <p className="mt-1.5 font-mono text-[10px] text-muted-2">{ownerProvided}</p>
+          )}
         </div>
         {!blockedCopy ? (
           <Link
@@ -260,6 +260,14 @@ async function AgentContent({
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-muted-2">Agent wallet</dt>
                 <dd><Addr chainId={agent.chainId} address={agent.agentWallet} /></dd>
+              </div>
+            )}
+            {agent.website && (
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-2">Website</dt>
+                {/* Owner-provided, so it renders as text: the stamp above says
+                    where it came from, and nothing here links out to it. */}
+                <dd className="truncate font-mono text-xs text-muted">{agent.website}</dd>
               </div>
             )}
             {agent.supportedProtocols.length > 0 && (
