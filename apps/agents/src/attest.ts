@@ -58,6 +58,24 @@ const REP_ABI = parseAbi([
 /** Label used when --ref is passed without a --label to describe it. */
 const DEFAULT_REF_LABEL = 'execution-proof';
 
+/**
+ * An attestation is unfixable once signed, so a --ref that is not shaped like
+ * any real execution reference must stop the run before feedbackHash is ever
+ * computed. Called from main() before the per-record loop, so a malformed
+ * --ref refuses even when every --only'd agent already has an attestation on
+ * disk (main()'s "already attested, skipping" branch would otherwise return
+ * before anchorFor() ever runs this same check) and again from anchorFor()
+ * so a caller that reaches it directly, as the anchor precedence tests do,
+ * gets the identical guard.
+ */
+function assertRecognizedRef(ref: string): void {
+  if (!TX_HASH.test(ref) && !ORDER_UID.test(ref) && !POSITION_ID.test(ref)) {
+    throw new Error(
+      `--ref ${ref} is not a recognized execution reference; pass a 64-hex tx hash, a 112-hex Ophis order uid, or a decimal position id`,
+    );
+  }
+}
+
 /** The execution one attestation binds itself to, and where it came from. */
 interface Anchor {
   label: string;
@@ -83,14 +101,7 @@ export const ATTEST_FLAGS: FlagSpec = {
 export function anchorFor(record: AgentRecord, flags: Flags, dir?: string): Anchor | null {
   const ref = flags.value('--ref');
   if (ref) {
-    // An attestation is unfixable once signed, so a --ref that is not
-    // shaped like any real execution reference stops the run here, before
-    // feedbackHash is ever computed, rather than getting hashed as-is.
-    if (!TX_HASH.test(ref) && !ORDER_UID.test(ref) && !POSITION_ID.test(ref)) {
-      throw new Error(
-        `--ref ${ref} is not a recognized execution reference; pass a 64-hex tx hash, a 112-hex Ophis order uid, or a decimal position id`,
-      );
-    }
+    assertRecognizedRef(ref);
     return { label: flags.value('--label') ?? DEFAULT_REF_LABEL, ref, source: 'flag' };
   }
   const pinned = record.proofs[0];
@@ -122,6 +133,12 @@ async function main() {
   if (flags.has('--ref') && selected.length > 1) {
     throw new Error('--ref attests to one specific execution; narrow the run with --only <slug>');
   }
+  // Checked here, ahead of the per-record loop below, so a malformed --ref
+  // refuses even when the selected agent(s) are already attested and the
+  // loop would otherwise skip past anchorFor() (where this same shape check
+  // also lives) without ever calling it.
+  const refFlag = flags.value('--ref');
+  if (refFlag) assertRecognizedRef(refFlag);
 
   const registry = ERC8004_REGISTRIES[56]!.reputation;
   const records: Record<string, unknown> = existsSync(OUT)
