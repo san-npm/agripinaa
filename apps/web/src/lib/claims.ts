@@ -22,6 +22,7 @@ import {
   type ClaimFields,
 } from './claim-message';
 import { kvAvailable, kvGet, kvMGet, kvSet } from './kv';
+import { UNATTRIBUTED_CLIENT, takeChainRead } from './throttle';
 
 /**
  * The server half of the claim flow: who owns an agent, whether a signature
@@ -298,6 +299,14 @@ function reject(status: 400 | 401 | 429 | 503, message: string): ClaimDecision {
 const CHAIN_UNAVAILABLE = 'the chain is not answering right now, please try again';
 
 /**
+ * Shown when this minute's budget for unauthenticated chain reads is spent.
+ * Exported because it is the one refusal a caller can fix by waiting, so the
+ * tests name it rather than repeating the string.
+ */
+export const CHAIN_READS_SPENT =
+  'too many claim requests right now, please try again in a minute';
+
+/**
  * Run a chain read so that a thrown error is the same answer as a read that
  * reported itself unavailable. `liveClaimChain` already catches its own errors;
  * this covers any other implementation, so no caller has to guess again.
@@ -346,6 +355,8 @@ export async function decideClaim(input: {
   chain: ClaimChain;
   kv?: ClaimKv;
   now?: () => number;
+  /** Bucket the chain reads count against. From `clientKey(request.headers)`. */
+  client?: string;
 }): Promise<ClaimDecision> {
   const kv = input.kv ?? liveClaimKv;
   const now = input.now?.() ?? Date.now();
@@ -387,6 +398,14 @@ export async function decideClaim(input: {
   // Storage is the point of the request, so an unconfigured KV answers before
   // any chain read rather than accepting a claim it would then drop.
   if (!kv.available()) return reject(503, 'kv not configured');
+
+  // Everything above is decided from the body alone. The reads below are the
+  // ones a stranger can aim at the shared RPC budget, so the counter runs here,
+  // in front of them: the per-owner limit further down cannot do this job, it
+  // is only reached once a signature has recovered to the owner.
+  if (!(await takeChainRead({ client: input.client ?? UNATTRIBUTED_CLIENT, kv }))) {
+    return reject(429, CHAIN_READS_SPENT);
+  }
 
   // A node that did not answer is not evidence about the token, so it answers
   // 503 and the caller is told to try again rather than 400 and told not to.

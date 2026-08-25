@@ -9,6 +9,7 @@ import { createPublicClient, http, isAddress } from 'viem';
 import { bsc, bscTestnet } from 'viem/chains';
 
 import { altanaClient, SUPPORTED_CHAINS } from '@/lib/altana';
+import { SESSION_GRANTED_COPY, sessionGrantedBody } from '@/lib/session-copy';
 import { storeSession } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
 import { CoinsIcon, LightningIcon, ShieldIcon, VerifiedIcon } from './icons';
@@ -124,7 +125,11 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
         },
       });
       setStep('granted');
-      toast({ title: 'Session granted', detail: `${agent.name} is now active`, kind: 'success' });
+      toast({
+        title: SESSION_GRANTED_COPY.toastTitle,
+        detail: SESSION_GRANTED_COPY.toastDetail,
+        kind: 'success',
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -286,12 +291,14 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
             <div className="flex items-center gap-2">
               <VerifiedIcon className="h-6 w-6 text-success" />
               <h2 className="font-display text-lg font-semibold text-success">
-                Session active
+                {SESSION_GRANTED_COPY.headline}
               </h2>
             </div>
-            <p className="text-sm text-muted">
-              {agent.name} now holds a scoped, revocable key. Manage or revoke it
-              from your dashboard.
+            {/* This wizard renders only for an agent we do not run, and nothing
+                here hands the key to it, so the copy says where the key is and
+                what still has to happen rather than calling the agent active. */}
+            <p className="text-sm leading-relaxed text-muted">
+              {sessionGrantedBody(agent.name)}
             </p>
             <a href="/dashboard" className={`inline-block ${primaryBtn}`}>
               Open dashboard

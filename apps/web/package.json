@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "gen:icon": "tsx scripts/make-agent-icon.tsx",
-    "test": "tsx --conditions=react-server --test tests/*.test.ts"
+    "test": "tsx --conditions=react-server --test tests/*.test.ts",
+    "smoke": "bash scripts/smoke-judge-path.sh"
   },
   "dependencies": {
     "@agripinaa/agent-index": "workspace:*",

@@ -1,5 +1,6 @@
 import { decideClaim, decideClaimLookup, liveClaimChain } from '@/lib/claims';
-import { recordLiveness } from '@/lib/liveness';
+import { recordLiveness, type LivenessRecord } from '@/lib/liveness';
+import { clientKey } from '@/lib/throttle';
 
 /**
  * An agent's on-chain owner proves control with an EIP-712 signature and
@@ -15,6 +16,8 @@ export async function POST(request: Request): Promise<Response> {
   const decision = await decideClaim({
     readBodyText: () => request.text(),
     chain: liveClaimChain,
+    // The bucket this request's chain reads are counted against.
+    client: clientKey(request.headers),
   });
 
   if (!decision.ok) {
@@ -29,12 +32,17 @@ export async function POST(request: Request): Promise<Response> {
   // wall clock, dns and its one redirect hop included, so an endpoint that
   // accepts the connection and then stalls delays this response by that and no
   // more; the claim is already in KV either way.
+  //
+  // The result comes back in the body. It used to be dropped here, which left
+  // an owner whose endpoint answered 404 or timed out with no badge, no reason,
+  // and no way to re-probe short of claiming again.
   const { chainId, tokenId, endpoint } = decision.record.fields;
+  let liveness: LivenessRecord | null = null;
   if (endpoint) {
-    await recordLiveness(chainId, tokenId, endpoint).catch(() => null);
+    liveness = await recordLiveness(chainId, tokenId, endpoint).catch(() => null);
   }
 
-  return Response.json({ stored: true, claim: decision.record });
+  return Response.json({ stored: true, claim: decision.record, liveness });
 }
 
 /**

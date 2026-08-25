@@ -16,15 +16,22 @@ import {
   ACTIVATION_BLOCKED_COPY,
   activationBlockedReason,
   agentConsumesSession,
-  endpointIsLive,
+  endpointStatus,
 } from "@/lib/activatable";
+import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
 import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { claimProvenanceLabel } from "@/lib/claim-merge";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
+import { endpointProbeLabel } from "@/lib/endpoint-probe";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
 import { clampDescription } from "@/lib/site";
 import { VERIFIED_AGENTS } from "@/lib/verified";
+
+/** See `registeredAgentParams`: this is what lets the 404 below set the status. */
+export function generateStaticParams() {
+  return registeredAgentParams();
+}
 
 /**
  * Every profile shipped under the one root title, so a shared link and a
@@ -34,12 +41,10 @@ import { VERIFIED_AGENTS } from "@/lib/verified";
 export async function generateMetadata(
   props: PageProps<"/agent/[chainId]/[tokenId]">,
 ): Promise<Metadata> {
-  const { chainId, tokenId } = await props.params;
-  if (Number.parseInt(chainId, 10) !== CHAIN_ID) {
-    return { title: "Agent not found · Agripinaa" };
-  }
-  const agent = await getAgent(tokenId).catch(() => null);
-  if (!agent) return { title: "Agent not found · Agripinaa" };
+  const { tokenId } = await props.params;
+  const agent = await resolveAgentRoute(props.params);
+  // Only the indexer-outage case reaches here without an agent.
+  if (!agent) return { title: "Agent · Agripinaa" };
   const title = `${agent.name} · Agripinaa`;
   const description = clampDescription(
     agent.description ||
@@ -113,7 +118,11 @@ async function FeedbackList({ tokenId }: { tokenId: string }) {
   );
 }
 
-export default function AgentPage(props: PageProps<"/agent/[chainId]/[tokenId]">) {
+export default async function AgentPage(props: PageProps<"/agent/[chainId]/[tokenId]">) {
+  // Resolved before the shell streams, so an unknown id answers 404 rather
+  // than 200 with a not-found body. The content below reads the same cached
+  // record again, which costs nothing.
+  await resolveAgentRoute(props.params);
   return (
     <Suspense fallback={<p className="text-muted-2">Loading agent…</p>}>
       <AgentContent params={props.params} />
@@ -152,9 +161,10 @@ async function AgentContent({
   const claimable = registryRecord === undefined;
   const claimed = agent.claimed === true;
   const ownerProvided = claimProvenanceLabel(agent);
-  // One read, two uses: the gate below and the badge in the identity panel say
-  // the same thing about this endpoint because they are the same answer.
-  const endpointLive = await endpointIsLive(agent);
+  // One read, three uses: the gate below, the badge in the identity panel, and
+  // the reason that row shows when there is no badge all come from this answer.
+  const endpoint = await endpointStatus(agent);
+  const endpointLive = endpoint.live;
   const blocked = activationBlockedReason({
     tokenId: agent.tokenId,
     endpointLive,
@@ -275,12 +285,22 @@ async function AgentContent({
                 <dd className="truncate font-mono text-xs text-muted">{agent.website}</dd>
               </div>
             )}
-            {endpointLive && (
+            {claimed && endpoint.url !== "" && (
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-muted-2">Endpoint</dt>
                 {/* The url itself stays unlinked, like the website above: it is
-                    owner-provided. What is shown is what our own probe found. */}
-                <dd><EndpointLiveBadge /></dd>
+                    owner-provided. What is shown is what our own probe found,
+                    including why it did not count, which the record has always
+                    carried and nothing used to read. */}
+                <dd>
+                  {endpointLive ? (
+                    <EndpointLiveBadge />
+                  ) : (
+                    <span className="text-xs text-muted-2">
+                      {endpointProbeLabel(endpoint.record, endpoint.url)}
+                    </span>
+                  )}
+                </dd>
               </div>
             )}
             {agent.supportedProtocols.length > 0 && (
