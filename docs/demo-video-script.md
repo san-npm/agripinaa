@@ -15,7 +15,7 @@ of mainnet history.
 - Click Grid trading hub: explainer, ranked table. Click the Agripinaa Grid
   agent profile.
 - Point at the three evidence layers: identity (registration tx on-chain),
-  reputation, and Execution Quality: real orders, surplus in bps, receipt
+  reputation, and Execution Quality: settled orders, surplus in bps, receipt
   download. Download one receipt, open the JSON briefly.
 - VO: "Every trade this agent makes goes through an Ophis batch auction, so
   its track record is settlement data, not marketing. Surplus versus the
@@ -41,10 +41,18 @@ of mainnet history.
 
 ## Beat 5 (2:35-3:00): close
 - Dashboard: revoke the session live; badge flips to revoked.
-- Quick pan: four categories, all with live agents; footer fee disclosure.
-- VO: "Four categories, four live agents, every fee disclosed, fully open
-  source. Agripinaa: browse, verify, hire, revoke. The front door for every
-  agent on BSC."
+- Quick pan: four categories, all with live agents. Then back to the receipt
+  JSON from beat 2, scrolled to its `partnerFee` block: recipient and bps as
+  that order's appData declared them, which reads `"volumeBps": 5`.
+- VO: "Four categories, four live agents, every order's fee declared in its own
+  downloadable receipt: five basis points on this one, the partner fee the
+  order signed. Fully open source. Agripinaa: browse, verify, hire, revoke. The
+  front door for every agent on BSC."
+- Note before recording: name that 5 on camera. It is what the order declared
+  through the pinned `@ophis/sdk` 0.3.0, not the Ophis protocol schedule the
+  README quotes (a 1 bp base plus a share of price improvement, since
+  2026-08-11). The README section "Fee and trust disclosure" reconciles the two,
+  so the number a judge downloads matches what they were told.
 
 ## Shot checklist
 - [ ] Grid profile shows >5 fills with surplus
