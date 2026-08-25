@@ -7,9 +7,13 @@
 #   ./ops/report-runner-url.sh --dry-run      # discover and check it, post nothing
 #
 # The candidate is the LAST hostname cloudflared printed since the tunnel's most
-# recent start, and it is only reported once GET <url>/healthz answers: after a
-# restart the journal still carries the previous, dead hostname, and reporting
-# that one would point the marketplace at nothing until the next rotation.
+# recent start, and it is only reported once the Cloudflare edge answers for it
+# at GET <url>/healthz: after a restart the journal still carries the previous,
+# dead hostname, which no longer resolves at all, and reporting that one would
+# point the marketplace at nothing until the next rotation. A 502/503/504 from
+# the edge is not a dead hostname: the tunnel is connected and the runner
+# behind it is still starting (it takes longer than the probe budget after a
+# VM reboot), so that candidate is reported too.
 #
 # Env:
 #   OPS_TOKEN        required to post; must equal the OPS_TOKEN var on Vercel
@@ -17,7 +21,8 @@
 #   TUNNEL_UNIT      systemd unit whose journal carries the URL
 #   CLOUDFLARED_LOG  read this file instead of the journal
 #   REPORT_ATTEMPTS  polls (2s apart) waiting for the hostname to be logged
-#   PROBE_ATTEMPTS   polls (3s apart, 5s timeout each) waiting for /healthz
+#   PROBE_ATTEMPTS   polls (3s apart, 5s timeout each) waiting for the edge to
+#                    answer for the hostname (a 2xx stops early)
 set -euo pipefail
 
 SITE="${AGRIPINAA_SITE:-https://agripinaa.vercel.app}"
@@ -99,20 +104,37 @@ printf '%s' "$URL" | grep -qE '^https://[A-Za-z0-9._~/:?=&%+-]+$' || {
   exit 1
 }
 
-# A freshly printed hostname takes a few seconds to become reachable, and a
-# stale one never does. Report only a candidate that answers.
-ALIVE=0
-for _ in $(seq 1 "$PROBES"); do
-  if curl -fsS -o /dev/null --connect-timeout 5 --max-time 5 "${URL%/}/healthz"; then
-    ALIVE=1
-    break
-  fi
-  sleep 3
-done
-[ "$ALIVE" = 1 ] || {
-  echo "refusing to report $URL: GET /healthz did not answer in $PROBES attempts" >&2
-  exit 1
+# A freshly printed hostname takes a few seconds to resolve, and a stale one
+# never does again. What decides is whether the edge answers for the hostname,
+# not whether the runner is already up behind it:
+#   2xx           runner up, report at once
+#   502/503/504   tunnel connected, origin still starting: report after the
+#                 probe budget, or the URL stays unknown until the next
+#                 rotation (ExecStartPost is '-'-prefixed, so nothing retries)
+#   other status  the edge answered, so the hostname is live; treated the same
+#   no answer     curl 6/7/28/35 (resolve, connect, timeout, tls): refuse
+# The status is read from -w rather than -f, so a 5xx is told apart from a
+# hostname that never answered.
+probe() {
+  curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 5 "${URL%/}/healthz"
 }
+ALIVE=0
+STATUS=000
+for attempt in $(seq 1 "$PROBES"); do
+  STATUS="$(probe 2>/dev/null || true)"
+  case "$STATUS" in
+    2??) ALIVE=1; break ;;
+    000|"") STATUS=000 ;;
+  esac
+  [ "$attempt" -lt "$PROBES" ] && sleep 3
+done
+if [ "$ALIVE" != 1 ]; then
+  [ "$STATUS" != 000 ] || {
+    echo "refusing to report $URL: GET /healthz got no answer in $PROBES attempts (hostname does not resolve or connect)" >&2
+    exit 1
+  }
+  echo "GET /healthz answered $STATUS after $PROBES attempts: the hostname is live at the edge and the runner is still starting behind it" >&2
+fi
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "$URL"
