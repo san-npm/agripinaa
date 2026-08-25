@@ -77,6 +77,13 @@ export interface ProbeOptions {
   now?: () => number;
   /** Whole-probe budget in ms, dns and redirects included. Defaults to 5 s. */
   timeoutMs?: number;
+  /**
+   * Transport, injectable so a test can answer for an endpoint without the
+   * network and without swapping the process-wide fetch. It is handed to the
+   * guard, not used instead of it: the url is validated and each redirect hop
+   * revalidated before this is called. Defaults to the global fetch.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 /** One agent, as the list paths address them. */
@@ -121,12 +128,14 @@ async function probeThroughGuard(
   url: string,
   budgetMs: number,
   checkedAt: string,
+  fetchImpl?: typeof fetch,
 ): Promise<ProbeResult> {
   try {
     const res = await safeFetchBytes(url, {
       timeoutMs: budgetMs,
       maxRedirects: PROBE_MAX_REDIRECTS,
       headers: { accept: 'application/json, text/plain;q=0.9, */*;q=0.8' },
+      fetchImpl,
     });
     return statusCountsAsLive(res.status)
       ? { live: true, checkedAt, status: res.status }
@@ -155,7 +164,10 @@ export async function probeEndpoint(url: string, opts: ProbeOptions = {}): Promi
     deadline = setTimeout(() => resolve({ live: false, checkedAt, reason: 'timeout' }), budgetMs);
   });
   try {
-    return await Promise.race([probeThroughGuard(url, budgetMs, checkedAt), expired]);
+    return await Promise.race([
+      probeThroughGuard(url, budgetMs, checkedAt, opts.fetchImpl),
+      expired,
+    ]);
   } finally {
     clearTimeout(deadline);
   }

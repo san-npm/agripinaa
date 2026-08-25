@@ -234,3 +234,47 @@ test('a GET still follows a public redirect and parses the final body', async ()
   assert.deepEqual(result, { events: [] });
   assert.deepEqual(calls, ['https://8.8.8.8/x', 'https://1.1.1.1/final']);
 });
+
+/**
+ * The transport seam. Callers whose own tests need to stand in for the network
+ * (the endpoint liveness probe in apps/web is the first) get a per-call option
+ * instead of swapping `globalThis.fetch`, which is process-wide and leaks into
+ * anything else running. The guard runs first either way: the injected
+ * transport is reached only after the url has been validated.
+ */
+test('the transport is injectable, and a url the guard refuses never reaches it', async () => {
+  // The short timeout is insurance: if the seam regresses the stub is bypassed,
+  // and this fails in 200 ms instead of making a request on the 5 s default.
+  const calls: string[] = [];
+  const stub: typeof fetch = async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const result = await safeFetchBytes('https://8.8.8.8/x', { fetchImpl: stub, timeoutMs: 200 });
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, ['https://8.8.8.8/x']);
+
+  for (const refused of ['http://8.8.8.8/x', 'https://169.254.169.254/latest/meta-data', 'https://127.0.0.1/x']) {
+    await assert.rejects(
+      () => safeFetchBytes(refused, { fetchImpl: stub, timeoutMs: 200 }),
+      BlockedUrlError,
+      refused,
+    );
+  }
+  assert.equal(calls.length, 1, 'the guard refused before the transport was called');
+});
+
+test('an injected transport is revalidated on the redirect hop it is asked to follow', async () => {
+  const calls: string[] = [];
+  const stub: typeof fetch = async (input) => {
+    calls.push(String(input));
+    return new Response(null, { status: 302, headers: { location: 'https://127.0.0.1/internal' } });
+  };
+
+  await assert.rejects(
+    () => safeFetchBytes('https://8.8.8.8/x', { fetchImpl: stub, timeoutMs: 200 }),
+    BlockedUrlError,
+  );
+  assert.deepEqual(calls, ['https://8.8.8.8/x'], 'the private redirect target was never requested');
+});
