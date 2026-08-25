@@ -42,7 +42,7 @@ export function loadManagerKey(agent: string): ManagerKey | null {
  * only, so one shared key = one shared authorization lifecycle).
  *
  * The tag is `agripinaa-managed:<symbol>` and carries NO chain id, so the same
- * symbol derives the same key on every chain. That is a real limitation: the
+ * symbol derives the same key on every chain. That is a limitation: the
  * day a second chain gets a router, USDC there would reuse the BSC USDC key.
  * It is not fixed here on purpose. Adding the chain id changes the tag, which
  * changes every derived address (checked: the USDC child of a fixed master

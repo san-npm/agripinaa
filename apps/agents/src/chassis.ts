@@ -39,7 +39,7 @@ function stateFile(name: string): string {
 
 function loadDisk(name: string): DiskState {
   const file = stateFile(name);
-  if (!existsSync(file)) return {}; // genuinely first run
+  if (!existsSync(file)) return {}; // first run
   try {
     return JSON.parse(readFileSync(file, 'utf8')) as DiskState;
   } catch {

@@ -33,7 +33,7 @@ const VENUE_LABEL: Record<ManagedPosition['venue'], string> = {
   aave: 'Aave V3',
 };
 
-/** Below this, a USDT balance is rounding dust, not a real position. */
+/** Below this, a USDT balance is rounding dust, not an actual position. */
 const USDT_DUST_WEI = 10n ** 16n; // 0.01 USDT
 
 function relTime(ms: number | null): string {

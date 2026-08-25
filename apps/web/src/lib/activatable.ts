@@ -23,7 +23,7 @@ export interface ActivationInput {
 }
 
 /**
- * Activation moves real money and asks for a passkey account, gas, and a signed
+ * Activation moves live funds and asks for a passkey account, gas, and a signed
  * grant, so it is offered only where something will consume that grant: an
  * agent with a managed path of ours, or a third-party agent whose own endpoint
  * answered a liveness probe.

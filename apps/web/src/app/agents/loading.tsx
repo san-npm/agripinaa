@@ -1,7 +1,7 @@
 /**
  * Fallback for the full directory, which is the one route that waits on a
  * hundred-agent indexer page before it can draw anything. Same card geometry
- * as the real grid, so the layout does not jump when content lands.
+ * as the loaded grid, so the layout does not jump when content lands.
  *
  * Deliberately NOT at the app root. A root loading.tsx wraps every segment,
  * which starts the response body streaming before `notFound()` can run, and

@@ -207,10 +207,10 @@ export function isGridStale(
  * cosmetic. A drought plus an out-of-band price, on its own, also fires on a
  * grid that is merely waiting for one step of movement; re-centering there
  * resets the distance to the nearest level from as little as half a step back
- * to a full step, pushing the next fill FURTHER away. Replaying the real BNB
+ * to a full step, pushing the next fill FURTHER away. Replaying the recorded BNB
  * tape (2026-07-25 to 2026-08-24, 2 minute samples) the looser rule fires 61
  * times in 30 days and cuts fills from 11 to 5, and over the last 7 days it
- * spends the shared re-center budget on chasing, so the next genuine breakout
+ * spends the shared re-center budget on chasing, so the next later breakout
  * finds the budget gone and halts the agent. With this condition it fires 5
  * times and the fills survive.
  *
@@ -481,7 +481,7 @@ export interface ReferencePool {
    * would read back as undefined on the next boot, which is falsy, so the price
    * would silently invert and every level, halt band and drawdown floor would
    * be measured against its own reciprocal. The name is stale; the behaviour it
-   * protects is real money. Read it as "the base token is token0".
+   * protects is live funds. Read it as "the base token is token0".
    */
   wbnbIsToken0: boolean;
 }

@@ -41,7 +41,7 @@ function toVerifiedAgent(agent: AgentRecord): VerifiedAgent | null {
  * First-party proof records for the agents Agripinaa built, ran, and verified
  * on BSC mainnet. Every reference here is an on-chain artifact anyone can
  * check: the ERC-8004 registration, the reputation attestation, and the
- * agent's real execution. This is what "verified" means on this marketplace,
+ * agent's own execution. This is what "verified" means on this marketplace,
  * as distinct from the unverified registry long tail.
  *
  * Keyed by token id because that is what a page route carries; the underlying

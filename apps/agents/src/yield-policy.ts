@@ -3,7 +3,7 @@
  *
  * The router is per-token, un-owned, and agent-agnostic: it hardcodes every
  * recipient to the calling account, so any number of agents can drive it and
- * none of them can divert funds. That makes "who manages my deposit" a real
+ * none of them can divert funds. That makes "who manages my deposit" an actual
  * choice rather than a single product feature, and what a depositor is actually
  * choosing between is a policy: how big an edge is worth moving for, how many
  * checks it has to survive, and how often a move may happen at all.
@@ -46,7 +46,7 @@ export interface RotationParams {
  * counts, and the two-day floor means a mandate cannot be walked back and forth
  * even if it does.
  *
- * Every rotation is a real cost (gas, and the yield lost while the position is
+ * Every rotation is a cost (gas, and the yield lost while the position is
  * neither here nor there), so the question a depositor is answering by picking
  * this agent is whether they would rather capture small edges quickly or pay
  * for fewer moves.

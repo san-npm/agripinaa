@@ -20,7 +20,7 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { category } = await props.params;
   const match = CATEGORIES.find((c) => c === category);
-  // 404 before the page runs, so an unknown slug gets a real 404 status rather
+  // 404 before the page runs, so an unknown slug gets an actual 404 status rather
   // than a placeholder title on a 200. Next emits no <title> for a segment that
   // 404s this way, and `dynamicParams = false` (which would push the miss up to
   // the router and keep the root title) is rejected under cacheComponents.

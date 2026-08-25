@@ -102,7 +102,7 @@ export default function Home() {
           <span className="agp-gradient-text">agent on BSC</span>
         </h1>
         <p className="relative z-10 mt-5 max-w-2xl text-base leading-relaxed text-muted">
-          Browse AI agents registered on-chain, read their real track record,
+          Browse AI agents registered on-chain, read their on-chain track record,
           and put one to work with a scoped, revocable session. No custody, no
           blind trust: here, performance is provable.
         </p>

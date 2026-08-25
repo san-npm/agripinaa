@@ -91,7 +91,7 @@ async function scanFetch<T>(path: string, params: Record<string, string | number
  * and upstream totals are never surfaced as chain-specific numbers.
  *
  * The detail endpoint (/agents/{chainId}/{tokenId}) IS chain-scoped by
- * path, so a mismatch there is a real bug and throws.
+ * path, so a mismatch there is an actual bug and throws.
  */
 function assertChain(agent: ScanAgent, expectedChainId: number): void {
   if (agent.chain_id !== expectedChainId) {
@@ -164,7 +164,7 @@ async function keyedFetch<T>(
 
 /**
  * Headline agent count for one chain. The keyed /agents envelope carries a
- * real per-chain total; the public /stats total is global. Prefer the keyed
+ * chain-scoped per-chain total; the public /stats total is global. Prefer the keyed
  * one, fall back to the global one rather than showing nothing, and let the
  * caller label which of the two it got.
  */
@@ -183,7 +183,7 @@ export class Scan8004Source implements AgentIndexSource {
     return this.listAgentsPublic(q);
   }
 
-  /** Keyed surface: server-side chain filter, offset cursor, real per-chain total. */
+  /** Keyed surface: server-side chain filter, offset cursor, chain-scoped per-chain total. */
   private async listAgentsKeyed(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
     const limit = q.limit ?? 24;
     const offset = q.cursor ? Number.parseInt(q.cursor, 10) : 0;
@@ -313,7 +313,7 @@ export class Scan8004Source implements AgentIndexSource {
 
     // The public /stats endpoint ignores chain_id upstream, so it reports the
     // all-chains figure. When a key is present the keyed /agents envelope
-    // carries the real per-chain total; use that and label it BSC-scoped.
+    // carries the chain-scoped per-chain total; use that and label it BSC-scoped.
     let keyedTotal: number | null = null;
     if (API_KEY) {
       try {

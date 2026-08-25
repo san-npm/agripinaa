@@ -361,7 +361,7 @@ function fakeGridCtx(allow: (kind: string, maxPerDay: number) => boolean) {
         get: <T,>(k: string, f: T) => (store.has(k) ? (store.get(k) as T) : f),
         set: (k: string, v: unknown) => void store.set(k, v),
       },
-      // Passed through rather than swallowed so a test can hold a real budget
+      // Passed through rather than swallowed so a test can hold a actual budget
       // per action kind and prove the two re-center reasons share one.
       breakers: { allowAction: (kind: string, maxPerDay: number) => allow(kind, maxPerDay) },
       log: (e: Record<string, unknown>) => void logs.push(e),
@@ -532,7 +532,7 @@ const LIVE_PRICE = 705;
 const HOUR_MS = 3_600_000;
 const THREE_DAYS_MS = 72 * HOUR_MS;
 
-/** A real per-kind sliding budget, like Breakers.allowAction. */
+/** A working per-kind sliding budget, like Breakers.allowAction. */
 function budgetedAllow() {
   const used = new Map<string, number>();
   return {
@@ -582,7 +582,7 @@ function liveGrid(allow: (kind: string, maxPerDay: number) => boolean = () => tr
   return h;
 }
 
-test('the live grid really is stuck: only buy:1 is reachable and it is marked', () => {
+test('the live grid is stuck: only buy:1 is reachable and it is marked', () => {
   // Pins the shape the staleness rule exists to break out of. If this ever
   // stops holding, the scenario below is no longer the live one.
   const levels = computeLevels(LIVE_CENTER);
@@ -696,9 +696,9 @@ test('stale re-center: the band boundary is inclusive and shared with unmarkNear
 test('stale re-center: a drought with nothing marked does NOT chase the price', () => {
   // The grid is merely waiting for a 1.5 percent move. Re-centering here would
   // reset the distance to the nearest level from 0.75 percent back to the full
-  // 1.5 percent and push the next fill further away. On the real BNB tape that
+  // 1.5 percent and push the next fill further away. On the recorded BNB tape that
   // is worth roughly half the fills, and it drains the shared re-center budget
-  // so a later genuine breakout halts the agent instead of re-arming it.
+  // so a later later breakout halts the agent instead of re-arming it.
   for (const price of [703, 705, 708, 712, 730]) {
     const { ctx, store } = liveGrid();
     store.set('crossedLevels', []);

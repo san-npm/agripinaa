@@ -87,7 +87,7 @@ export interface FundingEntry {
 }
 
 /**
- * The split of the real budget: one entry per agent from the registry, plus the
+ * The split of the actual budget: one entry per agent from the registry, plus the
  * non-agent wallets that have no registry record of their own. Native gas per
  * agent covers registration, approvals, and protocol calls.
  */

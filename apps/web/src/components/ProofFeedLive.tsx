@@ -6,7 +6,7 @@ import { ProofFeed } from "./ProofFeed";
 
 /**
  * Server half of the proof feed. getProofFeed already merges the runner events
- * with the Ophis settlement backfill, so awaiting it here puts real rows in the
+ * with the Ophis settlement backfill, so awaiting it here puts settled rows in the
  * response body instead of shipping an empty list and waiting for the browser's
  * first poll.
  *

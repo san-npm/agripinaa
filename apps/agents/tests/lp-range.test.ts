@@ -304,7 +304,7 @@ function fakeCtx(opts: LpFakeOpts): {
       const { address, functionName, args } = call;
       /*
        * executeOphisSwap reads the sell token's decimals before it quotes, so a
-       * decimals read is the point of no return into the real swap library. Record
+       * decimals read is the point of no return into the live swap library. Record
        * it and stop there: the tests assert which swaps the agent decides to make,
        * not the orderbook round trip.
        */
@@ -533,7 +533,7 @@ test('inventory prep is refused when the daily breaker says no', async () => {
   assert.equal(skipped!['reason'], 'daily-cap');
   assert.deepEqual(swapAttempts, []);
   assert.deepEqual(writes, []);
-  /* Still honest about why it did not mint. */
+  /* Still explicit about why it did not mint. */
   assert.ok(events.includes('mint-skipped'));
 });
 
@@ -645,7 +645,7 @@ test('weeklyBudget counts both windows against the published ceiling', () => {
 /*
  * prepareInventory checked rebalanceTimes and refused at the ceiling, but only
  * wrote the pruned array back inside the refusal branch: passing the check
- * recorded nothing. Its real ceiling was the daily breaker alone, 2 a day and
+ * recorded nothing. Its effective ceiling was the daily breaker alone, 2 a day and
  * so 14 a week, against the maxRebalancesPerWeek: 4 published at the agent's
  * permanent ERC-8004 tokenURI.
  */

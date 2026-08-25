@@ -71,7 +71,7 @@ export interface PositionBalances {
  * of an interrupted rebalance (liquidity removed, re-mint never completed), not
  * a healthy position. The NFT still exists and still reports its old ticks, so a
  * range-check against it happily answers "in range" forever while the capital
- * sits idle in the wallet. Treat a genuinely empty position as "no position" so
+ * sits idle in the wallet. Treat a wholly empty position as "no position" so
  * the normal recover-then-mint path takes over.
  *
  * Empty means zero liquidity AND nothing owed. Liquidity alone is not the test:
@@ -159,7 +159,7 @@ export interface WeeklyBudget {
  * The manifest served at this agent's permanent ERC-8004 tokenURI promises
  * maxRebalancesPerWeek: 4, and a caller that checks a budget it never
  * contributes to does not bind it: the inventory-prep path read the rebalance
- * window, refused at the ceiling, and then never recorded, so its real ceiling
+ * window, refused at the ceiling, and then never recorded, so its effective ceiling
  * was the daily breaker alone (2 a day, 14 a week). Both paths now spend from
  * this budget and both record into it.
  *
@@ -904,7 +904,7 @@ async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void
   if (!needsInventoryPrep(wbnbUnits, usdtUnits, inv.usdtPerWbnb)) return;
 
   /* Same leg rebalanceInventory will trade, checked here so the guards below
-   * (and the log) see the real notional before anything is submitted. */
+   * (and the log) see the resulting notional before anything is submitted. */
   const leg = computeRebalanceLeg(
     Number(fromBaseUnits(inv.wbnbBal, WBNB.decimals)),
     Number(fromBaseUnits(inv.usdtBal, USDT.decimals)),

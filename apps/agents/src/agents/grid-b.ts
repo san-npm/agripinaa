@@ -6,7 +6,7 @@
  * different parameterisation on a different market: five levels each side at 2.5
  * percent spacing (grid runs four at 1.5), $1.50 clips (grid $2), 8 trades a day
  * (grid 12), and a 45 minute cooldown (grid 31). Wider and slower, so the two
- * track records answer a real question: does a patient ladder on BTC beat a
+ * track records answer an open question: does a patient ladder on BTC beat a
  * tight one on BNB?
  *
  * The pair matters as much as the parameters. This agent first ran WBNB/USDC,

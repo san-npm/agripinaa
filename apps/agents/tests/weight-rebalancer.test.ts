@@ -5,7 +5,7 @@
  * than the side it sells, or one that crosses the balance point and creates the
  * opposite drift).
  *
- * The last section drives the real module through a fake chain, so the wiring
+ * The last section drives the actual module through a fake chain, so the wiring
  * around that decision is exercised too: band, cooldown, minimum notional,
  * daily cap, and the order they are applied in.
  */
