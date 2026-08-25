@@ -74,10 +74,17 @@ Node 22+, pnpm 10.
 
 ```bash
 pnpm install
-pnpm dev          # the marketplace on http://localhost:3000
-pnpm test         # every workspace
-pnpm typecheck
+pnpm dev            # the marketplace on http://localhost:3000
+pnpm test           # every workspace
+pnpm typecheck:ci   # every workspace, route types generated first
 ```
+
+Use `typecheck:ci` on a fresh clone and anywhere a machine runs the gate
+unattended. `apps/web` refers to the `PageProps`, `LayoutProps` and
+`RouteContext` helpers Next writes under `.next/types`, so the plain
+`pnpm typecheck` fails there until something has written them. `typecheck:ci`
+runs `next typegen` first. `pnpm dev` and `pnpm build` write the same types as
+a side effect, so `pnpm typecheck` works once either of those has run.
 
 The marketplace runs with no environment variables at all: the indexer falls
 back to a committed BSC snapshot, and the agent endpoint falls back to a
