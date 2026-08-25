@@ -32,6 +32,18 @@ function isMetadataPoor(agent: AgentDetail): boolean {
   return /^Agent #\d+$/.test(agent.name) || (!agent.description && agent.category == null);
 }
 
+/** A search result together with what produced it. */
+export interface SearchOutcome {
+  items: AgentSummary[];
+  /**
+   * `'index'` when the live index answered this search. `'fallback'` when it
+   * did not: the items then come off the committed snapshot, a local sample
+   * rather than the index, so an empty result is not evidence that nothing in
+   * the registry matches.
+   */
+  source: 'index' | 'fallback';
+}
+
 /**
  * Priority: live 8004scan → committed snapshot (lists) or direct registry
  * read (details) → last-known-good stale cache. Every response is labeled
@@ -127,19 +139,38 @@ export class MergedSource implements AgentIndexSource {
     }
   }
 
-  async searchAgents(chainId: number, query: string): Promise<AgentSummary[]> {
+  /**
+   * Search, keeping what answered it.
+   *
+   * `searchAgents` flattens a live answer and a snapshot fallback into one
+   * array, so a caller reading an empty one cannot tell "the index found
+   * nothing" from "nothing searched the index". A directory that renders the
+   * second as "no agents match" states something it never checked, so the two
+   * are kept apart here and `searchAgents` stays the flat interface method.
+   */
+  async searchAgentsWithSource(
+    chainId: number,
+    query: string,
+  ): Promise<SearchOutcome> {
     try {
-      return await this.scan.searchAgents(chainId, query);
+      return { items: await this.scan.searchAgents(chainId, query), source: 'index' };
     } catch {
       const snapshot = await this.loadSnapshot(chainId);
-      if (!snapshot) return [];
+      if (!snapshot) return { items: [], source: 'fallback' };
       const q = query.toLowerCase();
-      return snapshot.filter(
-        (a) =>
-          a.name.toLowerCase().includes(q) ||
-          a.description.toLowerCase().includes(q),
-      );
+      return {
+        items: snapshot.filter(
+          (a) =>
+            a.name.toLowerCase().includes(q) ||
+            a.description.toLowerCase().includes(q),
+        ),
+        source: 'fallback',
+      };
     }
+  }
+
+  async searchAgents(chainId: number, query: string): Promise<AgentSummary[]> {
+    return (await this.searchAgentsWithSource(chainId, query)).items;
   }
 
   async getFeedback(chainId: number, tokenId: string): Promise<Feedback[]> {

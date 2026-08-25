@@ -24,13 +24,8 @@ export function qualityScore(a: AgentSummary): number {
  * reputation (a score, feedback, or verification) makes it individually
  * evaluable; a description or an x402 flag alone does not (a publisher can
  * mint the same described agent dozens of times, as Ave.ai does).
- *
- * Exported because a consumer that de-duplicates across several pages has to
- * know which cards `rankAndDedupe` may collapse into a name cluster: those
- * change representative as more pages join the set, so their identity for
- * "already shown" is the name, not the id.
  */
-export function isIndividuallyNotable(a: AgentSummary): boolean {
+function isIndividuallyNotable(a: AgentSummary): boolean {
   return (
     a.category != null ||
     a.trust.isVerified ||
