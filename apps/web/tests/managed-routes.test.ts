@@ -77,3 +77,39 @@ test('both routes still pass the runner status and body through', async () => {
   assert.equal(reg.status, 200);
   assert.deepEqual(await reg.json(), { ok: true, managedCount: 2 });
 });
+
+test('an echoed runner body is labelled application/json and marked nosniff', async () => {
+  // The bytes come off the tunnel and are echoed unread, so the browser must
+  // not be left to sniff a content type out of them.
+  const stub = recordingFetch(newState(), () => new Response('{"ok":true}', { status: 200 }));
+  for (const res of [
+    await withFetch(stub, () => managerKey(keyRequest(), ctx('yield'))),
+    await withFetch(stub, () => manage(manageRequest(), ctx('yield'))),
+  ]) {
+    assert.equal(res.headers.get('content-type'), 'application/json');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  }
+});
+
+/**
+ * The slug arrives in the URL path. A plain-object lookup answers `constructor`
+ * and `__proto__` from Object.prototype, so the gate has to be an own-key one:
+ * anything else spends a KV read and a tunnel fetch on an attacker's path.
+ *
+ * The refusal itself is the one these routes have always given, 400 with
+ * `invalid agent`. Widening the gate is the change; the answer a caller reads
+ * is not, and `lib/managed.ts` and `lib/manager-key.ts` surface that string.
+ */
+test('both routes refuse a slug outside the registry before any lookup or fetch', async () => {
+  const state = newState();
+  const stub = recordingFetch(state, () => new Response('{"ok":true}', { status: 200 }));
+  for (const slug of ['constructor', '__proto__', 'toString', 'nope', 'grid/status', '']) {
+    const key = await withFetch(stub, () => managerKey(keyRequest(), ctx(slug)));
+    assert.equal(key.status, 400, `manager-key ${JSON.stringify(slug)}`);
+    assert.deepEqual(await key.json(), { error: 'invalid agent' });
+    const reg = await withFetch(stub, () => manage(manageRequest(), ctx(slug)));
+    assert.equal(reg.status, 400, `manage ${JSON.stringify(slug)}`);
+    assert.deepEqual(await reg.json(), { error: 'invalid agent' });
+  }
+  assert.deepEqual(state.calls, []);
+});

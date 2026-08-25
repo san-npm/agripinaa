@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { AGENT_LIST, AGENTS } from '@agripinaa/shared/agents';
 
-import { checkPayTo, decodeChallenge, previewPayload } from '../src/lib/x402-demo';
+import { checkPayTo, decodeChallenge, previewPayload, readStatusAnswer } from '../src/lib/x402-demo';
 
 /**
  * The 402 body the live runner answered for GET /grid/status on 2026-08-25,
@@ -133,4 +133,55 @@ test('the preview keys of the registered agents match their status() bodies', ()
     'rebalancesToday', 'rebalancesThisWeek', 'inventoryPrepsThisWeek', 'weeklyBudgetUsed',
     'weeklyBudgetMax', 'halted',
   ]);
+});
+
+/**
+ * What the panel does with each answer the server function can hand back. The
+ * mapping lives next to the decoding rather than in the component so a state
+ * the panel can get stuck in is a test rather than a click.
+ */
+test('no answer from the runner is one offline state, whatever caused it', () => {
+  assert.deepEqual(readStatusAnswer({ kind: 'unreachable' }), { kind: 'offline' });
+  assert.deepEqual(readStatusAnswer({ kind: 'timeout' }), { kind: 'offline' });
+});
+
+test('an oversized body and an unknown agent each say what happened', () => {
+  const oversized = readStatusAnswer({ kind: 'oversized' });
+  assert.equal(oversized.kind, 'unexpected');
+  const unknown = readStatusAnswer({ kind: 'unknown-agent' });
+  assert.equal(unknown.kind, 'unexpected');
+});
+
+test('a 402 the page can read becomes the challenge panel', () => {
+  const verdict = readStatusAnswer({ kind: 'answered', status: 402, body: LIVE_GRID_402 });
+  assert.equal(verdict.kind, 'challenge');
+  assert.equal(verdict.kind === 'challenge' && verdict.ask.amountFormatted, '0.05 USDT');
+});
+
+test('a 402 the page cannot read is an error, not an empty challenge', () => {
+  const verdict = readStatusAnswer({ kind: 'answered', status: 402, body: { accepts: [] } });
+  assert.equal(verdict.kind, 'unexpected');
+});
+
+test('a 200 carrying a status is the paid panel', () => {
+  const verdict = readStatusAnswer({ kind: 'answered', status: 200, body: { halted: false } });
+  assert.deepEqual(verdict, { kind: 'paid', payload: { halted: false } });
+});
+
+/**
+ * The server function passes a body it could not parse on as null. Rendering
+ * that in the success panel prints "null" under a green border, which reads as
+ * the runner having answered with nothing rather than as a broken answer.
+ */
+test('a 2xx whose body did not parse is an error state, not an empty success', () => {
+  for (const body of [null, undefined]) {
+    const verdict = readStatusAnswer({ kind: 'answered', status: 200, body });
+    assert.equal(verdict.kind, 'unexpected', String(body));
+  }
+});
+
+test('any other status is reported with the number the runner sent', () => {
+  const verdict = readStatusAnswer({ kind: 'answered', status: 503, body: null });
+  assert.equal(verdict.kind, 'unexpected');
+  assert.match(verdict.kind === 'unexpected' ? verdict.detail : '', /503/);
 });

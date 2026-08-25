@@ -531,8 +531,16 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
 
 export const AGENT_LIST: AgentRecord[] = Object.values(AGENTS);
 
-/** Undefined for any slug that is not a first-party agent. */
+/**
+ * Undefined for any slug that is not a first-party agent.
+ *
+ * Own keys only. Callers gate on this with a slug taken off a URL or a form
+ * field, and a plain object answers `constructor`, `__proto__` and the rest of
+ * Object.prototype with something truthy, which every such gate would read as
+ * "this agent exists" and let through to a KV read and an upstream fetch.
+ */
 export function agentBySlug(slug: string): AgentRecord | undefined {
+  if (!Object.hasOwn(AGENTS, slug)) return undefined;
   return (AGENTS as Record<string, AgentRecord | undefined>)[slug];
 }
 

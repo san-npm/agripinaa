@@ -1,6 +1,8 @@
 import { AGENTS, type AgentSlug } from '@agripinaa/shared/agents';
 import { fromBaseUnits, TOKENS_BSC } from '@agripinaa/shared/tokens';
 
+import type { StatusEndpointAnswer } from './x402-status';
+
 /**
  * The pure half of the x402 panel: reading a 402 challenge into something a
  * page can show, and the example payload a hirer sees before paying. No
@@ -88,6 +90,57 @@ export function decodeChallenge(body: unknown): X402Ask | null {
   const chosen = options.find((option) => option.rail === 'permit2-exact') ?? options[0];
   if (!chosen) return null;
   return { ...chosen, description: typeof description === 'string' ? description : null };
+}
+
+/**
+ * What the panel shows for one answer, before the challenge is matched against
+ * what this browser has stored. Pure, so every state the panel can land in is
+ * reachable from a test rather than only from a click.
+ */
+export type StatusVerdict =
+  | { kind: 'challenge'; ask: X402Ask }
+  | { kind: 'paid'; payload: unknown }
+  /** No answer: a dead tunnel, a refused redirect, a timeout on either side. */
+  | { kind: 'offline' }
+  | { kind: 'unexpected'; detail: string };
+
+/**
+ * Read one answer from the status endpoint into the state the panel renders.
+ *
+ * Every branch ends in a state that says something. In particular a 2xx whose
+ * body did not parse is an error rather than a success with nothing in it: the
+ * server function passes an unreadable body on as null, and printing that in
+ * the paid panel would read as the runner answering with nothing.
+ */
+export function readStatusAnswer(
+  answer: StatusEndpointAnswer | { kind: 'timeout' },
+): StatusVerdict {
+  switch (answer.kind) {
+    case 'unreachable':
+    case 'timeout':
+      return { kind: 'offline' };
+    case 'oversized':
+      return { kind: 'unexpected', detail: 'The runner answered with a body larger than a status can be.' };
+    case 'unknown-agent':
+      return { kind: 'unexpected', detail: 'This agent is not in the registry the server holds.' };
+    case 'answered':
+      break;
+  }
+  if (answer.status === 402) {
+    const ask = decodeChallenge(answer.body);
+    return ask
+      ? { kind: 'challenge', ask }
+      : { kind: 'unexpected', detail: 'The runner answered 402 with a challenge this page could not read.' };
+  }
+  if (answer.status >= 200 && answer.status < 300) {
+    return answer.body == null
+      ? {
+          kind: 'unexpected',
+          detail: `The runner answered ${answer.status} with a body this page could not read as JSON.`,
+        }
+      : { kind: 'paid', payload: answer.body };
+  }
+  return { kind: 'unexpected', detail: `The runner answered ${answer.status}.` };
 }
 
 /** Where a challenge's payment goes, judged against the committed registry. */

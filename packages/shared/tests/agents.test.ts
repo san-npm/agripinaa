@@ -45,6 +45,19 @@ test('lookup helpers agree with the record map', () => {
 });
 
 /**
+ * The slug reaching this helper comes off a URL or a form field on the web
+ * side, and a plain object answers `constructor` and `__proto__` from its
+ * prototype. A truthy answer there reads as "this agent exists" to every
+ * caller that gates on it, so the lookup must see only own keys.
+ */
+test('a prototype key is not an agent', () => {
+  for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+    assert.equal(agentBySlug(key), undefined, key);
+    assert.equal(pinnedManagerKeyAddress(key, 'USDT'), undefined, key);
+  }
+});
+
+/**
  * Byte-for-byte lock on the served manifests.
  *
  * The bodies below are the exact responses `/manifests/<slug>.json` returned

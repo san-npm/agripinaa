@@ -3,7 +3,7 @@ import 'server-only';
 import { AGENT_LIST, type AgentCategory, type AgentRecord } from '@agripinaa/shared/agents';
 import { cacheLife } from 'next/cache';
 
-import { getTrackRecord } from './exec';
+import { getTrackRecord, type TrackRecord } from './exec';
 
 /**
  * How many fills an agent needs before its average surplus is taken at face
@@ -30,9 +30,16 @@ export interface ExecutionRow {
   firstSeen: string | null;
 }
 
-/** An execution row plus the marketplace category the table shows next to it. */
+/**
+ * An execution row plus the marketplace category the table shows next to it.
+ *
+ * `unavailable` marks a row whose settlement history could not be read at all.
+ * Its four numbers are then absences rather than measurements, so the table
+ * says so instead of printing a zero the agent did not earn.
+ */
 export interface LeaderboardRow extends ExecutionRow {
   category: AgentCategory;
+  unavailable: boolean;
 }
 
 /**
@@ -100,11 +107,51 @@ export function rankByExecution<T extends ExecutionRow>(rows: readonly T[]): Ran
   }));
 }
 
-/** A registry record that has been minted and funded, so it can have a record. */
-type LiveAgent = AgentRecord & { tokenId: string; wallet: `0x${string}` };
+/** What the leaderboard needs off a registry record, and nothing else. */
+type RankableAgent = Pick<AgentRecord, 'tokenId' | 'name' | 'category' | 'wallet'>;
 
-function isLive(agent: AgentRecord): agent is LiveAgent {
+/** A registry record that has been minted and funded, so it can have a record. */
+type LiveAgent = RankableAgent & { tokenId: string; wallet: `0x${string}` };
+
+function isLive(agent: RankableAgent): agent is LiveAgent {
   return agent.tokenId !== null && agent.wallet !== null;
+}
+
+/**
+ * One row per agent that has an identity and a wallet, read through
+ * `readRecord`.
+ *
+ * The reads are settled, not awaited together. Each one is a call to a public
+ * orderbook that can fail on its own, and `/leaderboard` is prerendered: with
+ * `Promise.all` a single upstream 502 rejects the whole page, which blanks the
+ * table at runtime and fails the build outright. A row whose read failed is
+ * carried as `unavailable`, which leaves it in the table and out of the
+ * ranking (no fills, so `rankByExecution` puts it below every agent that has
+ * traded and gives it no position).
+ *
+ * The reader is a parameter so the gathering can be tested against a failing
+ * fetch without an orderbook, the same seam `bestAndFirstFill` uses in
+ * `lib/exec.ts`.
+ */
+export async function gatherExecutionRows(
+  agents: readonly RankableAgent[],
+  readRecord: (wallet: string) => Promise<TrackRecord>,
+): Promise<LeaderboardRow[]> {
+  const live = agents.filter(isLive);
+  const settled = await Promise.allSettled(live.map((agent) => readRecord(agent.wallet)));
+  return live.map((agent, index) => {
+    const result = settled[index];
+    const record = result?.status === 'fulfilled' ? result.value : null;
+    return {
+      tokenId: agent.tokenId,
+      name: agent.name,
+      category: agent.category,
+      fills: record?.fills ?? 0,
+      avgSurplusBps: record?.avgSurplusBps ?? null,
+      firstSeen: record?.firstSeen ?? null,
+      unavailable: record === null,
+    };
+  });
 }
 
 /**
@@ -126,18 +173,6 @@ export async function getExecutionLeaderboard(
 ): Promise<RankedRow<LeaderboardRow>[]> {
   'use cache';
   cacheLife('minutes');
-  const firstParty = await Promise.all(
-    AGENT_LIST.filter(isLive).map(async (agent): Promise<LeaderboardRow> => {
-      const record = await getTrackRecord(agent.wallet);
-      return {
-        tokenId: agent.tokenId,
-        name: agent.name,
-        category: agent.category,
-        fills: record.fills,
-        avgSurplusBps: record.avgSurplusBps,
-        firstSeen: record.firstSeen,
-      };
-    }),
-  );
+  const firstParty = await gatherExecutionRows(AGENT_LIST, getTrackRecord);
   return rankByExecution([...firstParty, ...extra]);
 }
