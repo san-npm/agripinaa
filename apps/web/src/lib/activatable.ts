@@ -1,7 +1,7 @@
 import type { AgentDetail } from '@agripinaa/agent-index';
 import { agentByTokenId } from '@agripinaa/shared/agents';
 
-import { countsAsLive, getLiveness } from './liveness';
+import { countsAsLive, getLiveness, type LivenessRecord } from './liveness';
 
 /**
  * Whether anything on our side will read a session granted to this agent.
@@ -99,9 +99,30 @@ export const ACTIVATION_BLOCKED_COPY: Record<ActivationBlockedReason, Activation
  * `managed` flag, which `agentConsumesSession` already answers.
  */
 export async function endpointIsLive(agent: AgentDetail): Promise<boolean> {
-  if (agentByTokenId(agent.tokenId)) return false;
-  const endpoint = agent.endpoint?.trim();
-  if (!endpoint) return false;
+  return (await endpointStatus(agent)).live;
+}
+
+/** What one agent's endpoint store holds, for a reader that renders the reason. */
+export interface EndpointStatus {
+  /** The endpoint this listing carries now. Empty when it carries none. */
+  url: string;
+  /** The stored probe result for it, or null when nothing has probed it. */
+  record: LivenessRecord | null;
+  /** Whether that result still counts as live, which is what the gate asks. */
+  live: boolean;
+}
+
+/**
+ * The same read as `endpointIsLive`, with the record it decided from.
+ *
+ * The gate only needs the boolean, but an owner whose endpoint answered 404 or
+ * timed out needs the reason: the record carries a status and a reason kept
+ * exactly for that, and until this existed nothing read them. The profile page
+ * renders both from one read, so its badge and its gate cannot disagree.
+ */
+export async function endpointStatus(agent: AgentDetail): Promise<EndpointStatus> {
+  const url = agent.endpoint?.trim() ?? '';
+  if (agentByTokenId(agent.tokenId) || !url) return { url, record: null, live: false };
   const record = await getLiveness(agent.chainId, agent.tokenId).catch(() => null);
-  return countsAsLive(record, endpoint);
+  return { url, record, live: countsAsLive(record, url) };
 }

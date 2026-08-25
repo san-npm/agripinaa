@@ -4,6 +4,7 @@ import { encodeErrorResult, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
 import {
+  CHAIN_READS_SPENT,
   CLAIM_INDEX_KEY,
   buildClaimMessage,
   claimIsStale,
@@ -22,6 +23,7 @@ import {
   type ClaimKv,
   type ClaimRecord,
 } from '../src/lib/claims';
+import { CHAIN_READ_LIMIT_PER_CLIENT } from '../src/lib/throttle';
 
 import { newState, recordingFetch, withFetch } from './fetch-stub';
 
@@ -188,8 +190,13 @@ test('a signature from a wallet that does not own the agent is refused', async (
     status: 401,
     message: 'connected wallet is not the owner of this agent',
   });
-  // A stranger must not be able to spend the owner's hourly budget for them.
-  assert.equal(kv.store.size, 0);
+  // A stranger must not be able to spend the owner's hourly budget for them,
+  // nor leave anything behind. The chain-read counters are the exception: the
+  // request cost a read, so it is counted whatever the body turned out to be.
+  assert.deepEqual(
+    [...kv.store.keys()].filter((key) => !key.startsWith('agripinaa:chain-reads:')),
+    [],
+  );
 });
 
 test('an owner that is a contract wallet is told so rather than called a stranger', async () => {
@@ -333,6 +340,49 @@ test('claims older than the hour do not count against the limit', async () => {
   const decision = await decide({ body: await signedBody(), kv });
   assert.equal(decision.ok, true);
   assert.deepEqual(JSON.parse(kv.store.get(rateKey)!), [NOW]);
+});
+
+test('a flood of forged claims is refused before it spends a chain read', async () => {
+  // Every body here is well formed and signed by somebody who does not own the
+  // agent, which is the shape that used to cost an ownerOf plus a getCode per
+  // request before anything counted them. The per-owner limit cannot catch it:
+  // it is counted after the signature check, which is after both reads.
+  const stranger = privateKeyToAccount(`0x${'77'.repeat(32)}`);
+  const body = await signedBody(stranger);
+  const kv = memoryKv();
+  const chain = chainOwnedBy(account.address);
+  const flood = (client = '203.0.113.9') =>
+    decideClaim({ readBodyText: async () => body, chain, kv, now: () => NOW, client });
+
+  for (let i = 0; i < CHAIN_READ_LIMIT_PER_CLIENT; i++) {
+    assert.equal((await flood()).ok, false, `request ${i + 1} is refused on its merits`);
+  }
+  const spent = chain.reads.ownerOf;
+
+  assert.deepEqual(await flood(), { ok: false, status: 429, message: CHAIN_READS_SPENT });
+  assert.equal(chain.reads.ownerOf, spent, 'the throttled request cost no chain read');
+  // The throttle is per caller, so one loop does not lock everyone else out.
+  assert.equal((await flood('203.0.113.10')).ok, false);
+  assert.equal(chain.reads.ownerOf, spent + 1, 'another caller still reads the chain');
+});
+
+test('without a kv counter a claim is decided exactly as it was before', async () => {
+  // The throttle stands in front of a store the site can run without, so an
+  // unconfigured or unreachable one must cost the badge and not the claim.
+  const kv = memoryKv();
+  const chain = chainOwnedBy(account.address);
+  kv.mget = async () => {
+    throw new Error('kv unreachable');
+  };
+  const decision = await decideClaim({
+    readBodyText: async () => await signedBody(),
+    chain,
+    kv,
+    now: () => NOW,
+    client: '203.0.113.9',
+  });
+  assert.equal(decision.ok, true);
+  assert.equal(chain.reads.ownerOf, 1);
 });
 
 function recordFor(tokenId: string, signer: Hex): ClaimRecord {
