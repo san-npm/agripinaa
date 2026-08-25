@@ -89,7 +89,7 @@ export async function listAgents(
 ): Promise<Page<AgentSummary>> {
   'use cache';
   cacheLife('minutes');
-  // Over-fetch so ranking/dedupe has a real sample to work on (the registry
+  // Over-fetch so ranking/dedupe has an actual sample to work on (the registry
   // is flooded with low-signal duplicate registrations); then rank by quality
   // and collapse true duplicates before slicing to the requested page.
   const raw = await source.listAgents({ chainId: CHAIN_ID, category, limit: 100, cursor });

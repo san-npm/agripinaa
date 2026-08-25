@@ -5,8 +5,8 @@
  * not serve that agent.
  *
  * The funding and URI assertions below are deliberately literal. Four agents
- * are live on BSC mainnet with real balances and already-minted identities, so
- * a refactor that changed an amount or a URL by a character would be a real
+ * are live on BSC mainnet with live balances and already-minted identities, so
+ * a refactor that changed an amount or a URL by a character would be an actual
  * loss, not a failing expectation.
  */
 import assert from 'node:assert/strict';
@@ -122,7 +122,7 @@ test('an agent with no wallet yet is unprovisioned, and one with a key is not', 
   assert.equal(isUnprovisioned({ wallet: null }, false), true);
   assert.equal(isUnprovisioned({ wallet: null }, true), false);
   // A record that names a wallet is provisioned, so a missing key file is a
-  // real failure and must still surface (buildContext throws on it).
+  // an operational failure and must still surface (buildContext throws on it).
   assert.equal(isUnprovisioned(AGENTS.grid, false), false);
   assert.equal(isUnprovisioned(AGENTS['grid-b'], false), true);
 });

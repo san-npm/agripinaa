@@ -42,7 +42,7 @@ function bearerMatches(header: string | null, token: string): boolean {
  * which leaves a public-looking hostname pointing at 169.254.169.254 or
  * RFC1918. This write path is where a candidate first enters the system and is
  * already async, so it is the place to close that. `lookup` is injectable only
- * so tests can exercise it without real DNS.
+ * so tests can exercise it without live DNS.
  */
 export async function decideRunnerUrlReport(input: {
   opsToken: string | undefined;

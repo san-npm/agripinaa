@@ -5,7 +5,7 @@
  * the same repay sizing, reached from a protocol that reports liquidity and
  * shortfall instead of a ratio.
  *
- * The rest drives the real module through a fake Venus so the wiring around the
+ * The rest drives the actual module through a fake Venus so the wiring around the
  * derivation is exercised too: which markets count as collateral, what a zero
  * oracle price does, the warn/act thresholds, the wallet budget cap, and the
  * daily repay cap.

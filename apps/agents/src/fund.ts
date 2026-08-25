@@ -1,5 +1,5 @@
 /**
- * Wallet generation and funding for the reference agents, sized to the real
+ * Wallet generation and funding for the reference agents, sized to the actual
  * budget on the spike-a wallet (~12 USDT + ~0.013 WBNB + ~0.005 BNB).
  *
  * The split itself lives in the shared agent registry (see agent-config.ts), so

@@ -4,7 +4,7 @@ import { agentsUrl } from '@/lib/agents-endpoint';
  * Proxy a managed-account registration to the agent runner. The body is the
  * byte-exact serialized {account, chainId, session} (session-kit codec, so
  * bigint spend limits survive). We forward it verbatim; the runner does the
- * real validation (session is real on-chain, granted to its key, router-scoped).
+ * full validation (the session exists on-chain, granted to its key, router-scoped).
  */
 export async function POST(
   request: Request,

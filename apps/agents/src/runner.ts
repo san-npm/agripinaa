@@ -111,7 +111,7 @@ async function main() {
     // knowable until the key is generated). Skip it with a line in the log
     // rather than letting buildContext's missing-key throw take every other
     // agent's tick loop down at boot. A record that already carries a wallet
-    // address still fails loudly, because then the key is genuinely missing.
+    // address still fails loudly, because then the key is absent.
     const record = agentBySlug(module.name);
     if (record && isUnprovisioned(record, hasAgentWallet(module.name))) {
       console.log(

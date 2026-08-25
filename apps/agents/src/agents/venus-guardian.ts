@@ -32,7 +32,7 @@
  *   markets(vUSDC) => isListed, collateralFactorMantissa 0.825e18
  * The collateral factor is READ LIVE on every tick and the recorded values
  * above are only drift detection, because Venus governance can move a factor by
- * vote and a hardcoded 0.80 would then quietly misreport the health of a real
+ * vote and a hardcoded 0.80 would then quietly misreport the health of an actual
  * position in the direction of doing nothing.
  *
  * This agent only ever ADDS value to the position: it repays, and it never
@@ -335,7 +335,7 @@ async function readVenusPosition(ctx: AgentContext): Promise<VenusPosition> {
     ]);
     if (price === BigInt(0)) {
       // A zero price zeroes this market's debt as well as its collateral, which
-      // would read as a healthier position than the real one. Stop.
+      // would read as a healthier position than the actual one. Stop.
       throw new Error(`venus reported a zero oracle price for ${vToken}`);
     }
     if (!market.isListed) {
@@ -483,7 +483,7 @@ export const venusGuardianAgent: AgentModule = {
     // No setup step, deliberately. The Aave guardian opens its own demo
     // position because it was the first of its kind and needed something to
     // guard; this one adopts whatever Venus position the wallet already holds
-    // and reports honestly when there is none, rather than borrowing on its
+    // and reports plainly when there is none, rather than borrowing on its
     // own initiative. Opening a leveraged position is a funding decision.
     const position = await readVenusPosition(ctx);
     const hf = hfWadToNumber(position.hfWad);

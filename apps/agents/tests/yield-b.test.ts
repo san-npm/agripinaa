@@ -2,7 +2,7 @@
  * yield-b exists to make funds under management a choice rather than a feature:
  * two agents on the same un-owned router, same venues, same reads, different
  * policies. So the tests that matter are the comparative ones, and most of this
- * file runs BOTH agents' policies through the real managed tick on identical
+ * file runs BOTH agents' policies through the shared managed tick on identical
  * inputs and asserts they disagree in the direction the manifest claims.
  *
  * The two gates are exercised separately on purpose. A conservative agent that

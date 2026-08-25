@@ -19,7 +19,7 @@
  *    published there and not applied in code would be a false claim about how
  *    the agent behaves with someone's capital.
  *
- * The tick tests drive the real module through a fake context, the way
+ * The tick tests drive the actual module through a fake context, the way
  * lp-range.test.ts does, so the wiring (init, breakout, guards, clip sizing)
  * is exercised rather than only the arithmetic underneath it.
  */
@@ -111,7 +111,7 @@ test('the cooldown still outlasts an Ophis order, so clips cannot overlap', () =
 
 test('a full day of trading at the cap cannot outrun the cooldown', () => {
   // 8 trades spaced 45 minutes apart is 6 hours, comfortably inside a day, so
-  // the daily cap is a real ceiling rather than one the cooldown makes moot.
+  // the daily cap is an actual ceiling rather than one the cooldown makes moot.
   assert.ok(GRID_B_PARAMS.maxTradesPerDay * GRID_B_PARAMS.cooldownMs < 24 * 3_600_000);
 });
 
@@ -355,7 +355,7 @@ interface GridBFakeOpts {
  * each reports its own fee and its measured liquidity, the selected one reports
  * a slot0 whose sqrt price decodes back to the price under test, and balances
  * come from the options. A swap attempt is recorded and then stopped at the
- * decimals read, which is the point of no return into the real orderbook client.
+ * decimals read, which is the point of no return into the live orderbook client.
  */
 function fakeCtx(opts: GridBFakeOpts): {
   ctx: AgentContext;
