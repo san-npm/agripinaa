@@ -8,11 +8,19 @@
  * caps a page at 100, and it allows 180 requests a minute. Requests go out one
  * every 400 ms, which is 150 a minute with room to spare.
  *
+ * Every write merges what this run fetched over what the file already held,
+ * newest first, so a run can only add rows or refresh them. That matters
+ * because the file is the site's offline tier and a seed run replaces it: a
+ * stop on page five (an expired key, a 422, a dropped connection) leaves five
+ * pages of fresh rows in front of the rows that were already there, and a run
+ * that fetched nothing leaves the file untouched rather than emptying it.
+ * Within a run, rows are deduped by token id, which absorbs the shift that new
+ * registrations cause at the head of an offset-paginated list.
+ *
  * Progress is written after every page, so a rate limit, a network drop, or a
  * Ctrl-C keeps everything already fetched. Restart from where it stopped with
- * `--start <offset>`: the run merges into the rows already on disk and dedupes
- * by token id, which also absorbs the shift that new registrations cause at
- * the head of an offset-paginated list.
+ * `--start <offset>`, which tops the file back up to the target instead of
+ * fetching a whole target's worth again.
  *
  * Usage:
  *   export $(grep '^SCAN8004_API_KEY=' apps/web/.env.local)   # never commit it
@@ -22,7 +30,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { encodeSnapshot, parseSnapshot } from '../src/snapshot';
+import { encodeSnapshot, mergeSnapshotItems, parseSnapshot } from '../src/snapshot';
 import { Scan8004Error, Scan8004Source } from '../src/sources/scan8004';
 import { CATEGORIES, type AgentSummary, type Category } from '../src/types';
 
@@ -66,7 +74,10 @@ async function write(items: AgentSummary[], seededAt: string): Promise<void> {
 /** Retryable in the sense that waiting is the right response: rate limit, or upstream trouble. */
 function worthRetrying(err: unknown): boolean {
   const status = err instanceof Scan8004Error ? err.status : undefined;
-  return status === 429 || (status != null && status >= 500);
+  if (status === 429 || (status != null && status >= 500)) return true;
+  // A request that hit its own deadline is the same kind of trouble: the page
+  // is worth asking for again once, from the offset the run is already at.
+  return err instanceof Error && err.name === 'TimeoutError';
 }
 
 function hubCounts(items: AgentSummary[]): Record<Category | 'none', number> {
@@ -89,17 +100,29 @@ async function main() {
 
   const source = new Scan8004Source();
   const seededAt = new Date().toISOString();
-  const byTokenId = new Map<string, AgentSummary>();
-  if (START_OFFSET > 0) {
-    for (const item of await loadExisting()) byTokenId.set(item.tokenId, item);
-    console.log(`resuming at offset ${START_OFFSET} with ${byTokenId.size} rows already on disk`);
+  const onDisk = await loadExisting();
+  /** Rows to end up with: the target, or what the file already had if that is more. */
+  const keep = Math.max(TARGET, onDisk.length);
+  const fetched = new Map<string, AgentSummary>();
+  const merged = () => mergeSnapshotItems({ fetched: [...fetched.values()], onDisk, keep });
+  if (onDisk.length > 0) {
+    console.log(
+      `${onDisk.length} rows already in ${outFile}` +
+        `${START_OFFSET > 0 ? `, resuming at offset ${START_OFFSET}` : ''}; ` +
+        'this run adds to them and never writes fewer',
+    );
   }
 
   let offset = START_OFFSET;
   let retried = false;
   let upstreamTotal: number | null = null;
+  let stoppedEarly = false;
 
-  while (byTokenId.size < TARGET) {
+  // A resumed run tops the file back up to the target; a fresh one fetches a
+  // target's worth of its own rather than stopping at what is already there.
+  const progress = () => (START_OFFSET > 0 ? merged().length : fetched.size);
+
+  while (progress() < TARGET) {
     let page;
     try {
       page = await source.listAgents({ chainId: CHAIN_ID, cursor: String(offset), limit: PAGE_SIZE });
@@ -112,6 +135,7 @@ async function main() {
         continue;
       }
       // Everything fetched so far is already on disk, page by page.
+      stoppedEarly = true;
       console.error(`stopped at offset ${offset}: ${message}`);
       console.error(`resume with: pnpm seed:agents -- --chain ${CHAIN_ID} --start ${offset}`);
       break;
@@ -121,14 +145,13 @@ async function main() {
 
     let added = 0;
     for (const item of page.items) {
-      if (byTokenId.has(item.tokenId)) continue;
-      byTokenId.set(item.tokenId, item);
+      if (fetched.has(item.tokenId)) continue;
+      fetched.set(item.tokenId, item);
       added++;
     }
-    const items = [...byTokenId.values()];
-    await write(items, seededAt);
+    if (fetched.size > 0) await write(merged(), seededAt);
     console.log(
-      `offset ${offset}: +${added} of ${page.items.length} (total ${items.length}` +
+      `offset ${offset}: +${added} of ${page.items.length} (fetched ${fetched.size}` +
         `${upstreamTotal != null ? ` of ${upstreamTotal} upstream` : ''})`,
     );
 
@@ -137,16 +160,29 @@ async function main() {
     await sleep(REQUEST_GAP_MS);
   }
 
-  const items = [...byTokenId.values()].slice(0, TARGET);
+  if (fetched.size === 0) {
+    // Nothing to write but a worse file: a first-page 401 or 422 would otherwise
+    // replace the offline tier with an empty snapshot, which reads as valid.
+    console.error(`fetched nothing; left the ${onDisk.length} rows in ${outFile} alone`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const items = merged();
   await write(items, seededAt);
 
   const counts = hubCounts(items);
   const classified = items.length - counts.none;
-  console.log(`wrote ${items.length} agents to ${outFile}`);
+  console.log(
+    `wrote ${items.length} agents to ${outFile} ` +
+      `(${fetched.size} from this run, ${items.length - fetched.size} carried over)`,
+  );
   console.log(
     `classified ${classified} of ${items.length}: ` +
       CATEGORIES.map((c) => `${c} ${counts[c]}`).join(', '),
   );
+  // An incomplete run is not a successful seed, even though its rows are kept.
+  if (stoppedEarly) process.exitCode = 1;
 }
 
 main().catch((err) => {
