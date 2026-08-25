@@ -10,6 +10,7 @@ import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
 import { TrackRecordPanel } from "@/components/TrackRecordPanel";
+import { X402DemoLive } from "@/components/X402DemoLive";
 import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
 import {
   ACTIVATION_BLOCKED_COPY,
@@ -346,6 +347,20 @@ async function AgentContent({
             }
           >
             <TrackRecordPanel wallet={registryWallet} />
+          </Suspense>
+        </div>
+      )}
+
+      {registryRecord && (
+        <div className="mt-4">
+          <Suspense
+            fallback={
+              <Panel title="x402 status endpoint">
+                <p className="text-sm text-muted-2">Resolving the endpoint…</p>
+              </Panel>
+            }
+          >
+            <X402DemoLive slug={registryRecord.slug} tokenId={agent.tokenId} />
           </Suspense>
         </div>
       )}
