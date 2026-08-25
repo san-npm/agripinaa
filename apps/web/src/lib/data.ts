@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   MergedSource,
+  isIndividuallyNotable,
   rankAndDedupe,
   type AgentDetail,
   type AgentSummary,
@@ -22,6 +23,7 @@ import {
   normalizeAgentId,
   type ClaimRecord,
 } from './claims';
+import { normalizeQuery } from './directory-query';
 import { withLiveness } from './liveness';
 import { getOnchainAttestation } from './onchain-rep';
 
@@ -44,6 +46,13 @@ const source = new MergedSource();
 const PINNED_AGENT_IDS = AGENT_LIST.map((agent) => agent.tokenId).filter(
   (id): id is string => id != null,
 );
+
+/**
+ * The same ids, normalised for comparison against an indexed listing. A path
+ * that renders our agents in their own section drops them from the registry
+ * listing with this, so no agent gets two cards on one page.
+ */
+const PINNED_ID_SET = new Set(PINNED_AGENT_IDS.map(normalizeAgentId));
 
 /**
  * Reflect the on-chain ERC-8004 attestation on every card that renders a
@@ -70,11 +79,19 @@ export async function withOnchainAttestation(
 const CLAIMED_PER_HUB_LIMIT = 50;
 
 /**
- * How many registry cards `/agents` renders. `listDirectory` hands back the
- * whole list and the page slices it, so this is the page size the claimed
- * injection is budgeted against, the way a hub budgets against its own limit.
+ * How many registry cards one directory page renders, and so the page size the
+ * claimed injection is budgeted against, the way a hub budgets against its own
+ * limit. `/agents` walks the listing this many at a time.
  */
-const DIRECTORY_PAGE_SIZE = 45;
+export const DIRECTORY_PAGE_SIZE = 24;
+
+/**
+ * How many pages one directory request may walk. `/agents` re-reads the pages
+ * before its cursor so de-duplication can span them, so this is what stops a
+ * hand-written `?cursor=` from fanning that walk out. Ten pages reaches 240
+ * cards deep, past anything a visitor pages to by hand.
+ */
+const MAX_DIRECTORY_PAGES = 10;
 
 /**
  * Every stored claim, read once per cache window. Claims are an enrichment: a
@@ -151,6 +168,25 @@ async function claimedInCategory(
   return resolved.filter((a): a is NonNullable<typeof a> => a != null).slice(0, slots);
 }
 
+/**
+ * Our own agents: resolved from the chain and reflected against the on-chain
+ * attestation. Split out of `listDirectory` so a page that walks the registry
+ * itself can render the verified section without pulling a registry sample it
+ * will not use.
+ */
+export async function listVerified(category?: Category): Promise<AgentSummary[]> {
+  'use cache';
+  cacheLife('minutes');
+  const resolved = (
+    await Promise.all(
+      PINNED_AGENT_IDS.map((id) => source.getAgent(CHAIN_ID, id).catch(() => null)),
+    )
+  )
+    .filter((a): a is NonNullable<typeof a> => a != null)
+    .filter((a) => (category ? a.category === category : true));
+  return withOnchainAttestation(resolved);
+}
+
 export interface Directory {
   verified: AgentSummary[];
   registry: AgentSummary[];
@@ -168,14 +204,7 @@ export async function listDirectory(category?: Category): Promise<Directory> {
   'use cache';
   cacheLife('minutes');
   const raw = await source.listAgents({ chainId: CHAIN_ID, category, limit: 100 });
-  const verified = (
-    await Promise.all(
-      PINNED_AGENT_IDS.map((id) => source.getAgent(CHAIN_ID, id).catch(() => null)),
-    )
-  )
-    .filter((a): a is NonNullable<typeof a> => a != null)
-    .filter((a) => (category ? a.category === category : true));
-  const enriched = await withOnchainAttestation(verified);
+  const enriched = await listVerified(category);
   const verifiedIds = new Set(enriched.map((a) => a.tokenId));
   const claims = claimsByTokenId(await storedClaims());
   const indexed = rankAndDedupe(raw.items)
@@ -245,6 +274,132 @@ export async function listAgents(
   // pinned ones, which are the only verified cards here.
   const items = [...pinnedEnriched, ...claimed, ...indexed].slice(0, limit);
   return { ...raw, items: await withLiveness(items) };
+}
+
+/**
+ * What a rendered card stands for, so "already shown" survives a re-rank.
+ *
+ * `rankAndDedupe` collapses low-signal registrations that share a name across
+ * owners and gives the cluster the newest registration's face, so that card's
+ * id changes as more pages join the set. Keyed by id alone, the cluster would
+ * read as new one page later and open a second card for the same name.
+ */
+function shownKey(agent: AgentSummary): string {
+  return isIndividuallyNotable(agent)
+    ? `id:${agent.id}`
+    : `name:${agent.name.trim().toLowerCase()}`;
+}
+
+/**
+ * The entries of the last walked page that the pages before it did not already
+ * show, ranked and de-duplicated across the whole walk.
+ *
+ * Pure, and the reason a paged directory re-reads the earlier pages at all:
+ * `rankAndDedupe` can only collapse what it can see, so a name minted either
+ * side of a page boundary used to survive as two cards.
+ */
+export function freshOnLastPage(pages: AgentSummary[][]): AgentSummary[] {
+  const union = rankAndDedupe(pages.flat());
+  if (pages.length < 2) return union;
+  const before = new Set(rankAndDedupe(pages.slice(0, -1).flat()).map(shownKey));
+  return union.filter((a) => !before.has(shownKey(a)));
+}
+
+export interface RegistryPage {
+  items: AgentSummary[];
+  /** Cursor for the next page, or null once the listing is exhausted. */
+  nextCursor: string | null;
+  /** Where the listing came from (8004scan, snapshot, a stale cache). */
+  source: string;
+  /**
+   * True when the requested page sits deeper than one request walks. The items
+   * are then the deepest page this walk could reach, and a caller stops
+   * offering "load more": the next cursor would walk to the same cap and hand
+   * back the same cards.
+   */
+  capped: boolean;
+}
+
+/**
+ * One page of the unverified registry listing, de-duplicated against every
+ * page before it.
+ *
+ * Cost: one `listAgents` call per page walked. Each is a `use cache` entry
+ * keyed on its arguments, so inside the cache window page n costs one upstream
+ * fetch and n warm reads, and on a cold cache it costs n+1 fetches. The walk
+ * stops at `MAX_DIRECTORY_PAGES`, and stops sooner once the cursors it is
+ * following have passed the requested one, so a hand-written `?cursor=` cannot
+ * make a single request fan out. A cursor the walk never meets lands on the
+ * last page it could read rather than on an error.
+ *
+ * Our own agents are dropped here: they lead the first page of `listAgents`
+ * (pinned), and a directory renders them in its verified section instead.
+ */
+export async function listRegistryPage(
+  category?: Category,
+  cursor?: string,
+): Promise<RegistryPage> {
+  const pages: AgentSummary[][] = [];
+  let at: string | undefined;
+  let nextCursor: string | null = null;
+  let listingSource = 'unknown';
+  let capped = false;
+  for (let walked = 0; walked < MAX_DIRECTORY_PAGES; walked++) {
+    const page = await listAgents(category, DIRECTORY_PAGE_SIZE, at);
+    pages.push(
+      page.items.filter((a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId))),
+    );
+    nextCursor = page.nextCursor;
+    listingSource = page.source;
+    // Reached the requested page, or ran out of listing before it.
+    if (cursor === undefined || at === cursor || page.nextCursor === null) break;
+    // Cursors from the index grow monotonically (an offset, or a page number),
+    // so one that has already passed the requested value will never meet it.
+    if (Number(page.nextCursor) > Number(cursor)) break;
+    at = page.nextCursor;
+    capped = walked === MAX_DIRECTORY_PAGES - 1;
+  }
+  return { items: freshOnLastPage(pages), nextCursor, source: listingSource, capped };
+}
+
+export interface SearchResults {
+  items: AgentSummary[];
+  /**
+   * False when the index could not answer at all (a rate limit, an upstream
+   * error). A caller shows the listing and says search is unavailable rather
+   * than rendering an empty page that reads as "nothing matches".
+   */
+  available: boolean;
+}
+
+/**
+ * Search the index, then apply the same treatment the list paths apply: rank
+ * and collapse duplicates, fill in owner claims, and mark endpoints a probe
+ * found answering. Our own agents are dropped for the same reason as in
+ * `listRegistryPage`, since a directory lists them in its verified section.
+ *
+ * The term is part of this entry's cache key, so it is normalised and capped
+ * here rather than trusted from the caller.
+ */
+export async function searchDirectory(
+  query: string,
+  filters: { category?: Category } = {},
+): Promise<SearchResults> {
+  'use cache';
+  cacheLife('minutes');
+  const term = normalizeQuery(query);
+  if (term === '') return { items: [], available: true };
+  try {
+    const found = await source.searchAgents(CHAIN_ID, term);
+    const claims = claimsByTokenId(await storedClaims());
+    const ranked = rankAndDedupe(found)
+      .filter((a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId)))
+      .filter((a) => (filters.category ? a.category === filters.category : true))
+      .map((a) => withClaim(a, claims));
+    return { items: await withLiveness(ranked), available: true };
+  } catch {
+    return { items: [], available: false };
+  }
 }
 
 export async function getAgent(tokenId: string): Promise<AgentDetail | null> {
