@@ -110,6 +110,18 @@ export interface SafeFetchOptions {
   method?: 'GET' | 'POST';
   headers?: Record<string, string>;
   body?: string;
+  /**
+   * The transport, injectable for tests, the way `assertResolvedHostPublic`
+   * takes a `LookupFn`. A caller that has to stand in for the network gets a
+   * per-call option instead of swapping `globalThis.fetch`, which is
+   * process-wide and reaches every other module in the run.
+   *
+   * It is NOT a way around the guard: the url is validated before this is
+   * called, and every redirect hop is revalidated before the next call, so a
+   * stub sees only destinations the guard already accepted. Defaults to the
+   * global fetch, read at call time so an existing global swap still works.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 export interface SafeFetchResult {
@@ -130,12 +142,13 @@ export async function safeFetchBytes(raw: string, opts: SafeFetchOptions = {}): 
   const method = opts.method ?? 'GET';
   const maxBytes = opts.maxBytes ?? MAX_BYTES;
   const maxRedirects = method === 'GET' ? (opts.maxRedirects ?? MAX_REDIRECTS) : 0;
+  const doFetch = opts.fetchImpl ?? globalThis.fetch;
   let url = assertSafeUrl(raw);
   for (let hop = 0; hop <= maxRedirects; hop++) {
     // Re-resolve+validate every hop so a hostname cannot rebind to a
     // private address between the literal check and the connection.
     await assertResolvedHostPublic(url);
-    const res = await fetch(url, {
+    const res = await doFetch(url, {
       method,
       headers: opts.headers,
       body: opts.body,

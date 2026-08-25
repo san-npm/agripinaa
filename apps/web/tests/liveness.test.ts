@@ -8,10 +8,12 @@ import { newState, recordingFetch, withFetch, type FetchState } from './fetch-st
 /**
  * The endpoint probe, its store, and the activation gate that reads it.
  *
- * Nothing here touches the network or DNS: every probed url is a public IP
- * literal, which the shared guard checks without a resolver, and the KV REST
- * calls are served out of a Map. kv.ts reads its credentials once at import, so
- * the env goes up here and the modules are imported inside each test.
+ * Nothing here touches the network or DNS. The probe's transport is injected
+ * (`fetchImpl`), every probed url is a public IP literal so the shared guard
+ * checks it without a resolver, and the KV REST calls are served out of a Map
+ * through the global swap `kv.test.ts` also uses. kv.ts reads its credentials
+ * once at import, so the env goes up here and the modules are imported inside
+ * each test.
  */
 const KV_BASE = 'https://kv.example.test';
 process.env.KV_REST_API_URL = KV_BASE;
@@ -27,14 +29,14 @@ const loadActivatable = () => import('../src/lib/activatable');
 const NOW = Date.parse('2026-08-25T12:00:00.000Z');
 const HOUR = 60 * 60 * 1_000;
 
-/** Serves the Upstash REST commands out of `store`, anything else via `answer`. */
-function stubbed(
-  state: FetchState,
-  store: Map<string, string>,
-  answer: (url: string) => Response = () => new Response('no endpoint expected', { status: 500 }),
-): typeof fetch {
+/**
+ * Serves the Upstash REST commands out of `store`. Anything else arriving here
+ * is a probe that ignored its injected transport, so it gets a 500 rather than
+ * an answer and `probeCalls` picks it out of the recorded calls.
+ */
+function stubbed(state: FetchState, store: Map<string, string>): typeof fetch {
   return recordingFetch(state, (url, init) => {
-    if (!url.startsWith(`${KV_BASE}/`)) return answer(url);
+    if (!url.startsWith(`${KV_BASE}/`)) return new Response('no endpoint expected', { status: 500 });
     const rest = url.slice(KV_BASE.length + 1);
     if (rest === '') {
       const command = JSON.parse(String(init?.body ?? '[]')) as string[];
@@ -53,29 +55,39 @@ function stubbed(
 
 const probeCalls = (state: FetchState) => state.calls.filter((c) => !c.url.startsWith(KV_BASE));
 
+/**
+ * The probe's transport, handed to `probeEndpoint` as `fetchImpl`. Nothing a
+ * probe test does touches the global fetch, so the assertion that a refused url
+ * is never requested is about this call and not about whatever else the process
+ * happens to be doing. KV keeps using the global swap: that is `kv.ts`'s own
+ * transport, and `kv.test.ts` stubs it the same way.
+ */
+function endpointFetch(state: FetchState, answer: (url: string) => Response): typeof fetch {
+  return recordingFetch(state, answer);
+}
+
 test('an endpoint that answers is live, with the status it answered', async () => {
   const { probeEndpoint } = await loadLiveness();
   const state = newState();
-  const result = await withFetch(
-    stubbed(state, new Map(), () => Response.json({ ok: true })),
-    () => probeEndpoint(ENDPOINT, { now: () => NOW }),
-  );
+  const result = await probeEndpoint(ENDPOINT, {
+    now: () => NOW,
+    fetchImpl: endpointFetch(state, () => Response.json({ ok: true })),
+  });
 
   assert.equal(result.live, true);
   assert.equal(result.status, 200);
   assert.equal(result.checkedAt, new Date(NOW).toISOString());
   assert.equal(result.reason, undefined);
-  assert.deepEqual(probeCalls(state), [{ url: ENDPOINT, method: 'GET' }]);
+  assert.deepEqual(state.calls, [{ url: ENDPOINT, method: 'GET' }]);
 });
 
 test('an x402 paywall and an auth challenge both count as answering', async () => {
   const { probeEndpoint } = await loadLiveness();
   for (const status of [200, 204, 401, 402]) {
     const state = newState();
-    const result = await withFetch(
-      stubbed(state, new Map(), () => new Response(null, { status })),
-      () => probeEndpoint(ENDPOINT),
-    );
+    const result = await probeEndpoint(ENDPOINT, {
+      fetchImpl: endpointFetch(state, () => new Response(null, { status })),
+    });
     assert.equal(result.live, true, `status ${status}`);
     assert.equal(result.status, status);
   }
@@ -85,10 +97,9 @@ test('a server error is an answer that does not count as live', async () => {
   const { probeEndpoint } = await loadLiveness();
   for (const status of [404, 500, 503]) {
     const state = newState();
-    const result = await withFetch(
-      stubbed(state, new Map(), () => new Response('nope', { status })),
-      () => probeEndpoint(ENDPOINT),
-    );
+    const result = await probeEndpoint(ENDPOINT, {
+      fetchImpl: endpointFetch(state, () => new Response('nope', { status })),
+    });
     assert.equal(result.live, false, `status ${status}`);
     assert.equal(result.status, status);
     assert.equal(result.reason, 'status');
@@ -98,12 +109,12 @@ test('a server error is an answer that does not count as live', async () => {
 test('a probe that times out reports not live rather than throwing', async () => {
   const { probeEndpoint } = await loadLiveness();
   const state = newState();
-  const result = await withFetch(
-    stubbed(state, new Map(), () => {
+  const result = await probeEndpoint(ENDPOINT, {
+    now: () => NOW,
+    fetchImpl: endpointFetch(state, () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     }),
-    () => probeEndpoint(ENDPOINT, { now: () => NOW }),
-  );
+  });
 
   assert.equal(result.live, false);
   assert.equal(result.reason, 'timeout');
@@ -114,12 +125,11 @@ test('a probe that times out reports not live rather than throwing', async () =>
 test('an endpoint that refuses the connection is not live either', async () => {
   const { probeEndpoint } = await loadLiveness();
   const state = newState();
-  const result = await withFetch(
-    stubbed(state, new Map(), () => {
+  const result = await probeEndpoint(ENDPOINT, {
+    fetchImpl: endpointFetch(state, () => {
       throw new TypeError('fetch failed');
     }),
-    () => probeEndpoint(ENDPOINT),
-  );
+  });
 
   assert.equal(result.live, false);
   assert.equal(result.reason, 'unreachable');
@@ -137,7 +147,7 @@ test('the budget is the whole probe, not one hop of it', { timeout: 5_000 }, asy
   };
 
   const started = Date.now();
-  const result = await withFetch(silent, () => probeEndpoint(ENDPOINT, { timeoutMs: 60 }));
+  const result = await probeEndpoint(ENDPOINT, { timeoutMs: 60, fetchImpl: silent });
   const elapsed = Date.now() - started;
 
   assert.equal(result.live, false);
@@ -160,7 +170,7 @@ test('a redirect chain cannot multiply the budget', async () => {
     });
   };
 
-  const result = await withFetch(redirecting, () => probeEndpoint(ENDPOINT));
+  const result = await probeEndpoint(ENDPOINT, { fetchImpl: redirecting });
 
   assert.equal(result.live, false);
   assert.equal(result.reason, 'blocked');
@@ -181,7 +191,11 @@ test('a url the guard refuses is never fetched', async () => {
   ];
   for (const url of refused) {
     const state = newState();
-    const result = await withFetch(stubbed(state, new Map()), () => probeEndpoint(url));
+    const result = await probeEndpoint(url, {
+      fetchImpl: endpointFetch(state, () => {
+        throw new Error(`the guard let ${url} through`);
+      }),
+    });
     assert.equal(result.live, false, url);
     assert.equal(result.reason, 'blocked', url);
     assert.deepEqual(state.calls, [], `nothing was fetched for ${url}`);
@@ -192,15 +206,25 @@ test('a probe result is stored under the agent key and read back', async () => {
   const { getLiveness, livenessKey, recordLiveness } = await loadLiveness();
   const store = new Map<string, string>();
   const state = newState();
+  const probes = newState();
 
+  // KV keeps the global swap; the endpoint is answered by the injected
+  // transport. `stubbed` refuses any other endpoint call with a 500, so a probe
+  // that ignored `fetchImpl` would come back not live.
   const written = await withFetch(
-    stubbed(state, store, () => Response.json({ ok: true })),
+    stubbed(state, store),
     // Leading zeros on the way in, normalised on the way to the key.
-    () => recordLiveness(56, '000297380', ENDPOINT, { now: () => NOW }),
+    () =>
+      recordLiveness(56, '000297380', ENDPOINT, {
+        now: () => NOW,
+        fetchImpl: endpointFetch(probes, () => Response.json({ ok: true })),
+      }),
   );
 
   assert.equal(written.live, true);
   assert.equal(written.url, ENDPOINT);
+  assert.deepEqual(probes.calls, [{ url: ENDPOINT, method: 'GET' }]);
+  assert.deepEqual(probeCalls(state), [], 'the probe did not fall back to the global fetch');
   assert.equal(livenessKey(56, '000297380'), 'agripinaa:liveness:56:297380');
   assert.equal(store.has('agripinaa:liveness:56:297380'), true);
 
