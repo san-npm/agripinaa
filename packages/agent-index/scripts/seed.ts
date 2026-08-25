@@ -19,15 +19,16 @@
  *
  * Progress is written after every page, so a rate limit, a network drop, or a
  * Ctrl-C keeps everything already fetched. Restart from where it stopped with
- * `--start <offset>`, which tops the file back up to the target instead of
- * fetching a whole target's worth again.
+ * `--start <offset>`: the offset counts as ground the interrupted run already
+ * covered, so the resume fetches the rest of the target instead of a whole
+ * target's worth again, and the merge puts the two runs' rows in one file.
  *
  * Usage:
  *   export $(grep '^SCAN8004_API_KEY=' apps/web/.env.local)   # never commit it
  *   pnpm seed:agents [-- --chain 56 --target 3000 --start 0]
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { encodeSnapshot, mergeSnapshotItems, parseSnapshot } from '../src/snapshot';
@@ -55,7 +56,15 @@ const BACKOFF_MS = 60_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
+/**
+ * Where the snapshot lands. `SEED_OUT_DIR` points a run somewhere else, which
+ * is how the end to end test drives the real script without writing over the
+ * committed data dir, and how an operator can seed into a scratch directory and
+ * look at the result before replacing the file the site ships.
+ */
+const outDir = process.env.SEED_OUT_DIR
+  ? resolve(process.env.SEED_OUT_DIR)
+  : join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const outFile = join(outDir, `agents-${CHAIN_ID}.json`);
 
 async function loadExisting(): Promise<AgentSummary[]> {
@@ -118,11 +127,29 @@ async function main() {
   let upstreamTotal: number | null = null;
   let stoppedEarly = false;
 
-  // A resumed run tops the file back up to the target; a fresh one fetches a
-  // target's worth of its own rather than stopping at what is already there.
-  const progress = () => (START_OFFSET > 0 ? merged().length : fetched.size);
+  /**
+   * Rows of the upstream list this run has covered: what it fetched, plus what
+   * the run it is resuming had already walked past, which is what a resume
+   * offset means. So a fresh run fetches a target's worth of its own, and a
+   * resumed one fetches the rest of the target rather than starting over.
+   *
+   * Deliberately not measured against what the file holds: a run that stops
+   * part way writes fetched rows in front of carried ones and leaves a file of
+   * target length, so counting the file would make the resume that is supposed
+   * to finish that run fetch nothing at all.
+   */
+  const covered = () => START_OFFSET + fetched.size;
 
-  while (progress() < TARGET) {
+  if (covered() >= TARGET) {
+    console.error(
+      `--start ${START_OFFSET} is already at the target of ${TARGET} rows, so there is ` +
+        `nothing to fetch. Raise --target above ${START_OFFSET} to carry on from there.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  while (covered() < TARGET) {
     let page;
     try {
       page = await source.listAgents({ chainId: CHAIN_ID, cursor: String(offset), limit: PAGE_SIZE });
@@ -137,7 +164,12 @@ async function main() {
       // Everything fetched so far is already on disk, page by page.
       stoppedEarly = true;
       console.error(`stopped at offset ${offset}: ${message}`);
-      console.error(`resume with: pnpm seed:agents -- --chain ${CHAIN_ID} --start ${offset}`);
+      // Carries this run's target, not the default: the resume measures itself
+      // against the target it is finishing, so printing the flag without it
+      // would hand the operator a command that asks for the wrong amount.
+      console.error(
+        `resume with: pnpm seed:agents -- --chain ${CHAIN_ID} --target ${TARGET} --start ${offset}`,
+      );
       break;
     }
     retried = false;
