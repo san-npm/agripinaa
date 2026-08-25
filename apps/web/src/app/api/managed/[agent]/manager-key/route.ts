@@ -10,9 +10,10 @@ const MAX_UPSTREAM_BYTES = 8_192;
  * URL or CORS. Returns { agent, publicKey, address }. Read-only, public.
  *
  * The agent comes out of the URL path, so it is checked against the registry
- * before anything else happens (same reasoning as the manage route next door).
- * The browser then checks what comes back against the registry's pinned address
- * before it becomes a session grantee (src/lib/manager-key.ts).
+ * before anything else happens (same reasoning, and the same 400, as the manage
+ * route next door). The browser then checks what comes back against the
+ * registry's pinned address before it becomes a session grantee
+ * (src/lib/manager-key.ts).
  */
 export async function GET(
   request: Request,
@@ -20,7 +21,7 @@ export async function GET(
 ): Promise<Response> {
   const { agent } = await ctx.params;
   if (!agentBySlug(agent)) {
-    return Response.json({ error: 'unknown agent' }, { status: 404 });
+    return Response.json({ error: 'invalid agent' }, { status: 400 });
   }
   // Forward the token selector so each token resolves to its own manager key.
   const token = new URL(request.url).searchParams.get('token');
