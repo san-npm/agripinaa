@@ -1,4 +1,5 @@
 import { bscScanAddress } from "@agripinaa/shared";
+import { agentByTokenId } from "@agripinaa/shared/agents";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,6 +8,7 @@ import { Suspense } from "react";
 import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
+import { TrackRecordPanel } from "@/components/TrackRecordPanel";
 import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
 import {
   ACTIVATION_BLOCKED_COPY,
@@ -135,6 +137,11 @@ async function AgentContent({
   // hub card cannot disagree about the same agent, and the stamp below names
   // where each number actually came from.
   const trust = mergeAttestation(agent, attestation).trust;
+  // Only a first-party agent has settlement data to summarize, and only the
+  // committed registry wallet is trustworthy enough to summarize it from: the
+  // indexed `agentWallet` is metadata its own owner sets. An indexed third
+  // party matches nothing here and simply gets no track record panel.
+  const registryWallet = agentByTokenId(agent.tokenId)?.wallet ?? null;
   const blocked = activationBlockedReason({
     tokenId: agent.tokenId,
     endpointLive: await endpointIsLive(agent),
@@ -283,6 +290,20 @@ async function AgentContent({
       {verified && (
         <div className="mt-4">
           <ProofPanel agent={verified} />
+        </div>
+      )}
+
+      {registryWallet && (
+        <div className="mt-4">
+          <Suspense
+            fallback={
+              <Panel title="Track record">
+                <p className="text-sm text-muted-2">Loading track record…</p>
+              </Panel>
+            }
+          >
+            <TrackRecordPanel wallet={registryWallet} />
+          </Suspense>
         </div>
       )}
 

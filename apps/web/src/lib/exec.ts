@@ -85,6 +85,85 @@ export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
   };
 }
 
+/**
+ * One agent's cumulative settlement record, reduced to the four numbers a
+ * reader compares across agents. Deliberately plain data: the leaderboard
+ * ranks these side by side, so nothing page-specific belongs here.
+ *
+ * `fills` counts settled orders. The other three describe that set and are
+ * null when it is empty, so a fresh agent reads as "nothing yet" rather than
+ * as a zero-surplus one.
+ */
+export interface TrackRecord {
+  fills: number;
+  avgSurplusBps: number | null;
+  /** Highest surplus of any single fill, which can be negative. */
+  bestFillBps: number | null;
+  /** ISO timestamp of the earliest fill, the start of the record. */
+  firstSeen: string | null;
+}
+
+/**
+ * Pure reduction over execution rows, kept separate from the fetch so the
+ * counting rules are testable without an orderbook.
+ *
+ * Only `fulfilled` orders count: an open or expired order is an intention,
+ * not a track record. Surplus averages over the fills that priced, so a fill
+ * whose surplus is not computable still counts as a fill without dragging the
+ * average toward zero.
+ */
+export function aggregateTrackRecord(
+  rows: readonly Pick<ExecOrderRow, 'status' | 'surplusBps' | 'creationDate'>[],
+): TrackRecord {
+  let fills = 0;
+  let bpsSum = 0;
+  let bpsCount = 0;
+  let best: number | null = null;
+  let firstSeen: string | null = null;
+  let firstSeenAt = Number.POSITIVE_INFINITY;
+
+  for (const row of rows) {
+    if (row.status !== 'fulfilled') continue;
+    fills += 1;
+
+    if (row.surplusBps !== null && Number.isFinite(row.surplusBps)) {
+      bpsSum += row.surplusBps;
+      bpsCount += 1;
+      if (best === null || row.surplusBps > best) best = row.surplusBps;
+    }
+    // Upstream dates are ISO strings, but this list comes off a public API:
+    // one unparseable date must not become the record's start.
+    const at = Date.parse(row.creationDate);
+    if (Number.isFinite(at) && at < firstSeenAt) {
+      firstSeenAt = at;
+      firstSeen = row.creationDate;
+    }
+  }
+
+  return {
+    fills,
+    avgSurplusBps: bpsCount > 0 ? bpsSum / bpsCount : null,
+    bestFillBps: best,
+    firstSeen,
+  };
+}
+
+/**
+ * Cumulative track record for one wallet, over the same cached Ophis-attributed
+ * order fetch the execution panel reads.
+ *
+ * The address is lower-cased before it goes in, because the cache key is the
+ * argument: the registry stores a checksummed wallet and the index serves the
+ * same address lower-cased, so without this a page rendering both panels would
+ * fetch the same orders twice under two keys.
+ */
+export async function getTrackRecord(owner: string): Promise<TrackRecord> {
+  'use cache';
+  cacheLife('minutes');
+  const exec = await getExecutionSummary(owner.toLowerCase());
+  return aggregateTrackRecord(exec.rows);
+}
+
 export interface ReceiptPayload {
   receipt: MevProofReceipt;
   order: CowOrder;
