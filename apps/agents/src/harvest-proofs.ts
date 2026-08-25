@@ -67,6 +67,14 @@ export const POSITION_ID = /^[1-9][0-9]{0,17}$/;
 const NOT_AN_EXECUTION =
   /-(error|failed|failure|skip|skipped|blocked|deferred|ignored|reverted|timeout|unavailable|empty)$/;
 
+/**
+ * Event names whose suffix says an ORDER actually executed: lp-range's
+ * `ophis-order-filled`, and any later `*-filled` / `*-settled` line an agent
+ * writes for a uid it submitted. Nothing else confirms a uid, which is the
+ * whole point of the rule below.
+ */
+const FILL_EVENT = /-(filled|settled)$/;
+
 export interface HarvestedProof {
   /** The agent that logged it, from the line's own `agent` field. */
   slug: string;
@@ -103,7 +111,38 @@ function validAt(value: unknown): string | undefined {
   return text && Number.isFinite(Date.parse(text)) ? text : undefined;
 }
 
-function proofFromEntry(entry: Record<string, unknown>, fallbackSlug: string): HarvestedProof | null {
+/** Slug the line belongs to: its own `agent` field, else the file's agent. */
+function slugOf(entry: Record<string, unknown>, fallbackSlug: string): string {
+  return stringValue(entry.agent) ?? fallbackSlug;
+}
+
+/**
+ * The order uids this log says actually executed, keyed `slug:uid`.
+ *
+ * An Ophis order is signed and submitted, then lives in the batch auction for
+ * about thirty minutes and may expire having never traded. So a `*-submitted`
+ * line records an intention, and only a fill line records an execution. The
+ * scope is per agent: one agent's fill says nothing about another's uid.
+ */
+function filledOrderUids(
+  entries: readonly Record<string, unknown>[],
+  fallbackSlug: string,
+): Set<string> {
+  const filled = new Set<string>();
+  for (const entry of entries) {
+    const event = stringValue(entry.event);
+    if (!event || !FILL_EVENT.test(event) || NOT_AN_EXECUTION.test(event)) continue;
+    const uid = orderUidRef(entry.orderUid);
+    if (uid) filled.add(`${slugOf(entry, fallbackSlug)}:${uid.toLowerCase()}`);
+  }
+  return filled;
+}
+
+function proofFromEntry(
+  entry: Record<string, unknown>,
+  fallbackSlug: string,
+  filled: ReadonlySet<string>,
+): HarvestedProof | null {
   const event = stringValue(entry.event);
   const at = validAt(entry.at);
   if (!event || !at || NOT_AN_EXECUTION.test(event)) return null;
@@ -111,21 +150,27 @@ function proofFromEntry(entry: Record<string, unknown>, fallbackSlug: string): H
   // A line that carries more than one reference is anchored to the strongest
   // one: a settlement tx hash beats an Ophis order uid beats a position id.
   // lp-range's `minted` logs both tx and position id (the position id is
-  // logged again on every later range check); grid's `order-filled` logs only
-  // an order uid, since Ophis batch auctions never hand the agent a
-  // settlement tx hash of its own. An order uid is stored as kind: 'tx', the
-  // same convention the registry already uses for grid's pinned proof
-  // (packages/shared/src/agents.ts, grid record): it is as strong an anchor
-  // as a tx hash, just not shaped like one.
+  // logged again on every later range check); an Ophis trade logs only an
+  // order uid, since batch auctions never hand the agent a settlement tx hash
+  // of its own. An order uid is stored as kind: 'tx', the same convention the
+  // registry already uses for grid's pinned proof (packages/shared/src/agents.ts,
+  // grid record): it is as strong an anchor as a tx hash, just not shaped like
+  // one, but ONLY once the log records that the order filled. grid, grid-b and
+  // weight-rebalancer log `*-submitted` and nothing else today, so their uids
+  // are carried here and harvested the day a fill line joins them.
   const tx = txRef(entry.txHash);
-  const orderUid = tx ? undefined : orderUidRef(entry.orderUid);
+  const submittedUid = tx ? undefined : orderUidRef(entry.orderUid);
+  const orderUid =
+    submittedUid && filled.has(`${slugOf(entry, fallbackSlug)}:${submittedUid.toLowerCase()}`)
+      ? submittedUid
+      : undefined;
   const txLike = tx ?? orderUid;
   const position = txLike ? undefined : positionRef(entry.positionTokenId ?? entry.tokenId);
   const ref = txLike ?? position;
   if (!ref) return null;
 
   return {
-    slug: stringValue(entry.agent) ?? fallbackSlug,
+    slug: slugOf(entry, fallbackSlug),
     kind: txLike ? 'tx' : 'position',
     ref,
     at,
@@ -139,9 +184,12 @@ function proofFromEntry(entry: Record<string, unknown>, fallbackSlug: string): H
  * a truncated last line is the normal state of a log the runner is still
  * writing to. `fallbackSlug` names the agent for lines written before the
  * chassis stamped `agent` onto every line.
+ *
+ * Read whole rather than line by line, because an order uid is only a proof
+ * once some OTHER line in the same log records that it filled.
  */
 export function harvestProofs(lines: readonly string[], fallbackSlug = ''): HarvestedProof[] {
-  const found: HarvestedProof[] = [];
+  const entries: Record<string, unknown>[] = [];
   for (const line of lines) {
     let entry: unknown;
     try {
@@ -150,7 +198,13 @@ export function harvestProofs(lines: readonly string[], fallbackSlug = ''): Harv
       continue; // a partial write, or a stray console line in the file
     }
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
-    const proof = proofFromEntry(entry as Record<string, unknown>, fallbackSlug);
+    entries.push(entry as Record<string, unknown>);
+  }
+
+  const filled = filledOrderUids(entries, fallbackSlug);
+  const found: HarvestedProof[] = [];
+  for (const entry of entries) {
+    const proof = proofFromEntry(entry, fallbackSlug, filled);
     if (proof) found.push(proof);
   }
 
