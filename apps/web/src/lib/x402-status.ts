@@ -1,9 +1,8 @@
 'use server';
 
 import { agentBySlug } from '@agripinaa/shared/agents';
-import { OversizedBodyError, safeFetchBytes } from '@agripinaa/shared/ssrf';
 
-import { runnerUrl } from '@/lib/runner-url';
+import { fetchFromRunner, runnerFailure } from '@/lib/proxy-runner';
 
 /** A status body is a few hundred bytes of numbers plus ten fills; 64 KB is ample. */
 const MAX_UPSTREAM_BYTES = 64 * 1024;
@@ -26,15 +25,17 @@ export type StatusEndpointAnswer =
  *
  * It is still reachable by anyone who can POST to the page, so the slug is
  * treated as untrusted and checked against the registry before anything is
- * resolved (runnerUrl() may spend a KV command). The tunnel is an untrusted
- * boundary, so the call goes through the shared SSRF guard with redirects
- * refused and the body capped while it streams. Nothing is thrown: every
- * outcome is a value the panel has a state for.
+ * resolved (resolving the runner base may spend a KV command). The call itself
+ * is the shared `lib/proxy-runner.ts` one, the same guarded fetch and the same
+ * failure split the two managed routes use, so the three of them cannot drift
+ * apart on what a dead tunnel means. This caller parses the bytes instead of
+ * echoing them, which is why it stops at `fetchFromRunner`. Nothing is thrown:
+ * every outcome is a value the panel has a state for.
  */
 export async function askStatusEndpoint(slug: string): Promise<StatusEndpointAnswer> {
   if (!agentBySlug(slug)) return { kind: 'unknown-agent' };
   try {
-    const upstream = await safeFetchBytes(await runnerUrl(`/${slug}/status`), {
+    const upstream = await fetchFromRunner(`/${slug}/status`, {
       timeoutMs: 5_000,
       maxBytes: MAX_UPSTREAM_BYTES,
       maxRedirects: 0,
@@ -42,7 +43,7 @@ export async function askStatusEndpoint(slug: string): Promise<StatusEndpointAns
     });
     return { kind: 'answered', status: upstream.status, body: parseJson(upstream.bytes) };
   } catch (err) {
-    return { kind: err instanceof OversizedBodyError ? 'oversized' : 'unreachable' };
+    return { kind: runnerFailure(err) };
   }
 }
 

@@ -7,7 +7,7 @@ import { RouterPanel } from '@/components/RouterPanel';
 import { clampDescription } from '@/lib/site';
 
 const DESCRIPTION = clampDescription(
-  'The two AgripinaaYieldRouter deployments on BNB Smart Chain: addresses, balances under management, every rotation on record, and why a compromised agent key cannot move funds anywhere except back to their owner.',
+  'The two AgripinaaYieldRouter deployments on BNB Smart Chain: addresses, balances under management, the rotations each scan reaches, and why a compromised agent key cannot move funds anywhere except back to their owner.',
 );
 
 export const metadata: Metadata = {
@@ -45,9 +45,10 @@ export default function FundsPage() {
         When you hand Agripinaa&apos;s yield agent a session key, the key is scoped to
         one contract: the AgripinaaYieldRouter. Your funds never leave your own
         smart account, and the agent&apos;s only power is to move them between Aave,
-        Venus, and idle. Both deployments are below with their balances and every
-        rotation they have recorded, so you can check that before you deposit
-        anything, and audit it afterwards.
+        Venus, and idle. Both deployments are below with their balances and their
+        most recent rotations, each panel stating the block its scan reaches back
+        to, so you can check that before you deposit anything, and audit it
+        afterwards.
       </p>
 
       <div className="mt-8 space-y-6">

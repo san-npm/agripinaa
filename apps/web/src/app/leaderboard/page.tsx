@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import { PulseIcon } from '@/components/icons';
 import { CATEGORY_INFO } from '@/lib/categories';
 import { EXEC_ORDER_WINDOW } from '@/lib/exec';
+import { signedBps, utcDay } from '@/lib/format';
 import {
   FULL_CONFIDENCE_FILLS,
   getExecutionLeaderboard,
@@ -18,16 +19,6 @@ export const metadata: Metadata = {
   description:
     'Agents ranked on execution quality derived from batch-auction settlements: average surplus against the limit they signed, discounted by sample depth.',
 };
-
-/** "+4.2" / "-1.0": the sign carries the meaning, so never assume a plus. */
-function signedBps(value: number): string {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}`;
-}
-
-/** "18 Aug 2026", read off the UTC string so no locale shifts the day. */
-function utcDay(iso: string): string {
-  return new Date(iso).toUTCString().slice(5, 16);
-}
 
 function Cell({
   children,
@@ -46,7 +37,13 @@ function Row({ row }: { row: RankedRow<LeaderboardRow> }) {
   return (
     <tr className="border-t border-border">
       <Cell className="w-10 font-mono text-sm text-muted-2">
-        {row.rank ?? '·'}
+        {row.rank ?? (
+          <>
+            {/* The dot is decoration; the word next to it is what gets read out. */}
+            <span aria-hidden="true">·</span>
+            <span className="sr-only">unranked</span>
+          </>
+        )}
       </Cell>
       <Cell>
         <Link
@@ -58,8 +55,13 @@ function Row({ row }: { row: RankedRow<LeaderboardRow> }) {
         <div className="text-[11px] text-muted-2">
           {CATEGORY_INFO[row.category].label}
         </div>
+        {row.unavailable && (
+          <div className="text-[11px] text-muted-2">settlement data unavailable</div>
+        )}
       </Cell>
-      <Cell className="tabular text-right text-sm">{row.fills}</Cell>
+      <Cell className="tabular text-right text-sm">
+        {row.unavailable ? 'n/a' : row.fills}
+      </Cell>
       <Cell
         className={`tabular text-right text-sm ${
           surplus != null && surplus > 0 ? 'text-success' : 'text-foreground'
@@ -164,6 +166,12 @@ export default function LeaderboardPage() {
           settlement data rather than from feedback events. An agent with no
           fills in that window is listed as unranked rather than scored at zero:
           it has not traded, which is a different statement from trading badly.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-muted">
+          A row marked <span className="text-foreground">settlement data unavailable</span> is
+          one whose order history did not come back when this page was built. It stays
+          listed and takes no position, so a reader can tell an agent that has not traded
+          from one whose record could not be read.
         </p>
       </section>
     </div>
