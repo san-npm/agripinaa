@@ -1,7 +1,7 @@
 import { CATEGORIES } from '@agripinaa/agent-index/types';
 
 import { CATEGORY_INFO } from './categories';
-import { sanitizeFields, type ClaimFields } from './claim-message';
+import { sameAddress, sanitizeFields, type ClaimFields } from './claim-message';
 
 /**
  * The form half of the claim flow: what the four inputs are called, and how the
@@ -68,4 +68,26 @@ export function prepareClaim(input: {
     (key) => input.values[key].trim() !== '' && fields[key] === '',
   );
   return { fields, dropped };
+}
+
+/**
+ * Where the connected account stands against the owner the page resolved.
+ *
+ * 'unconfirmed' is the state that matters. When `ownerOf` did not answer, the
+ * address on the page came from the index and can be a transfer behind, so a
+ * difference is no evidence of anything and the browser has no grounds to
+ * refuse the submission: POST /api/claim reads the registry itself and
+ * decides. Only an address the chain reported is worth blocking on here.
+ */
+export type OwnerStatus = 'match' | 'mismatch' | 'unconfirmed';
+
+export function ownerStatus(input: {
+  /** The address the wallet is currently connected with. */
+  account: string;
+  owner: string;
+  /** False when `owner` came from the index rather than from `ownerOf`. */
+  ownerFromChain: boolean;
+}): OwnerStatus {
+  if (sameAddress(input.account, input.owner)) return 'match';
+  return input.ownerFromChain ? 'mismatch' : 'unconfirmed';
 }
