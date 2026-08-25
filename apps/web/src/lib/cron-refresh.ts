@@ -29,6 +29,17 @@ import type { ClaimRecord } from './claims';
 /** Wall clock for the whole run. Vercel's function ceiling is the reason. */
 const DEFAULT_BUDGET_MS = 50_000;
 
+/**
+ * Cap on one hub warm, the same 5 s one probe gets (see liveness.ts).
+ *
+ * The warm path ends in a keyed upstream request and a few chain reads, none of
+ * which the caller can cancel. Without a cap of its own, a warm would be raced
+ * against everything the run has left, so a single upstream that accepts the
+ * connection and then goes quiet would spend the whole budget and leave every
+ * claimed endpoint un-probed.
+ */
+const DEFAULT_WARM_TIMEOUT_MS = 5_000;
+
 /** Endpoints probed at once. Enough to get through the claims, gentle on them. */
 const DEFAULT_CONCURRENCY = 4;
 
@@ -85,6 +96,8 @@ export interface RefreshDeps {
   warmHub: (category: Category) => Promise<void>;
   now: () => number;
   budgetMs?: number;
+  /** Cap on one hub warm. Defaults to 5 s. */
+  warmTimeoutMs?: number;
   concurrency?: number;
 }
 
@@ -107,10 +120,11 @@ export interface RefreshCounts {
 type Outcome<T> = { status: 'done'; value: T } | { status: 'timeout' } | { status: 'failed' };
 
 /**
- * Run one unit against the remaining budget. A unit that overruns hands control
- * back so the response can still be written: the work itself is not cancelled
- * (nothing downstream takes a signal), it just stops being waited on, which is
- * the same shape probeEndpoint uses for its own wall clock.
+ * Run one unit against a deadline. A unit that overruns hands control back so
+ * the response can still be written: the work is not cancelled here, it stops
+ * being waited on, which is the same shape probeEndpoint uses for its own wall
+ * clock. Each leg carries a deadline of its own as well (a probe's 5 s, an
+ * upstream request's), so this race is a backstop rather than the only bound.
  */
 async function withDeadline<T>(work: () => Promise<T>, ms: number): Promise<Outcome<T>> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -137,23 +151,15 @@ function plural(count: number, one: string, many: string): string {
 export async function runRefresh(deps: RefreshDeps): Promise<RefreshCounts> {
   const startedAt = deps.now();
   const budgetMs = deps.budgetMs ?? DEFAULT_BUDGET_MS;
+  const warmTimeoutMs = deps.warmTimeoutMs ?? DEFAULT_WARM_TIMEOUT_MS;
   const concurrency = deps.concurrency ?? DEFAULT_CONCURRENCY;
   const remaining = () => budgetMs - (deps.now() - startedAt);
   const unfinished: string[] = [];
 
-  // Warming first: it is four calls whatever the claim count, and it is what
-  // every visitor to a hub hits. A claim that misses its re-probe keeps its
-  // stored result until the freshness window ends, so it degrades later.
-  let warmed = 0;
-  for (const category of CATEGORIES) {
-    const outcome =
-      remaining() > 0
-        ? await withDeadline(() => deps.warmHub(category), remaining())
-        : ({ status: 'timeout' } as const);
-    if (outcome.status === 'done') warmed++;
-    else unfinished.push(`hub ${category} not warmed`);
-  }
-
+  // Probes first. Liveness is the half nothing else re-runs: a stored result is
+  // evidence for 24 hours and no page render refreshes it, so a claim that
+  // misses two runs loses its badge. A hub that misses its warm costs one cold
+  // page render, and a visitor warms it anyway.
   let records: ClaimRecord[] = [];
   try {
     records = await deps.listClaims();
@@ -189,6 +195,19 @@ export async function runRefresh(deps: RefreshDeps): Promise<RefreshCounts> {
   }
   if (timedOut > 0) {
     unfinished.push(`${plural(timedOut, 'endpoint probe', 'endpoint probes')} timed out`);
+  }
+
+  // Then the hubs, each against its own cap as well as the budget, so what is
+  // left of the run is spent on the four of them rather than on the first one.
+  let warmed = 0;
+  for (const category of CATEGORIES) {
+    const allowance = Math.min(remaining(), warmTimeoutMs);
+    const outcome =
+      allowance > 0
+        ? await withDeadline(() => deps.warmHub(category), allowance)
+        : ({ status: 'timeout' } as const);
+    if (outcome.status === 'done') warmed++;
+    else unfinished.push(`hub ${category} not warmed`);
   }
 
   return {
