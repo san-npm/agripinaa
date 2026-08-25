@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Hex } from 'viem';
+import { encodeErrorResult, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
 import {
@@ -9,16 +9,21 @@ import {
   claimIsStale,
   claimKey,
   decideClaim,
+  decideClaimLookup,
   getClaim,
   listClaims,
+  liveClaimChain,
   sanitizeFields,
   saveClaim,
   verifyClaimSignature,
+  type ChainRead,
   type ClaimChain,
   type ClaimFields,
   type ClaimKv,
   type ClaimRecord,
 } from '../src/lib/claims';
+
+import { newState, recordingFetch, withFetch } from './fetch-stub';
 
 const account = privateKeyToAccount(`0x${'11'.repeat(32)}`);
 const fields = {
@@ -102,20 +107,35 @@ interface TestChain extends ClaimChain {
   reads: { ownerOf: number; hasBytecode: number };
 }
 
-function chainOwnedBy(owner: string | null, opts: { contract?: boolean } = {}): TestChain {
+/**
+ * A chain that answers with `owner`. `down` names a read whose node does not
+ * answer, either by reporting itself unavailable or (with `throwing`) by
+ * blowing up, which must come to the same thing.
+ */
+function chainOwnedBy(
+  owner: string | null,
+  opts: { contract?: boolean; down?: 'ownerOf' | 'hasBytecode'; throwing?: boolean } = {},
+): TestChain {
   const reads = { ownerOf: 0, hasBytecode: 0 };
+  const answer = <T>(part: 'ownerOf' | 'hasBytecode', value: T): ChainRead<T> => {
+    if (opts.down !== part) return { ok: true, value };
+    if (opts.throwing) throw new Error('socket hang up');
+    return { ok: false, reason: 'unavailable' };
+  };
   return {
     reads,
     ownerOf: async () => {
       reads.ownerOf += 1;
-      return owner as Hex | null;
+      return answer('ownerOf', owner as Hex | null);
     },
     hasBytecode: async () => {
       reads.hasBytecode += 1;
-      return opts.contract ?? false;
+      return answer('hasBytecode', opts.contract ?? false);
     },
   };
 }
+
+const CHAIN_UNAVAILABLE = 'the chain is not answering right now, please try again';
 
 /** 30 seconds after the fixture's issuedAt: inside the replay window. */
 const NOW = Date.parse('2026-08-24T12:00:30.000Z');
@@ -197,6 +217,31 @@ test('an agent id with no owner on chain is refused', async () => {
     status: 400,
     message: 'this agent id has no owner on chain',
   });
+});
+
+test('a chain that does not answer is a 503, not an agent id with no owner', async () => {
+  for (const throwing of [false, true]) {
+    const chain = chainOwnedBy(account.address, { down: 'ownerOf', throwing });
+    const decision = await decide({ body: await signedBody(), chain });
+    assert.deepEqual(
+      decision,
+      { ok: false, status: 503, message: CHAIN_UNAVAILABLE },
+      throwing ? 'a throwing read' : 'a read that reports itself unavailable',
+    );
+  }
+});
+
+test('a bytecode read that does not answer is a 503, not a wrong-owner 401', async () => {
+  for (const throwing of [false, true]) {
+    // The signature recovers to the account, which is not this owner, so the
+    // contract-wallet question is asked and cannot be answered.
+    const chain = chainOwnedBy('0x000000000000000000000000000000000000C0DE', {
+      down: 'hasBytecode',
+      throwing,
+    });
+    const decision = await decide({ body: await signedBody(), chain });
+    assert.deepEqual(decision, { ok: false, status: 503, message: CHAIN_UNAVAILABLE });
+  }
 });
 
 test('a claim signed outside the ten minute window is refused in both directions', async () => {
@@ -349,4 +394,148 @@ test('a stored value that is not a claim is ignored rather than served', async (
 test('an agent with no claim reads as no claim', async () => {
   assert.equal(await getClaim(56, '111', { kv: memoryKv() }), null);
   assert.deepEqual(await listClaims(memoryKv()), []);
+});
+
+/**
+ * The live chain reads, against a stubbed transport. What matters is the one
+ * distinction the decision rests on: the contract saying there is no such token
+ * against the node saying nothing at all.
+ */
+const rpcResult = (result: string) =>
+  new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), { status: 200 });
+const rpcError = (error: { code: number; message: string; data?: string }) =>
+  new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error }), { status: 200 });
+
+test('a revert from ownerOf reads as no owner', async () => {
+  const data = encodeErrorResult({
+    abi: [{ type: 'error', name: 'Error', inputs: [{ name: 'reason', type: 'string' }] }],
+    errorName: 'Error',
+    args: ['ERC721: invalid token ID'],
+  });
+  const stub = recordingFetch(newState(), () =>
+    rpcError({ code: 3, message: 'execution reverted', data }),
+  );
+  assert.deepEqual(await withFetch(stub, () => liveClaimChain.ownerOf('297380')), {
+    ok: true,
+    value: null,
+  });
+});
+
+test('an rpc that fails reads as unavailable rather than as no owner', async () => {
+  const cases: { what: string; respond: () => Response }[] = [
+    {
+      what: 'a proxy answering with something that is not json-rpc',
+      respond: () => new Response('<html>bad gateway</html>', { status: 400 }),
+    },
+    {
+      what: 'a node that does not serve eth_call',
+      respond: () => rpcError({ code: -32601, message: 'the method eth_call does not exist' }),
+    },
+  ];
+  for (const { what, respond } of cases) {
+    const state = newState();
+    const read = await withFetch(recordingFetch(state, respond), () =>
+      liveClaimChain.ownerOf('297380'),
+    );
+    assert.deepEqual(read, { ok: false, reason: 'unavailable' }, what);
+    assert.ok(state.calls.length > 0, what);
+  }
+});
+
+test('an owner that ownerOf answers with is returned, and the zero address is not', async () => {
+  const padded = (address: string) => `0x${'0'.repeat(24)}${address.slice(2).toLowerCase()}`;
+  const owned = recordingFetch(newState(), () => rpcResult(padded(account.address)));
+  assert.deepEqual(await withFetch(owned, () => liveClaimChain.ownerOf('297380')), {
+    ok: true,
+    value: account.address,
+  });
+
+  const zero = recordingFetch(newState(), () => rpcResult(`0x${'0'.repeat(64)}`));
+  assert.deepEqual(await withFetch(zero, () => liveClaimChain.ownerOf('297380')), {
+    ok: true,
+    value: null,
+  });
+});
+
+test('an agent id that is not one costs no rpc call at all', async () => {
+  const state = newState();
+  const stub = recordingFetch(state, () => rpcResult(`0x${'0'.repeat(64)}`));
+  assert.deepEqual(await withFetch(stub, () => liveClaimChain.ownerOf('drop table')), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(state.calls, []);
+});
+
+test('a bytecode read that fails reads as unavailable', async () => {
+  const stub = recordingFetch(newState(), () => new Response('nope', { status: 400 }));
+  assert.deepEqual(
+    await withFetch(stub, () => liveClaimChain.hasBytecode(account.address)),
+    { ok: false, reason: 'unavailable' },
+  );
+});
+
+test('leading zeros in an agent id do not hide the claim stored under it', async () => {
+  const kv = memoryKv();
+  await saveClaim(recordFor('297380', account.address), kv);
+
+  assert.equal(claimKey(56, '000297380'), claimKey(56, '297380'));
+  assert.equal((await getClaim(56, '000297380', { kv }))?.fields.tokenId, '297380');
+  assert.equal(await getClaim(56, 'not an id', { kv }), null);
+  assert.equal(kv.store.has(`agripinaa:claim:56:`), false);
+});
+
+test('a lookup answers with the stored claim and never reads the chain', async () => {
+  const kv = memoryKv();
+  await saveClaim(recordFor('297380', account.address), kv);
+
+  const found = await decideClaimLookup({ chainId: '56', tokenId: '000297380', kv });
+  assert.equal(found.ok, true);
+  assert.equal(found.ok && found.record.signer, account.address);
+
+  assert.deepEqual(await decideClaimLookup({ chainId: 56, tokenId: '111', kv }), {
+    ok: false,
+    status: 404,
+    message: 'no claim for this agent',
+  });
+});
+
+test('a lookup refuses a query it cannot read', async () => {
+  const kv = memoryKv();
+  const cases: { query: { chainId: unknown; tokenId: unknown; owner?: unknown }; message: string }[] = [
+    { query: { chainId: '97', tokenId: '297380' }, message: 'claims are supported on bnb chain only' },
+    { query: { chainId: null, tokenId: '297380' }, message: 'claims are supported on bnb chain only' },
+    { query: { chainId: '56', tokenId: 'nope' }, message: 'bad agent id' },
+    { query: { chainId: '56', tokenId: null }, message: 'bad agent id' },
+    { query: { chainId: '56', tokenId: '297380', owner: 'me' }, message: 'bad owner address' },
+  ];
+  for (const { query, message } of cases) {
+    assert.deepEqual(await decideClaimLookup({ ...query, kv }), { ok: false, status: 400, message });
+  }
+});
+
+test('a lookup with the new owner reports a transferred claim as gone, not as current', async () => {
+  const kv = memoryKv();
+  const newOwner = privateKeyToAccount(`0x${'44'.repeat(32)}`).address;
+  await saveClaim(recordFor('297380', account.address), kv);
+
+  assert.deepEqual(await decideClaimLookup({ chainId: 56, tokenId: '297380', owner: newOwner, kv }), {
+    ok: false,
+    status: 404,
+    message: 'this identity has changed hands since it was claimed',
+  });
+  const still = await decideClaimLookup({
+    chainId: 56,
+    tokenId: '297380',
+    owner: account.address.toLowerCase(),
+    kv,
+  });
+  assert.equal(still.ok, true);
+});
+
+test('a lookup without kv says so rather than reporting the agent unclaimed', async () => {
+  assert.deepEqual(
+    await decideClaimLookup({ chainId: 56, tokenId: '297380', kv: memoryKv({ available: false }) }),
+    { ok: false, status: 503, message: 'kv not configured' },
+  );
 });

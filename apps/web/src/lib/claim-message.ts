@@ -8,6 +8,12 @@ import { recoverTypedDataAddress, type Hex, type TypedDataDefinition } from 'vie
  * and RPC: the browser has to build and sign the exact same message the server
  * verifies, so the definition lives in one isomorphic module and the server
  * side (storage, ownership, rate limits) sits in `claims.ts` on top of it.
+ *
+ * Client components import `buildClaimMessage` and `sanitizeFields` from here,
+ * never from `@/lib/claims`: that module is `server-only` and pulls the KV
+ * client with it, so importing it from a `'use client'` file fails the build.
+ * The browser must sanitise the form values and sign the sanitised result,
+ * because the server verifies the signature over the sanitised fields.
  */
 
 export const CLAIM_DOMAIN_NAME = 'Agripinaa';
@@ -54,7 +60,22 @@ export const MAX_URL_CHARS = 300;
 export const CLAIM_REPLAY_WINDOW_MS = 10 * 60 * 1_000;
 
 /** uint256 in decimal is at most 78 digits. */
-const TOKEN_ID = /^\d{1,78}$/;
+const AGENT_ID = /^\d{1,78}$/;
+
+/**
+ * The one agent-id rule in the claim flow: a decimal uint256, normalised so
+ * `000297380` and `297380` are the same id and land on the same KV key. Anything
+ * else answers '', which every caller reads as "not an agent id".
+ *
+ * Exported because the query parser, the KV key, and the field sanitiser all
+ * need it and a second copy of the pattern would eventually disagree with this
+ * one. Trimmed input longer than 78 digits is refused rather than truncated: a
+ * cut-down id is a different id.
+ */
+export function normalizeAgentId(value: unknown): string {
+  const raw = cleanText(value, 79);
+  return AGENT_ID.test(raw) ? BigInt(raw).toString() : '';
+}
 
 function cleanText(value: unknown, max: number): string {
   if (typeof value !== 'string') return '';
@@ -99,11 +120,10 @@ function cleanUrl(value: unknown): string {
 export function sanitizeFields(input: unknown): ClaimFields {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const chainId = Number(raw.chainId);
-  const tokenId = cleanText(raw.tokenId, 78);
   const category = CATEGORIES.find((c) => c === raw.category);
   return {
     chainId: Number.isSafeInteger(chainId) && chainId > 0 ? chainId : 0,
-    tokenId: TOKEN_ID.test(tokenId) ? BigInt(tokenId).toString() : '',
+    tokenId: normalizeAgentId(raw.tokenId),
     description: cleanText(raw.description, MAX_DESCRIPTION_CHARS),
     category: category ?? 'other',
     website: cleanUrl(raw.website),

@@ -1,10 +1,4 @@
-import {
-  CLAIM_CHAIN_ID,
-  claimIsStale,
-  decideClaim,
-  getClaim,
-  liveClaimChain,
-} from '@/lib/claims';
+import { decideClaim, decideClaimLookup, liveClaimChain } from '@/lib/claims';
 
 /**
  * An agent's on-chain owner proves control with an EIP-712 signature and
@@ -29,37 +23,28 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 /**
- * The stored claim for one agent. A claim only speaks for the owner who signed
- * it, so the current owner is read back here and a claim left behind by a
- * transfer is reported as gone rather than served as current.
+ * The stored claim for one agent, read from KV and nowhere else. What the query
+ * means and what to answer is `decideClaimLookup`; this handler only unwraps
+ * the query string.
+ *
+ * `owner` is optional. Pass the current on-chain owner (an agent page has read
+ * it already) and a claim left behind by a transfer is reported as gone instead
+ * of served; the answer always carries `claim.signer`, so a caller can make the
+ * same comparison itself.
  */
 export async function GET(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const chainId = Number(url.searchParams.get('chainId') ?? '');
-  const tokenId = url.searchParams.get('tokenId') ?? '';
+  const params = new URL(request.url).searchParams;
+  const lookup = await decideClaimLookup({
+    chainId: params.get('chainId'),
+    tokenId: params.get('tokenId'),
+    owner: params.get('owner'),
+  });
 
-  if (chainId !== CLAIM_CHAIN_ID) {
-    return Response.json({ error: 'claims are supported on bnb chain only' }, { status: 400 });
+  if (!lookup.ok) {
+    return Response.json({ error: lookup.message }, { status: lookup.status });
   }
-  if (!/^\d{1,78}$/.test(tokenId)) {
-    return Response.json({ error: 'bad agent id' }, { status: 400 });
-  }
-
-  const record = await getClaim(chainId, tokenId);
-  if (!record) {
-    return Response.json({ error: 'no claim for this agent' }, { status: 404 });
-  }
-
-  const owner = await liveClaimChain.ownerOf(tokenId);
-  if (claimIsStale(record, owner)) {
-    return Response.json(
-      { error: 'this identity has changed hands since it was claimed' },
-      { status: 404 },
-    );
-  }
-
   return Response.json(
-    { claim: record, owner },
+    { claim: lookup.record },
     { headers: { 'cache-control': 'public, s-maxage=30, stale-while-revalidate=60' } },
   );
 }
