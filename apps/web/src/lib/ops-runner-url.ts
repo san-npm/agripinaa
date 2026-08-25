@@ -1,9 +1,8 @@
 import 'server-only';
 
-import { createHash, timingSafeEqual } from 'node:crypto';
-
 import { assertResolvedHostPublic, type LookupFn } from '@agripinaa/shared/ssrf';
 
+import { bearerMatches } from './bearer';
 import { isSafeRunnerUrl } from './runner-url';
 
 /**
@@ -12,22 +11,9 @@ import { isSafeRunnerUrl } from './runner-url';
  */
 const MAX_BODY_BYTES = 4_096;
 
-const BEARER_PREFIX = 'Bearer ';
-
 export type RunnerUrlReport =
   | { ok: true; url: string }
   | { ok: false; status: 400 | 401 | 503; message: string };
-
-/**
- * Compare digests rather than the raw strings, so neither the token's bytes nor
- * its length can be recovered from response timing on a public endpoint.
- */
-function bearerMatches(header: string | null, token: string): boolean {
-  if (!header || !header.startsWith(BEARER_PREFIX)) return false;
-  const presented = createHash('sha256').update(header.slice(BEARER_PREFIX.length)).digest();
-  const expected = createHash('sha256').update(token).digest();
-  return timingSafeEqual(presented, expected);
-}
 
 /**
  * Everything POST /api/ops/runner-url decides before it writes, kept separate

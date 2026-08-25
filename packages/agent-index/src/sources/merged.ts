@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseSnapshot } from '../snapshot';
 import type { AgentIndexSource } from '../source';
 import type {
   AgentDetail,
@@ -70,8 +71,9 @@ export class MergedSource implements AgentIndexSource {
         join(SNAPSHOT_DIR, `agents-${chainId}.json`),
         'utf8',
       );
-      const parsed = JSON.parse(raw) as { items: AgentSummary[] };
-      return parsed.items;
+      // Rows are stored compact (see src/snapshot.ts) and rebuilt here, so the
+      // rest of this class and every consumer keeps working in AgentSummary.
+      return parseSnapshot(raw)?.items ?? null;
     } catch {
       return null;
     }
