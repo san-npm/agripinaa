@@ -18,6 +18,12 @@ import {
   buildClaimMessage,
   type ClaimFields,
 } from '@/lib/claim-message';
+import {
+  endpointProbeLabel,
+  probeCountsAsLive,
+  readEndpointProbe,
+  type EndpointProbe,
+} from '@/lib/endpoint-probe';
 import { NoWalletError, connectInjected, injectedProvider } from '@/lib/injected-wallet';
 
 /**
@@ -76,6 +82,10 @@ export function ClaimForm({
   const [retryable, setRetryable] = useState(false);
   const [stored, setStored] = useState<ClaimFields | null>(null);
   const [dropped, setDropped] = useState<DroppedLink[]>([]);
+  // What our probe found about the endpoint that was just stored. The claim
+  // POST runs one and answers with the result; before it was rendered here, an
+  // owner whose endpoint timed out or answered 404 had no way to learn that.
+  const [probe, setProbe] = useState<EndpointProbe | null>(null);
 
   // Read through useSyncExternalStore rather than in render: `window.ethereum`
   // does not exist on the server, and a bare check would make the server and
@@ -112,6 +122,7 @@ export function ClaimForm({
     setError(null);
     setRetryable(false);
     setStored(null);
+    setProbe(null);
     try {
       // Reconnecting rather than holding a client in state: the account and the
       // network can both change in the wallet between connecting and signing,
@@ -154,6 +165,7 @@ export function ClaimForm({
       const body = (await response.json().catch(() => null)) as {
         error?: string;
         claim?: { fields?: ClaimFields };
+        liveness?: unknown;
       } | null;
 
       if (!response.ok) {
@@ -163,6 +175,7 @@ export function ClaimForm({
         return;
       }
       setStored(body?.claim?.fields ?? fields);
+      setProbe(readEndpointProbe(body?.liveness));
       setDropped(prepared.dropped);
     } catch (e) {
       fail(e instanceof NoWalletError ? e.message : messageOf(e));
@@ -178,6 +191,7 @@ export function ClaimForm({
         agentName={agentName}
         fields={stored}
         dropped={dropped}
+        probe={probe}
       />
     );
   }
@@ -203,8 +217,8 @@ export function ClaimForm({
 
         {!ownerFromChain && (
           <p className="text-xs leading-relaxed text-muted-2">
-            The RPC did not answer, so this owner comes from the index and may be behind the
-            chain. Your signature is still checked against the registry when you submit.
+            This owner comes from the index rather than from the registry, so it may be behind
+            the chain. Your signature is still checked against the registry when you submit.
           </p>
         )}
 
@@ -359,11 +373,13 @@ function StoredClaim({
   agentName,
   fields,
   dropped,
+  probe,
 }: {
   href: string;
   agentName: string;
   fields: ClaimFields;
   dropped: DroppedLink[];
+  probe: EndpointProbe | null;
 }) {
   const category = CLAIM_CATEGORY_OPTIONS.find((option) => option.value === fields.category);
   return (
@@ -379,7 +395,12 @@ function StoredClaim({
         <Stored label="Description" value={fields.description} />
         <Stored label="Category" value={category?.label ?? fields.category} />
         <Stored label="Website" value={fields.website} mono />
-        <Stored label="Endpoint" value={fields.endpoint} mono />
+        <Stored
+          label="Endpoint"
+          value={fields.endpoint}
+          mono
+          note={fields.endpoint ? endpointNote(probe, fields.endpoint) : undefined}
+        />
       </dl>
 
       {dropped.length > 0 && (
@@ -396,13 +417,36 @@ function StoredClaim({
   );
 }
 
-function Stored({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Stored({
+  label,
+  value,
+  mono,
+  note,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  note?: string;
+}) {
   return (
     <div>
       <dt className={labelCls}>{label}</dt>
       <dd className={`break-words ${mono ? 'font-mono text-xs text-muted' : 'text-foreground'}`}>
         {value || <span className="text-muted-2">not set</span>}
       </dd>
+      {note && <p className="mt-1 text-xs leading-relaxed text-muted-2">{note}</p>}
     </div>
   );
+}
+
+/**
+ * What our probe found about the endpoint that was just stored, and what the
+ * owner can do about it. The verdict wording is the same one the agent profile
+ * renders, so the two surfaces cannot describe one endpoint differently.
+ */
+function endpointNote(probe: EndpointProbe | null, endpoint: string): string {
+  const label = endpointProbeLabel(probe, endpoint);
+  return probeCountsAsLive(probe, endpoint)
+    ? `${label}. The listing carries a live badge for as long as an answer stays inside 24 hours.`
+    : `${label}. Sign again once it answers to re-check it, or wait for the next scheduled probe.`;
 }

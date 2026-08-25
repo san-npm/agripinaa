@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import { privateKeyToAccount } from 'viem/accounts';
 
 import { buildClaimMessage, sanitizeFields } from '../src/lib/claim-message';
+// throttle.ts touches no env of its own, so its constants can be imported here;
+// anything that reaches kv.ts has to be imported inside a test (see below).
+import { CHAIN_READ_LIMIT_PER_CLIENT } from '../src/lib/throttle';
 
 import { newState, recordingFetch, withFetch, type FetchState } from './fetch-stub';
 
@@ -54,6 +57,13 @@ function stubbed(
 ) {
   return recordingFetch(state, (url, init) => {
     if (!url.startsWith(`${KV_BASE}/`)) return rpc(url);
+    // MGET goes to the base as a command array rather than as a path; it is
+    // what the chain-read counter reads its two buckets with.
+    if (url === `${KV_BASE}/`) {
+      const command = JSON.parse(String(init?.body ?? '[]')) as string[];
+      if (command[0] !== 'MGET') return new Response('unexpected kv command', { status: 500 });
+      return Response.json({ result: command.slice(1).map((k) => store.get(k) ?? null) });
+    }
     const [command, rawKey] = url.slice(KV_BASE.length + 1).split('/');
     const key = decodeURIComponent(rawKey ?? '');
     if (command === 'get') return Response.json({ result: store.get(key) ?? null });
@@ -155,7 +165,17 @@ test('POST stores a claim signed by the owner the registry reports', async () =>
   );
 
   assert.equal(res.status, 200);
-  assert.equal(((await res.json()) as { stored: boolean }).stored, true);
+  const answered = (await res.json()) as {
+    stored: boolean;
+    liveness: { url: string; live: boolean; status?: number } | null;
+  };
+  assert.equal(answered.stored, true);
+  // The probe result comes back with the claim, so the form can say what the
+  // endpoint answered instead of dropping it and leaving the owner guessing.
+  assert.deepEqual(
+    { url: answered.liveness?.url, live: answered.liveness?.live, status: answered.liveness?.status },
+    { url: ENDPOINT, live: true, status: 200 },
+  );
   assert.equal(store.has(CLAIM_KEY), true);
   assert.deepEqual(JSON.parse(store.get('agripinaa:claims:index')!), ['56:297380']);
   assert.equal(rpcCalls(state).length, 1, 'one ownerOf read and nothing else');
@@ -200,6 +220,7 @@ test('POST probes nothing for a claim that carries no endpoint', async () => {
   );
 
   assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { liveness: unknown }).liveness, null, 'nothing to report');
   assert.equal(store.has(CLAIM_KEY), true);
   assert.equal(rpcCalls(state).length, 1, 'the ownerOf read, and nothing fetched after it');
   assert.equal([...store.keys()].some((k) => k.startsWith('agripinaa:liveness:')), false);
@@ -233,7 +254,12 @@ test('POST answers 503 when the chain cannot be read, so the browser retries', a
     stored: false,
     error: 'the chain is not answering right now, please try again',
   });
-  assert.equal(store.size, 0);
+  // Nothing was stored about the claim. The chain-read counters are the one
+  // thing a refused request still writes: it spent the read they exist to cap.
+  assert.deepEqual(
+    [...store.keys()].filter((key) => !key.startsWith('agripinaa:chain-reads:')),
+    [],
+  );
 });
 
 test('POST refuses a body that is not a claim without reading the chain', async () => {
@@ -245,4 +271,51 @@ test('POST refuses a body that is not a claim without reading the chain', async 
   assert.equal(res.status, 400);
   assert.deepEqual(await res.json(), { stored: false, error: 'bad json' });
   assert.deepEqual(state.calls, []);
+});
+
+test('POST stops reading the chain once the minute of chain reads is spent', async () => {
+  const { POST } = await import('../src/app/api/claim/route');
+  const { CHAIN_READS_SPENT } = await import('../src/lib/claims');
+  const stranger = privateKeyToAccount(`0x${'99'.repeat(32)}`);
+  const fields = sanitizeFields({
+    chainId: 56,
+    tokenId: '297380',
+    description: 'A yield agent that rotates between BSC lending venues.',
+    category: 'yield',
+    website: '',
+    endpoint: '',
+    issuedAt: new Date().toISOString(),
+  });
+  // Signed by somebody who does not own the agent: the shape of junk that used
+  // to cost an ownerOf and a getCode per request with nothing counting them.
+  const body = JSON.stringify({
+    fields,
+    signature: await stranger.signTypedData(buildClaimMessage(fields)),
+  });
+
+  const store = new Map<string, string>();
+  const state = newState();
+  const post = (ip: string) =>
+    withFetch(
+      stubbed(state, store, () =>
+        Response.json({ jsonrpc: '2.0', id: 1, result: asWord(account.address) }),
+      ),
+      () =>
+        POST(
+          new Request(claimUrl(''), { method: 'POST', body, headers: { 'x-forwarded-for': ip } }),
+        ),
+    );
+
+  let last = await post('203.0.113.9');
+  for (let i = 1; i < CHAIN_READ_LIMIT_PER_CLIENT; i++) last = await post('203.0.113.9');
+  // Refused on its merits, and only after the reads: the stub answers getCode
+  // with a non-empty word, so each forged body cost an ownerOf and a getCode.
+  assert.equal(last.status, 400);
+  const spent = rpcCalls(state).length;
+  assert.equal(spent, 2 * CHAIN_READ_LIMIT_PER_CLIENT, 'two chain reads per forged body');
+
+  const throttled = await post('203.0.113.9');
+  assert.equal(throttled.status, 429);
+  assert.deepEqual(await throttled.json(), { stored: false, error: CHAIN_READS_SPENT });
+  assert.equal(rpcCalls(state).length, spent, 'the throttled request read nothing');
 });
