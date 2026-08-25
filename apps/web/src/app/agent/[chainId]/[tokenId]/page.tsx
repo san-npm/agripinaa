@@ -18,6 +18,7 @@ import {
 } from "@/lib/activatable";
 import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
+import { getClaim } from "@/lib/claims";
 import { CHAIN_ID, getAgent, getFeedback } from "@/lib/data";
 import { getOnchainAttestation } from "@/lib/onchain-rep";
 import { clampDescription } from "@/lib/site";
@@ -141,7 +142,17 @@ async function AgentContent({
   // committed registry wallet is trustworthy enough to summarize it from: the
   // indexed `agentWallet` is metadata its own owner sets. An indexed third
   // party matches nothing here and simply gets no track record panel.
-  const registryWallet = agentByTokenId(agent.tokenId)?.wallet ?? null;
+  const registryRecord = agentByTokenId(agent.tokenId);
+  const registryWallet = registryRecord?.wallet ?? null;
+  // Only a third-party listing can be claimed, so the KV read below is skipped
+  // entirely for our own agents. A claim signed by a previous owner does not
+  // count as one, which is what passing the current owner to `getClaim` decides.
+  const claimable = registryRecord === undefined;
+  const claimed =
+    claimable &&
+    (await getClaim(agent.chainId, agent.tokenId, { currentOwner: agent.owner }).catch(
+      () => null,
+    )) !== null;
   const blocked = activationBlockedReason({
     tokenId: agent.tokenId,
     endpointLive: await endpointIsLive(agent),
@@ -258,6 +269,18 @@ async function AgentContent({
               </div>
             )}
           </dl>
+          {claimable && !claimed && (
+            <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-2">
+              Own this agent?{" "}
+              <Link
+                href={`/agent/${agent.chainId}/${agent.tokenId}/claim`}
+                className="text-muted underline underline-offset-2 transition-colors hover:text-primary"
+              >
+                Claim it
+              </Link>{" "}
+              to add a description, category, and endpoint.
+            </p>
+          )}
         </Panel>
 
         <Panel title="Trust">
