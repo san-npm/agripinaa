@@ -23,8 +23,22 @@ import { kvGet, kvMGet, kvSet } from './kv';
 /** How long a stored probe result counts for. Past this it is not evidence. */
 export const LIVENESS_TTL_MS = 24 * 60 * 60 * 1_000;
 
-/** Cap on one probe, matching the guard's own default. */
+/**
+ * Cap on one probe, measured on the wall clock from the call to the answer.
+ *
+ * The guard's own `timeoutMs` is per redirect hop and its dns lookups sit
+ * outside it, so passing it alone would cap a hop rather than the probe, and a
+ * host that redirects and then stalls could hold a request open for a multiple
+ * of this. `probeEndpoint` enforces the number itself.
+ */
 const PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Redirect hops a probe follows. One, so an endpoint served behind a trailing
+ * slash or a canonical host still answers, while a chain cannot spend the
+ * budget several times over. Each hop is revalidated by the guard.
+ */
+const PROBE_MAX_REDIRECTS = 1;
 
 const LIVENESS_PREFIX = 'agripinaa:liveness:';
 
@@ -61,6 +75,7 @@ export interface LivenessRecord extends ProbeResult {
 export interface ProbeOptions {
   /** Clock, injectable so a test can pin `checkedAt` and the freshness window. */
   now?: () => number;
+  /** Whole-probe budget in ms, dns and redirects included. Defaults to 5 s. */
   timeoutMs?: number;
 }
 
@@ -75,8 +90,8 @@ export interface AgentRef {
  * 402 (an x402 paywall quoting its price, which is exactly the endpoint working).
  * Anything else is a host that answered without an agent behind it.
  *
- * A 3xx rarely reaches here: the guard follows redirects itself, revalidating
- * every hop, and hands back the status at the end of the chain.
+ * A 3xx rarely reaches here: the guard follows the one permitted hop itself,
+ * revalidating it, and hands back the status at the end of it.
  */
 function statusCountsAsLive(status: number): boolean {
   return (status >= 200 && status < 400) || status === 401 || status === 402;
@@ -85,8 +100,10 @@ function statusCountsAsLive(status: number): boolean {
 /**
  * A url the guard refused, a probe that ran out of time, and a host that never
  * answered are three different things to an owner debugging their endpoint, so
- * the record says which. An oversized body reads as `unreachable`: the guard
- * cancels the stream mid-flight, so no status ever comes back from it.
+ * the record says which. `blocked` also covers a redirect chain longer than the
+ * one hop a probe follows, which the guard refuses by the same rule. An
+ * oversized body reads as `unreachable`: the guard cancels the stream
+ * mid-flight, so no status ever comes back from it.
  */
 function failureReason(error: unknown): LivenessReason {
   if (error instanceof BlockedUrlError) return 'blocked';
@@ -95,19 +112,20 @@ function failureReason(error: unknown): LivenessReason {
 }
 
 /**
- * Probe one endpoint. Never throws: every failure is an answer about the
- * endpoint, and a caller storing the result wants the reason, not an exception.
- *
- * The fetch goes through the shared SSRF guard, which validates the url before
- * it connects and revalidates every redirect hop, so an owner cannot point a
- * claim at an internal address and have this site fetch it. Nothing reads the
- * body: only the status decides.
+ * One pass at the endpoint, through the shared SSRF guard: the url is
+ * validated before anything connects and every redirect hop is revalidated, so
+ * an owner cannot point a claim at an internal address and have this site fetch
+ * it. Nothing reads the body: only the status decides.
  */
-export async function probeEndpoint(url: string, opts: ProbeOptions = {}): Promise<ProbeResult> {
-  const checkedAt = new Date(opts.now?.() ?? Date.now()).toISOString();
+async function probeThroughGuard(
+  url: string,
+  budgetMs: number,
+  checkedAt: string,
+): Promise<ProbeResult> {
   try {
     const res = await safeFetchBytes(url, {
-      timeoutMs: opts.timeoutMs ?? PROBE_TIMEOUT_MS,
+      timeoutMs: budgetMs,
+      maxRedirects: PROBE_MAX_REDIRECTS,
       headers: { accept: 'application/json, text/plain;q=0.9, */*;q=0.8' },
     });
     return statusCountsAsLive(res.status)
@@ -115,6 +133,31 @@ export async function probeEndpoint(url: string, opts: ProbeOptions = {}): Promi
       : { live: false, checkedAt, status: res.status, reason: 'status' };
   } catch (error) {
     return { live: false, checkedAt, reason: failureReason(error) };
+  }
+}
+
+/**
+ * Probe one endpoint. Never throws: every failure is an answer about the
+ * endpoint, and a caller storing the result wants the reason, not an exception.
+ *
+ * Answers within `timeoutMs` whatever the endpoint does. The guard times each
+ * hop separately and its dns lookups have no timer at all, so a host that
+ * redirects once and then stalls could otherwise hold this open for several
+ * times the budget; the caller in the claim POST awaits this, so the number has
+ * to be a wall clock. A probe that runs out of time is reported as a timeout,
+ * which is the same answer it would give at the connection level.
+ */
+export async function probeEndpoint(url: string, opts: ProbeOptions = {}): Promise<ProbeResult> {
+  const checkedAt = new Date(opts.now?.() ?? Date.now()).toISOString();
+  const budgetMs = opts.timeoutMs ?? PROBE_TIMEOUT_MS;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<ProbeResult>((resolve) => {
+    deadline = setTimeout(() => resolve({ live: false, checkedAt, reason: 'timeout' }), budgetMs);
+  });
+  try {
+    return await Promise.race([probeThroughGuard(url, budgetMs, checkedAt), expired]);
+  } finally {
+    clearTimeout(deadline);
   }
 }
 

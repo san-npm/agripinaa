@@ -125,6 +125,51 @@ test('an endpoint that refuses the connection is not live either', async () => {
   assert.equal(result.reason, 'unreachable');
 });
 
+test('the budget is the whole probe, not one hop of it', { timeout: 5_000 }, async () => {
+  const { probeEndpoint } = await loadLiveness();
+  const state = newState();
+  // A host that accepts the connection and then says nothing. The guard's own
+  // timer is per hop and this stub ignores the abort signal, so only a deadline
+  // over the whole probe can answer here.
+  const silent: typeof fetch = async (input, init) => {
+    state.calls.push({ url: String(input), method: init?.method ?? 'GET' });
+    return new Promise<Response>(() => {});
+  };
+
+  const started = Date.now();
+  const result = await withFetch(silent, () => probeEndpoint(ENDPOINT, { timeoutMs: 60 }));
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.live, false);
+  assert.equal(result.reason, 'timeout');
+  assert.ok(elapsed < 1_000, `probe took ${elapsed}ms, past its own budget`);
+});
+
+test('a redirect chain cannot multiply the budget', async () => {
+  const { probeEndpoint } = await loadLiveness();
+  const state = newState();
+  let hop = 0;
+  const redirecting: typeof fetch = async (input, init) => {
+    state.calls.push({ url: String(input), method: init?.method ?? 'GET' });
+    hop += 1;
+    // Every hop lands on a fresh public literal, so nothing but the hop cap
+    // stops the chain.
+    return new Response(null, {
+      status: 302,
+      headers: { location: `https://203.0.113.${hop}/next` },
+    });
+  };
+
+  const result = await withFetch(redirecting, () => probeEndpoint(ENDPOINT));
+
+  assert.equal(result.live, false);
+  assert.equal(result.reason, 'blocked');
+  assert.ok(
+    state.calls.length <= 2,
+    `${state.calls.length} requests: one hop is followed, and each one costs a timeout`,
+  );
+});
+
 test('a url the guard refuses is never fetched', async () => {
   const { probeEndpoint } = await loadLiveness();
   const refused = [
