@@ -25,7 +25,8 @@ import { bsc } from 'viem/chains';
 import type { AgentContext, AgentState, Breakers } from './types';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DATA_DIR = join(ROOT, 'data');
+/** Runtime state for every agent: state files, JSONL logs, the managed registry, the run lock. */
+export const DATA_DIR = join(ROOT, 'data');
 const WALLETS_DIR = join(ROOT, '..', '..', 'wallets');
 
 /**
@@ -36,9 +37,16 @@ const WALLETS_DIR = join(ROOT, '..', '..', 'wallets');
 const DATA_DIR_MODE = 0o700;
 const DATA_FILE_MODE = 0o600;
 
-/** Create the data dir owner-only; an existing dir is left as it is. */
+/**
+ * Create the data dir owner-only, or tighten one that already exists.
+ * mkdirSync applies its mode only when it creates the dir, and on the VM the
+ * dir predates the mode (the run lock created it at the default umask before
+ * the chassis wrote anything), so the chmod is what makes it 0700 there.
+ * Every writer into DATA_DIR goes through here first.
+ */
 export function ensureDataDir(dir: string = DATA_DIR): void {
   mkdirSync(dir, { recursive: true, mode: DATA_DIR_MODE });
+  chmodSync(dir, DATA_DIR_MODE);
 }
 
 /**
@@ -55,9 +63,21 @@ export function writeStateFile(file: string, contents: string): void {
   renameSync(tmp, file);
 }
 
-/** Append one JSONL line, creating the log owner-only on first write. */
+/** Log files this process has already tightened; one chmod per file, not per line. */
+const tightenedLogs = new Set<string>();
+
+/**
+ * Append one JSONL line, creating the log owner-only on first write. The mode
+ * passed to appendFileSync applies only when it creates the file, and on the
+ * VM the logs predate the mode, so the first append of a process also chmods
+ * the file it is extending.
+ */
 export function appendLogLine(file: string, line: string): void {
   appendFileSync(file, line + '\n', { mode: DATA_FILE_MODE });
+  if (!tightenedLogs.has(file)) {
+    chmodSync(file, DATA_FILE_MODE);
+    tightenedLogs.add(file);
+  }
 }
 
 interface DiskState {

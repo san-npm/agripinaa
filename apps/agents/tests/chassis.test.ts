@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -31,6 +31,22 @@ test('the data dir is created owner-only', { skip: !posix }, () => {
   }
 });
 
+test('a data dir that already exists at a wider mode is tightened to 0700', { skip: !posix }, () => {
+  // mkdirSync applies its mode only when it creates the dir. On the VM the dir
+  // predates the mode (the run lock created it at the default umask before the
+  // chassis wrote anything), so creating with 0700 alone left it as it was.
+  const root = scratch();
+  try {
+    const dir = join(root, 'data');
+    mkdirSync(dir, { mode: 0o755 });
+    assert.equal(statSync(dir).mode & 0o777, 0o755);
+    ensureDataDir(dir);
+    assert.equal(statSync(dir).mode & 0o777, 0o700);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('a state file lands at 0600 through the atomic temp+rename path', { skip: !posix }, () => {
   const root = scratch();
   try {
@@ -55,6 +71,23 @@ test('a leftover temp file from a crash does not carry its wider mode into the s
     writeStateFile(file, '{"actions":{}}');
     assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.equal(readFileSync(file, 'utf8'), '{"actions":{}}');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a log file that predates the mode is tightened to 0600 on the first append', { skip: !posix }, () => {
+  // appendFileSync's mode applies only when it creates the file. On the VM the
+  // logs already exist at the default umask, so the first append of a process
+  // chmods the file it is about to extend.
+  const root = scratch();
+  try {
+    const file = join(root, 'yield.log.jsonl');
+    writeFileSync(file, '{"event":"boot"}\n', { mode: 0o644 });
+    assert.equal(statSync(file).mode & 0o777, 0o644);
+    appendLogLine(file, '{"event":"tick"}');
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(readFileSync(file, 'utf8'), '{"event":"boot"}\n{"event":"tick"}\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

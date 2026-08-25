@@ -5,14 +5,14 @@
  *
  * Usage: pnpm --filter @agripinaa/agents start [-- --only grid,yield]
  */
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN, agentBySlug } from '@agripinaa/shared';
 
 import { assertModulesRegistered, isUnprovisioned, MANAGED_AGENT_SLUGS } from './agent-config';
-import { buildContext, hasAgentWallet } from './chassis';
+import { buildContext, DATA_DIR, ensureDataDir, hasAgentWallet } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { tickManagedYield } from './managed-runner';
@@ -60,9 +60,8 @@ function selectedModules(): AgentModule[] {
  * reclaimed.
  */
 function acquireRunLock(): string {
-  const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
-  mkdirSync(dataDir, { recursive: true });
-  const lock = join(dataDir, 'runner.lock');
+  ensureDataDir();
+  const lock = join(DATA_DIR, 'runner.lock');
   try {
     const fd = openSync(lock, 'wx'); // fails if it exists
     writeFileSync(fd, String(process.pid));
