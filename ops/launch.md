@@ -35,7 +35,9 @@ A quick tunnel takes a new hostname on every cold start. The VM reports it:
 and also runs it at the end of a deploy, so in normal operation nobody runs it
 by hand. It takes the last hostname logged since the unit's most recent start
 (the journal still carries the previous, dead one after a restart), waits for
-`GET <url>/healthz` to answer, and only then posts to `POST /api/ops/runner-url`,
+the Cloudflare edge to answer `GET <url>/healthz` for it (a dead hostname no
+longer resolves; a 502 means the tunnel is up and the runner is still starting,
+which is reported as well), and only then posts to `POST /api/ops/runner-url`,
 which checks the bearer token, requires https and a public host, resolves the
 hostname and rejects anything landing on a private address, then writes the
 value to KV. A candidate that never answers is refused with exit 1.
