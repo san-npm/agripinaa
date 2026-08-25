@@ -1,5 +1,5 @@
-import { CATEGORIES, type Category } from '@agripinaa/agent-index';
-import { assertSafeUrl } from '@agripinaa/shared/ssrf';
+import { CATEGORIES, type Category } from '@agripinaa/agent-index/types';
+import { assertSafeUrl } from '@agripinaa/shared/ssrf-url';
 import { recoverTypedDataAddress, type Hex, type TypedDataDefinition } from 'viem';
 
 /**
