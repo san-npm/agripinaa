@@ -10,8 +10,8 @@ import { recordLiveness } from '@/lib/liveness';
  * `OPS_TOKEN` works too, so the same run can be triggered by hand. Every
  * decision and every count lives in lib/cron-refresh.ts, which is where they
  * are tested; this handler reads the environment and the header, hands in the
- * live dependencies, and answers with the counts. It logs nothing: the bearer
- * and the claim bodies both pass through here.
+ * live dependencies, and answers with the counts. The only thing it logs is
+ * those counts: the bearer and the claim bodies both pass through here.
  */
 
 /**
@@ -41,6 +41,12 @@ export async function GET(request: Request): Promise<Response> {
     },
     now: Date.now,
   });
+
+  // The counts and nothing else: numbers, plus the fixed phrases the run builds
+  // for what it did not finish. The bearer and the claim bodies never appear.
+  // Without this a starved run is invisible, since the platform log keeps the
+  // status code and not the body.
+  console.log('cron refresh', JSON.stringify(counts));
 
   return Response.json({ refreshed: true, ...counts });
 }
