@@ -20,6 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 import { AGENT_LIST } from '@agripinaa/shared';
 
+import { parseFlags, type FlagSpec } from './cli-flags';
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_DATA_DIR = join(ROOT, 'data');
 
@@ -159,14 +161,10 @@ export function feedbackAnchor(label: string, ref: string): string {
   return `${label}:${ref}`;
 }
 
+const HARVEST_FLAGS: FlagSpec = { value: ['--dir'], boolean: [] };
+
 function main(): void {
-  const args = process.argv.slice(2);
-  const dirIdx = args.indexOf('--dir');
-  const dirArg = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
-  if (dirIdx >= 0 && !dirArg) {
-    console.error('--dir needs a path to the synced data directory');
-    process.exit(1);
-  }
+  const dirArg = parseFlags(process.argv.slice(2), HARVEST_FLAGS).value('--dir');
   const dir = dirArg ? resolve(dirArg) : DEFAULT_DATA_DIR;
 
   console.log(`reading logs from ${dir}`);
@@ -198,5 +196,10 @@ function main(): void {
 
 // Importing this module (attest.ts does) must not run the CLI.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  try {
+    main();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
 }

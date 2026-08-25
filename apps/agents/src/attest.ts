@@ -17,7 +17,9 @@
  *   pnpm --filter @agripinaa/agents attest -- --only lp-range
  *   pnpm --filter @agripinaa/agents attest -- --only lp-range --ref 7248592 --label pancake-v3-position
  *
- * --dir points the log harvest at a synced copy of the runner's data dir.
+ * --dir points the log harvest at a synced copy of the runner's data dir. A
+ * flag it cannot read (no value, unknown name, repeated) stops the run: nothing
+ * is signed out of a half-read command line.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -42,6 +44,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
+import { parseFlags, type FlagSpec, type Flags } from './cli-flags';
 import { feedbackAnchor, harvestAgentProofs } from './harvest-proofs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,10 +65,14 @@ interface Anchor {
   source: 'flag' | 'registry' | 'log';
 }
 
-function flag(args: readonly string[], name: string): string | undefined {
-  const idx = args.indexOf(name);
-  return idx >= 0 ? args[idx + 1] : undefined;
-}
+/**
+ * The whole command line. Exported so the anchor test parses exactly what
+ * main() parses; a flag with no value stops the run in parseFlags.
+ */
+export const ATTEST_FLAGS: FlagSpec = {
+  value: ['--only', '--ref', '--label', '--dir'],
+  boolean: ['--dry-run'],
+};
 
 /**
  * An explicit --ref wins, then the proof pinned on the registry record (which
@@ -73,14 +80,10 @@ function flag(args: readonly string[], name: string): string | undefined {
  * agent's log. Null when the agent has executed nothing worth attesting to:
  * an attestation with no anchor would claim verification of nothing.
  */
-export function anchorFor(
-  record: AgentRecord,
-  args: readonly string[],
-  dir?: string,
-): Anchor | null {
-  const ref = flag(args, '--ref');
+export function anchorFor(record: AgentRecord, flags: Flags, dir?: string): Anchor | null {
+  const ref = flags.value('--ref');
   if (ref) {
-    return { label: flag(args, '--label') ?? DEFAULT_REF_LABEL, ref, source: 'flag' };
+    return { label: flags.value('--label') ?? DEFAULT_REF_LABEL, ref, source: 'flag' };
   }
   const pinned = record.proofs[0];
   if (pinned) return { label: pinned.label, ref: pinned.ref, source: 'registry' };
@@ -90,13 +93,10 @@ export function anchorFor(
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
-  const only = flag(args, '--only');
-  const dirFlag = flag(args, '--dir');
-  if (args.includes('--dir') && !dirFlag) {
-    throw new Error('--dir needs a path to the synced data directory');
-  }
+  const flags = parseFlags(process.argv.slice(2), ATTEST_FLAGS);
+  const dryRun = flags.has('--dry-run');
+  const only = flags.value('--only');
+  const dirFlag = flags.value('--dir');
   const dir = dirFlag ? resolve(dirFlag) : undefined;
 
   const registered = AGENT_LIST.filter(
@@ -111,7 +111,7 @@ async function main() {
     );
   }
   // One ref describes one execution, so it must not be sprayed across agents.
-  if (flag(args, '--ref') && selected.length > 1) {
+  if (flags.has('--ref') && selected.length > 1) {
     throw new Error('--ref attests to one specific execution; narrow the run with --only <slug>');
   }
 
@@ -138,7 +138,7 @@ async function main() {
       console.log(`${record.slug} (${agentId}): already attested, skipping`);
       continue;
     }
-    const anchor = anchorFor(record, args, dir);
+    const anchor = anchorFor(record, flags, dir);
     if (!anchor) {
       console.log(`${record.slug} (${agentId}): no execution proof yet, skipping`);
       continue;
@@ -154,7 +154,10 @@ async function main() {
       continue;
     }
 
-    console.log(`${record.slug} (${agentId}): attesting (${record.category}, ${anchor.label})...`);
+    // The same line the dry run prints, so what gets signed is on screen first.
+    console.log(
+      `${record.slug} (${agentId}): attesting tag2 ${record.category}, anchor ${feedbackAnchor(anchor.label, anchor.ref)} (${anchor.source}), feedbackHash ${feedbackHash}...`,
+    );
     const hash = await walletClient.writeContract({
       address: registry,
       abi: REP_ABI,
