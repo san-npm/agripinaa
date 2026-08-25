@@ -43,7 +43,7 @@ import {
   lossFloorOf,
   trendBandOf,
 } from '../src/grid-core';
-import type { GuardInput } from '../src/grid-core';
+import type { GuardInput, ReferencePool } from '../src/grid-core';
 import type { AgentContext } from '../src/types';
 
 const BTCB = TOKENS_BSC['BTCB']!;
@@ -348,6 +348,16 @@ interface GridBFakeOpts {
   usdtWei?: bigint;
   allowAction?: (kind: string, maxPerDay: number) => boolean;
   initialState?: Record<string, unknown>;
+  /**
+   * What the chain reports at the address of a pool cached under
+   * `referencePool` in initialState: its tokens, fee and liquidity, or
+   * 'absent' for an address with no contract behind it. A cached pool that is
+   * not one of the three factory pools reports a slot0 of exactly 1, so a tick
+   * that priced off it would store a center of 1 rather than CENTER.
+   */
+  cachedPoolOnChain?:
+    | { token0: string; token1: string; fee: number; liquidity: bigint }
+    | 'absent';
 }
 
 /**
@@ -363,11 +373,15 @@ function fakeCtx(opts: GridBFakeOpts): {
   store: Map<string, unknown>;
   swapAttempts: string[];
   halts: string[];
+  /** Reads the tick made: factory getPool calls, and pool metadata reads per address. */
+  reads: { getPool: number; poolMeta: Map<string, number> };
 } {
   const store = new Map<string, unknown>(Object.entries(opts.initialState ?? {}));
   const logs: Record<string, unknown>[] = [];
   const swapAttempts: string[] = [];
   const halts: string[] = [];
+  const reads = { getPool: 0, poolMeta: new Map<string, number>() };
+  const cachedAddress = (opts.initialState?.['referencePool'] as ReferencePool | undefined)?.address.toLowerCase();
   /*
    * USDT 0x55d3... sorts BELOW BTCB 0x7130..., so on every one of these pools
    * USDT is token0 and the BASE token is token1. That is the reverse of the
@@ -389,12 +403,33 @@ function fakeCtx(opts: GridBFakeOpts): {
         return Promise.reject(new Error('test stub: swap stopped before the orderbook'));
       }
       if (functionName === 'getPool') {
+        reads.getPool += 1;
         return POOLS[args![2] as number]?.address ?? ZERO_ADDRESS;
       }
       if (functionName === 'balanceOf') {
         return address.toLowerCase() === BTCB.address.toLowerCase()
           ? (opts.btcbWei ?? BigInt(0))
           : (opts.usdtWei ?? BigInt(0));
+      }
+      if (['token0', 'token1', 'fee', 'liquidity'].includes(functionName)) {
+        reads.poolMeta.set(address.toLowerCase(), (reads.poolMeta.get(address.toLowerCase()) ?? 0) + 1);
+      }
+      // A pool the test staged in state answers with whatever the test says is
+      // on the chain at that address, ahead of the three factory pools.
+      if (opts.cachedPoolOnChain !== undefined && address.toLowerCase() === cachedAddress) {
+        if (opts.cachedPoolOnChain === 'absent') {
+          throw new Error(`test stub: no contract at ${address}`);
+        }
+        const staged = opts.cachedPoolOnChain;
+        if (functionName === 'token0') return staged.token0;
+        if (functionName === 'token1') return staged.token1;
+        if (functionName === 'fee') return staged.fee;
+        if (functionName === 'liquidity') return staged.liquidity;
+        if (functionName === 'slot0') {
+          return POOL_BY_ADDRESS.has(address.toLowerCase())
+            ? [sqrtPriceX96, 0, 0, 0, 0, 0, true]
+            : [BigInt(2) ** BigInt(96), 0, 0, 0, 0, 0, true];
+        }
       }
       // All three pools carry the same ordering, so token0/token1 are constant
       // while fee and liquidity are per pool.
@@ -430,7 +465,7 @@ function fakeCtx(opts: GridBFakeOpts): {
         opts.allowAction ? opts.allowAction(kind, maxPerDay) : true,
     },
   } as unknown as AgentContext;
-  return { ctx, logs, store, swapAttempts, halts };
+  return { ctx, logs, store, swapAttempts, halts, reads };
 }
 
 /*
@@ -654,4 +689,153 @@ test('status reports the ladder and the parameters it is running', async () => {
   assert.equal(status.pair, 'BTCB/USDT');
   assert.equal(status.levels.length, GRID_B_PARAMS.levelsPerSide * 2);
   assert.equal(status.params.maxTradesPerDay, GRID_B_PARAMS.maxTradesPerDay);
+});
+
+/* --------------------------- cached pool on boot ------------------------- */
+
+/*
+ * The pool the agent resolves is cached in its state file, and this agent's
+ * pair has already changed once (WBNB/USDC to BTCB/USDT). A state file written
+ * on the old pair would otherwise hand the tick the WBNB/USDC book forever:
+ * center, halt band and drawdown floor all measured on the wrong market, with
+ * no line in the log. So a cached pool is re-read from the chain once per boot
+ * and dropped unless it is still a pool, still on this pair and fee, still
+ * oriented the way the cache says, and still deep enough to price against.
+ */
+const WBNB = TOKENS_BSC['WBNB']!;
+const USDC = TOKENS_BSC['USDC']!;
+/**
+ * The WBNB/USDC pool this file's fixture pointed at before the pair change
+ * (1cf0bc1), so it is the address a state file written back then would hold.
+ * What the chain reports at it is staged per case below; the cached record
+ * around it (fee 500, base as token0) is one a state file could carry, and
+ * every case needs a cache that gets past the checks ahead of the one it is
+ * about.
+ */
+const OLD_PAIR_POOL = '0xf2688Fb5B81049DFB7703aDa5e770543770612C4' as const;
+const staleCache: ReferencePool = { address: OLD_PAIR_POOL, fee: 500, wbnbIsToken0: true };
+/** A cache that matches the chain: the fee-500 BTCB/USDT pool, base as token1. */
+const validCache: ReferencePool = { address: POOL, fee: 500, wbnbIsToken0: false };
+const validOnChain = {
+  token0: USDT.address,
+  token1: BTCB.address,
+  fee: 500,
+  liquidity: POOLS[500]!.liquidity,
+};
+
+function expectReResolved(
+  logs: Record<string, unknown>[],
+  store: Map<string, unknown>,
+  reason: string,
+) {
+  const dropped = logs.find((l) => l.event === 'pool-cache-dropped');
+  assert.ok(dropped, `expected pool-cache-dropped, got ${JSON.stringify(logs.map((l) => l.event))}`);
+  assert.equal(dropped!['reason'], reason);
+  assert.equal(dropped!['address'], OLD_PAIR_POOL);
+  const selected = logs.find((l) => l.event === 'pool-selected');
+  assert.ok(selected, 'the pair must be re-resolved through the factory');
+  assert.equal(selected!['address'], POOL);
+  assert.equal((store.get('referencePool') as ReferencePool).address, POOL);
+  // And the tick priced off the re-resolved book, not the stale one (whose
+  // slot0 decodes to 1).
+  approx(store.get('center') as number, CENTER, 0.001);
+}
+
+test('a cached pool on another pair is dropped at boot and the pair re-resolved', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: staleCache },
+    cachedPoolOnChain: { token0: WBNB.address, token1: USDC.address, fee: 500, liquidity: POOLS[500]!.liquidity },
+  });
+  await gridBAgent.tick(ctx);
+  expectReResolved(logs, store, 'pair-mismatch');
+});
+
+test('a cached pool whose fee is not the one it was cached at is dropped', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: staleCache },
+    cachedPoolOnChain: { token0: USDT.address, token1: BTCB.address, fee: 100, liquidity: POOLS[500]!.liquidity },
+  });
+  await gridBAgent.tick(ctx);
+  expectReResolved(logs, store, 'fee-mismatch');
+});
+
+test('a cached pool on the right pair but cached the wrong way up is dropped', async () => {
+  // staleCache says the base is token0; on this pair it is token1. Trusting
+  // the flag would decode every price as its own reciprocal.
+  const { ctx, logs, store } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: staleCache },
+    cachedPoolOnChain: { token0: USDT.address, token1: BTCB.address, fee: 500, liquidity: POOLS[500]!.liquidity },
+  });
+  await gridBAgent.tick(ctx);
+  expectReResolved(logs, store, 'orientation-mismatch');
+});
+
+test('a cached pool that has drained below the liquidity floor is dropped', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: { ...staleCache, wbnbIsToken0: false } },
+    cachedPoolOnChain: { token0: USDT.address, token1: BTCB.address, fee: 500, liquidity: BigInt(0) },
+  });
+  await gridBAgent.tick(ctx);
+  expectReResolved(logs, store, 'shallow');
+});
+
+test('a cached address with nothing behind it is dropped rather than thrown on', async () => {
+  const { ctx, logs, store } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: staleCache },
+    cachedPoolOnChain: 'absent',
+  });
+  await gridBAgent.tick(ctx);
+  expectReResolved(logs, store, 'unreadable');
+});
+
+test('a cached record missing the orientation flag is dropped, not read as false', async () => {
+  // The one field a rename or an older schema would leave undefined. Falsy
+  // reads as "the base is token1", which on this pair happens to be right and
+  // on the next pair would silently invert every price the grid measures, so
+  // the record is refused rather than interpreted.
+  const { ctx, logs, store } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: { address: OLD_PAIR_POOL, fee: 500 } },
+  });
+  await gridBAgent.tick(ctx);
+  const dropped = logs.find((l) => l.event === 'pool-cache-dropped');
+  assert.ok(dropped, 'a record that is not a ReferencePool must be dropped');
+  assert.equal(dropped!['reason'], 'malformed');
+  assert.ok(logs.some((l) => l.event === 'pool-selected' && l['address'] === POOL));
+  assert.deepEqual(store.get('referencePool'), { address: POOL, fee: 500, wbnbIsToken0: false });
+  approx(store.get('center') as number, CENTER, 0.001);
+});
+
+test('a cached pool that still checks out is kept, and checked once per boot', async () => {
+  const { ctx, logs, store, reads } = fakeCtx({
+    price: CENTER,
+    ...funded,
+    initialState: { referencePool: validCache },
+    cachedPoolOnChain: validOnChain,
+  });
+  await gridBAgent.tick(ctx);
+  assert.equal(logs.some((l) => l.event === 'pool-cache-dropped'), false);
+  assert.equal(logs.some((l) => l.event === 'pool-selected'), false, 'no factory resolution needed');
+  assert.equal(reads.getPool, 0, 'the factory is never asked while the cache validates');
+  assert.ok(logs.some((l) => l.event === 'pool-cache-validated' && l['address'] === POOL));
+  assert.deepEqual(store.get('referencePool'), validCache);
+  approx(store.get('center') as number, CENTER, 0.001);
+
+  // token0/token1/fee/liquidity: four reads for the one check, none on the next tick.
+  const afterBoot = reads.poolMeta.get(POOL.toLowerCase()) ?? 0;
+  assert.equal(afterBoot, 4);
+  await gridBAgent.tick(ctx);
+  assert.equal(reads.poolMeta.get(POOL.toLowerCase()), afterBoot, 'the chain check runs once per process');
+  assert.equal(reads.getPool, 0);
 });

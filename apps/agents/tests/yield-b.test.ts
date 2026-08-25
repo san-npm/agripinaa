@@ -192,7 +192,11 @@ test('the published caps are the ones the tick enforces', () => {
   assert.equal(safety['hysteresisBps'], YIELD_B_PARAMS.thresholdBps);
   assert.equal(safety['confirmations'], YIELD_B_PARAMS.requiredWins);
   assert.equal(safety['minHoursBetweenMoves'], YIELD_B_PARAMS.minRotationIntervalMs / 3_600_000);
+  // checkEveryHours is a promise about BOTH paths. The own-capital tick keeps
+  // it by running that slowly; the managed path is swept every five minutes by
+  // the runner, so it keeps it through the policy's own check interval.
   assert.equal(safety['checkEveryHours'], yieldBAgent.tickIntervalMs / 3_600_000);
+  assert.equal(safety['checkEveryHours'], YIELD_B_POLICY.checkIntervalMs / 3_600_000);
   assert.equal(safety['maxMovesPerDay'], YIELD_B_POLICY.maxRotationsPerDay);
   assert.equal(execution.asset, 'USDT');
   assert.equal(execution.chainId, 56);
@@ -392,6 +396,87 @@ test('the floor never delays a first deposit, only a rotation', async () => {
   });
   const ex = fakeExecutor();
   await managedYieldTick(ctx, ex, YIELD_B_POLICY);
+  assert.deepEqual(ex.calls, ['toAave']);
+});
+
+/* ------------------------- the published check cadence -------------------- */
+
+/*
+ * The manifest promises a check every twelve hours and three consecutive
+ * checks before anything moves, which is a day and a half of a lead holding.
+ * The managed sweep, however, runs every five minutes for every mandate, so
+ * without a cadence of its own the same three confirmations would be collected
+ * in fifteen minutes and a depositor who chose the patient agent would get the
+ * busy one. These pin the check itself, per account, not just the rotation
+ * floor that sits behind it.
+ */
+test('a second check inside the published interval is not a check at all', async () => {
+  const { ctx, store, logs } = fakeCtx({
+    ...BIG_LEAD,
+    ...IN_VENUS,
+    initialState: {
+      [ns('betterStreak')]: 2,
+      // A check ran a minute ago, which is what the five-minute sweep produces.
+      [ns('lastCheckAt')]: Date.now() - 60_000,
+    },
+  });
+  const ex = fakeExecutor();
+  await managedYieldTick(ctx, ex, YIELD_B_POLICY);
+  assert.deepEqual(ex.calls, [], 'a sweep is not a check');
+  // The streak is what makes this more than a delayed rotation: three
+  // confirmations must mean three checks a policy interval apart, so a sweep
+  // inside the interval must not arm it.
+  assert.equal(store.get(ns('betterStreak')), 2);
+  assert.equal(
+    logs.some((entry) => entry['decision'] === 'hold' || entry['decision'] === 'rotate'),
+    false,
+    'no decision is taken or logged inside the interval',
+  );
+});
+
+test('past the published interval the check runs and the rotation goes through', async () => {
+  const { ctx, store } = fakeCtx({
+    ...BIG_LEAD,
+    ...IN_VENUS,
+    initialState: {
+      [ns('betterStreak')]: 2,
+      [ns('lastCheckAt')]: Date.now() - YIELD_B_POLICY.checkIntervalMs - 1000,
+    },
+  });
+  const ex = fakeExecutor();
+  await managedYieldTick(ctx, ex, YIELD_B_POLICY);
+  assert.deepEqual(ex.calls, ['toAave']);
+  // And the check is anchored, so the next sweep is inside the interval again.
+  const checkedAt = store.get(ns('lastCheckAt')) as number;
+  assert.ok(Date.now() - checkedAt < 60_000, 'the check anchors its own timestamp');
+});
+
+test('the check interval never delays a first deposit, only a check', async () => {
+  // Same split as the rotation floor: idle capital is put to work on the sweep
+  // that finds it, whatever the check cadence says.
+  const { ctx } = fakeCtx({
+    ...BIG_LEAD,
+    walletUsdtWei: 100n * 10n ** 18n,
+    venusUnderlyingWei: 0n,
+    aaveATokenWei: 0n,
+    initialState: { [ns('lastCheckAt')]: Date.now() },
+  });
+  const ex = fakeExecutor();
+  await managedYieldTick(ctx, ex, YIELD_B_POLICY);
+  assert.deepEqual(ex.calls, ['toAave']);
+});
+
+test('the incumbent publishes no check cadence, so its sweep is unchanged', async () => {
+  // yield's manifest carries no checkEveryHours, so gating its managed path
+  // would slow a live agent to match a number it never published.
+  assert.equal(AGENTS['yield'].manifest.safety['checkEveryHours'], undefined);
+  const { ctx } = fakeCtx({
+    ...NARROW_LEAD,
+    ...IN_VENUS,
+    initialState: { [ns('betterStreak')]: 1, [ns('lastCheckAt')]: Date.now() },
+  });
+  const ex = fakeExecutor();
+  await managedYieldTick(ctx, ex);
   assert.deepEqual(ex.calls, ['toAave']);
 });
 

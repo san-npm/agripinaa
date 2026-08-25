@@ -528,6 +528,18 @@ export const yieldAgent: AgentModule = {
  */
 export interface ManagedPolicy {
   decide(input: RotationInput): RotationDecision;
+  /**
+   * Shortest gap between two rotation CHECKS of one mandate, i.e. how often
+   * `decide` is allowed to run and to move the confirmation streak. 0 means
+   * every sweep is a check.
+   *
+   * This exists because the sweep cadence is the runner's, not the agent's: it
+   * services every managed account every five minutes so deposits deploy
+   * promptly, and an agent that publishes a slower check would otherwise
+   * collect its confirmations at sweep speed. A policy that publishes a check
+   * interval states it here and the managed tick holds it to it.
+   */
+  checkIntervalMs: number;
   /** Shortest gap between two rotations of one mandate. 0 disables the floor. */
   minRotationIntervalMs: number;
   /** Ceiling inside the breakers' rolling 24 hour window. */
@@ -536,6 +548,9 @@ export interface ManagedPolicy {
 
 export const DEFAULT_MANAGED_POLICY: ManagedPolicy = {
   decide: decideRotation,
+  // The Harvester's manifest publishes no check cadence, so it keeps checking
+  // on every sweep exactly as it does today.
+  checkIntervalMs: 0,
   minRotationIntervalMs: 0,
   maxRotationsPerDay: 1,
 };
@@ -598,6 +613,24 @@ export async function managedYieldTick(
     ctx.log({ ...base, event: 'managed-tick', decision: 'enter', target, action, txHash: res.txHash, status: res.status });
     return;
   }
+
+  // A CHECK runs on the policy's cadence, not the sweep's. The runner sweeps
+  // every managed account every five minutes so a fresh deposit deploys
+  // promptly, and everything above this line still happens at that rate
+  // (halt, reads, venue reconciliation, entry). The rotation decision does
+  // not: an agent publishing "every twelve hours, three consecutive checks"
+  // would otherwise confirm a rotation in fifteen minutes, and the streak
+  // below is what a depositor is being promised, so a sweep inside the
+  // interval must leave it alone rather than arm it.
+  //
+  // Deliberately silent. At one line per skipped sweep this would write about
+  // 286 lines a day per mandate into the agent's JSONL log, which is what the
+  // public proof feed reads the tail of: the noise would push real executions
+  // out of that window.
+  const checkedAt = Date.now();
+  const sinceLastCheckMs = checkedAt - ctx.state.get<number>(ns('lastCheckAt'), 0);
+  if (policy.checkIntervalMs > 0 && sinceLastCheckMs < policy.checkIntervalMs) return;
+  ctx.state.set(ns('lastCheckAt'), checkedAt);
 
   const decision = policy.decide({
     venue,
