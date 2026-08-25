@@ -80,3 +80,16 @@ test('a value-less --ref stops the run instead of anchoring to a stale proof', (
 test('a value-less --only stops the run instead of selecting every agent', () => {
   assert.throws(() => flags(['--only', '--dry-run']), /--only needs a value/);
 });
+
+test('a --ref shaped like nothing real refuses before anything is hashed', () => {
+  assert.throws(
+    () => anchorFor(registered, flags(['--only', 'lp-range', '--ref', '0xdead']), emptyDir()),
+    /not a recognized execution reference/,
+  );
+});
+
+test('a --ref shaped like an Ophis order uid is accepted', () => {
+  const uid = '0x' + 'c'.repeat(112);
+  const anchor = anchorFor(registered, flags(['--only', 'grid', '--ref', uid]), emptyDir());
+  assert.deepEqual(anchor, { label: 'execution-proof', ref: uid, source: 'flag' });
+});
