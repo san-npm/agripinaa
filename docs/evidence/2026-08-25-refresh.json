@@ -47,7 +47,8 @@
             "surplusUsdAtFillPrice": 0.02419082,
             "notionalUsdAtFillPrice": 1.996384,
             "executedUsdtPerWbnb": 611.4443,
-            "feeBps": 33.29
+            "feeBps": 33.29,
+            "feeUsdAtFillPrice": 0.00664547
           }
         },
         {
@@ -79,7 +80,8 @@
             "surplusUsdAtFillPrice": 0.01493368,
             "notionalUsdAtFillPrice": 2.0,
             "executedUsdtPerWbnb": 705.7123,
-            "feeBps": 63.32
+            "feeBps": 63.32,
+            "feeUsdAtFillPrice": 0.01266442
           }
         },
         {
@@ -111,7 +113,8 @@
             "surplusUsdAtFillPrice": 0.02331243,
             "notionalUsdAtFillPrice": 1.996384,
             "executedUsdtPerWbnb": 710.4239,
-            "feeBps": 28.87
+            "feeBps": 28.87,
+            "feeUsdAtFillPrice": 0.00576354
           }
         },
         {
@@ -143,7 +146,8 @@
             "surplusUsdAtFillPrice": 0.01843699,
             "notionalUsdAtFillPrice": 1.5,
             "executedUsdtPerWbnb": 700.6014,
-            "feeBps": 35.03
+            "feeBps": 35.03,
+            "feeUsdAtFillPrice": 0.00525504
           }
         }
       ],
@@ -189,7 +193,8 @@
             "surplusUsdAtFillPrice": 0.01879212,
             "notionalUsdAtFillPrice": 1.24964,
             "executedUsdtPerWbnb": 641.7871,
-            "feeBps": 62.51
+            "feeBps": 62.51,
+            "feeUsdAtFillPrice": 0.00781193
           }
         },
         {
@@ -221,7 +226,8 @@
             "surplusUsdAtFillPrice": 0.02335206,
             "notionalUsdAtFillPrice": 1.573712,
             "executedUsdtPerWbnb": 676.6936,
-            "feeBps": 60.53
+            "feeBps": 60.53,
+            "feeUsdAtFillPrice": 0.00952502
           }
         },
         {
@@ -253,7 +259,8 @@
             "surplusUsdAtFillPrice": 0.01850147,
             "notionalUsdAtFillPrice": 1.597934,
             "executedUsdtPerWbnb": 714.0883,
-            "feeBps": 27.88
+            "feeBps": 27.88,
+            "feeUsdAtFillPrice": 0.00445437
           }
         }
       ],
@@ -313,7 +320,15 @@
           "secondsFromSubmitToSettle": 7.2,
           "solverSubmitter": "0x95480d3f27658e73b2785d30beb0c847d78294c7",
           "settlementGasUsed": "421722",
-          "tradesInSettlement": 1
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "58332742861982384",
+            "surplusUsdAtFillPrice": 0.05833274,
+            "notionalUsdAtFillPrice": 12.057296,
+            "executedUsdtPerWbnb": 602.8648,
+            "feeBps": 21.96,
+            "feeUsdAtFillPrice": 0.02647802
+          }
         }
       ],
       "slippageSource": "packages/spikes/scripts/spike-a.ts (slippageBps: 50)"
@@ -502,7 +517,11 @@
         "amountUsdt": "3",
         "tx": "0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb",
         "gasUsed": "509470",
-        "effectiveGasPrice": "50000000"
+        "effectiveGasPrice": "50000000",
+        "gasCostBnb": 2.54735e-05,
+        "rateUsdtPerWbnb": 676.6936,
+        "rateSource": "nearest fill of our own to the rotation, execution['lp-range'] 2026-08-21T08:42Z executed rate",
+        "gasCostUsdAtNearestFillRate": 0.017238
       },
       {
         "router": "0x841CF14Dfc0A315115EC5C9714c918210447b260",
@@ -572,7 +591,10 @@
     "swapGasUsed": "146806",
     "totalGasUsed": "175746",
     "effectiveGasPriceWei": "50000000",
-    "totalGasCostBnb": 8.7873e-06
+    "totalGasCostBnb": 8.7873e-06,
+    "rateUsdtPerWbnb": 603.5552883304441,
+    "rateSource": "this swap's own executed rate, evidence/task1-baseline.json effectiveRate",
+    "totalGasCostUsdAtSwapRate": 0.005304
   },
   "aaveReserveParams": {
     "pool": "0x6807dc923806fE8Fd134338EABCA509979a7e0cB",
@@ -593,7 +615,9 @@
     "surplusVsSignedLimitBps": "executedBuyAmount over the buyAmount the wallet signed, per @agripinaa/exec-metrics surplusBps.",
     "vsQuoteBps": "the same fill measured against the quote it was signed against: @ophis/agent-swap builds buyAmount = quote * (1 - slippageBps/10000), so vsQuote = (1 - slippageBps/10000) * (1 + surplus/10000) - 1.",
     "executedFee": "network fee the orderbook reports for the fill, taken in the sell token inside the settlement; executedBuyAmount is already net of it.",
-    "solverCompetition": "'not-retained' means GET /solver_competition/by_tx_hash returned 404 for that settlement at the time of this pull."
+    "solverCompetition": "'not-retained' means GET /solver_competition/by_tx_hash returned 404 for that settlement at the time of this pull.",
+    "derived": "per-fill derived block: surplusRaw is executedBuyAmount minus signedBuyAmountLimit in the buy token's smallest unit; executedUsdtPerWbnb is that fill's own executed rate; notionalUsdAtFillPrice, surplusUsdAtFillPrice and feeUsdAtFillPrice value that fill's notional, surplus and executedFee at that rate rather than at any single spot price; feeBps is executedFee over executedSellAmount.",
+    "dollarValuation": "every dollar figure in the report is computed at a rate named on its own line: a fill uses its own executed rate, the baseline swap's gas uses that swap's executed rate, the managed rotation's gas uses the nearest fill of ours to it. No figure is valued at the block-118027877 spot except where the report says so."
   },
   "derivedTotals": {
     "agentFills": 7,
