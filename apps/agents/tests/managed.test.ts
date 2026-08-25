@@ -15,28 +15,57 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111' as const;
 
 // --- Registry round-trip (bigint-safe persistence) ------------------------
 
-test('managed registry: upsert, replace, remove, bigint-safe', async () => {
-  // Point the registry's DATA_DIR at a temp dir by loading a fresh module copy
-  // with cwd-independent behavior is not possible; instead exercise via the
-  // real data dir would pollute it. So test the codec invariant the registry
-  // relies on directly, plus the in-memory upsert/remove semantics.
-  const { serializeSession, deserializeSession } = await import(
-    '@agripinaa/session-kit/persist'
-  );
-  const entry = {
+/** One storable registry entry, with a bigint spend limit to exercise the codec. */
+function registryEntry() {
+  return {
     account: ACCOUNT,
     chainId: 56,
     session: {
       walletAddress: ACCOUNT,
       publicKey: '0x04abcd',
-      permissions: { calls: [{ signature: 'toAave()', to: ACCOUNT }], spend: [{ limit: 50n * 10n ** 18n, period: 'day', token: USDT }] },
+      permissions: { calls: [{ signature: 'toAave()', to: ACCOUNT }], spend: [{ limit: 50n * 10n ** 18n, period: 'day' as const, token: USDT }] },
       expiry: 1893456000,
     },
     registeredAt: '2026-08-20T00:00:00.000Z',
   };
+}
+
+test('managed registry: upsert, replace, remove, bigint-safe', async () => {
+  // The codec invariant the registry relies on: bigint spend limits survive
+  // the round trip through session-kit's serialize/deserialize.
+  const { serializeSession, deserializeSession } = await import(
+    '@agripinaa/session-kit/persist'
+  );
+  const entry = registryEntry();
   const round = deserializeSession(serializeSession([entry])) as typeof entry[];
   assert.equal(round[0]!.session.permissions.spend![0]!.limit, 50n * 10n ** 18n);
   assert.equal(typeof round[0]!.session.permissions.spend![0]!.limit, 'bigint');
+});
+
+test('the managed registry file lands at 0600 inside a data dir tightened to 0700', { skip: process.platform === 'win32' }, async () => {
+  // The registry holds every managed user's account address, session public
+  // key, granted permissions and expiry. It was written at the default umask
+  // into a dir the run lock had already created at the default umask, so
+  // creating the dir with a mode never applied on the VM.
+  const { loadManaged, removeManaged, upsertManaged } = await import('../src/managed');
+  const { mkdirSync, mkdtempSync, rmSync, statSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'agripinaa-managed-'));
+  try {
+    const dir = join(root, 'data');
+    mkdirSync(dir, { mode: 0o755 }); // predates the mode, like the VM's
+    const entry = registryEntry() as never;
+    upsertManaged('yield', entry, dir);
+    const file = join(dir, 'yield.managed.json');
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(statSync(dir).mode & 0o777, 0o700);
+    assert.equal(loadManaged('yield', dir).length, 1);
+    assert.equal(removeManaged('yield', ACCOUNT, dir).length, 0);
+    assert.equal(statSync(file).mode & 0o777, 0o600); // rewritten, still owner-only
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 // --- per-token manager key isolation (Medium fix) -------------------------
