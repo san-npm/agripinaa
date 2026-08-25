@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { harvestProofs } from '../src/harvest-proofs';
+import { formatHarvestedProof, harvestProofs } from '../src/harvest-proofs';
 
 const lines = [
   JSON.stringify({ event: 'boot', at: '2026-08-24T10:00:00.000Z' }),
@@ -109,4 +109,67 @@ test('the summary falls back to the event name when the line carries none', () =
     JSON.stringify({ agent: 'yield', event: 'supply', at: '2026-08-24T10:00:00.000Z', txHash: '0x' + '1'.repeat(64) }),
   ]);
   assert.equal(proofs[0]!.summary, 'supply');
+});
+
+test('an Ophis order uid is harvested as a tx-kind proof', () => {
+  const proofs = harvestProofs([
+    JSON.stringify({
+      agent: 'grid',
+      event: 'order-filled',
+      at: '2026-08-24T10:00:00.000Z',
+      orderUid: '0x' + 'b'.repeat(112),
+      summary: 'WBNB to USDT through Ophis',
+    }),
+  ]);
+  assert.equal(proofs.length, 1);
+  assert.equal(proofs[0]!.kind, 'tx');
+  assert.equal(proofs[0]!.ref, '0x' + 'b'.repeat(112));
+});
+
+test('a settlement tx hash outranks an order uid logged on the same line', () => {
+  const proofs = harvestProofs([
+    JSON.stringify({
+      agent: 'grid',
+      event: 'order-filled',
+      at: '2026-08-24T10:00:00.000Z',
+      txHash: '0x' + 'a'.repeat(64),
+      orderUid: '0x' + 'b'.repeat(112),
+      summary: 'WBNB to USDT through Ophis',
+    }),
+  ]);
+  assert.equal(proofs.length, 1);
+  assert.equal(proofs[0]!.kind, 'tx');
+  assert.equal(proofs[0]!.ref, '0x' + 'a'.repeat(64));
+});
+
+test('a position id beyond 18 digits, or a number above Number.MAX_SAFE_INTEGER, is rejected; a normal one still passes', () => {
+  const proofs = harvestProofs([
+    JSON.stringify({ agent: 'lp-range', event: 'minted', at: '2026-08-24T10:00:00.000Z', tokenId: '1234567890123456789' }),
+    JSON.stringify({ agent: 'lp-range', event: 'minted', at: '2026-08-24T10:01:00.000Z', tokenId: Number.MAX_SAFE_INTEGER + 10 }),
+    JSON.stringify({ agent: 'lp-range', event: 'minted', at: '2026-08-24T10:02:00.000Z', tokenId: '7248592' }),
+  ]);
+  assert.equal(proofs.length, 1);
+  assert.equal(proofs[0]!.ref, '7248592');
+});
+
+test('a summary with an apostrophe and a backslash round-trips through the paste-ready output', () => {
+  const proofs = harvestProofs([
+    JSON.stringify({
+      agent: 'grid',
+      event: 'trade',
+      at: '2026-08-24T10:00:00.000Z',
+      txHash: '0x' + 'a'.repeat(64),
+      summary: "It's a 50% fill \\ partial route",
+    }),
+  ]);
+  assert.equal(proofs.length, 1);
+  const escapedSummary = JSON.stringify(proofs[0]!.summary);
+  // Sanity: the fixture actually exercises both characters this test is named for.
+  assert.ok(escapedSummary.includes("'"));
+  assert.ok(escapedSummary.includes('\\\\'));
+  const line = formatHarvestedProof(proofs[0]!);
+  assert.ok(line.includes(escapedSummary));
+  // The printed line must itself be a syntactically valid object literal: parse
+  // the summary field back out and confirm it round-trips to the original text.
+  assert.equal(JSON.parse(escapedSummary), proofs[0]!.summary);
 });

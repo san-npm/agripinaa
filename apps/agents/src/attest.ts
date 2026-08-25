@@ -45,7 +45,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { parseFlags, type FlagSpec, type Flags } from './cli-flags';
-import { feedbackAnchor, harvestAgentProofs } from './harvest-proofs';
+import { ORDER_UID, POSITION_ID, TX_HASH, feedbackAnchor, harvestAgentProofs } from './harvest-proofs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WALLETS = join(ROOT, '..', '..', 'wallets');
@@ -83,6 +83,14 @@ export const ATTEST_FLAGS: FlagSpec = {
 export function anchorFor(record: AgentRecord, flags: Flags, dir?: string): Anchor | null {
   const ref = flags.value('--ref');
   if (ref) {
+    // An attestation is unfixable once signed, so a --ref that is not
+    // shaped like any real execution reference stops the run here, before
+    // feedbackHash is ever computed, rather than getting hashed as-is.
+    if (!TX_HASH.test(ref) && !ORDER_UID.test(ref) && !POSITION_ID.test(ref)) {
+      throw new Error(
+        `--ref ${ref} is not a recognized execution reference; pass a 64-hex tx hash, a 112-hex Ophis order uid, or a decimal position id`,
+      );
+    }
     return { label: flags.value('--label') ?? DEFAULT_REF_LABEL, ref, source: 'flag' };
   }
   const pinned = record.proofs[0];

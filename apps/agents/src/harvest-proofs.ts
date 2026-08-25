@@ -28,9 +28,30 @@ const DEFAULT_DATA_DIR = join(ROOT, 'data');
 /** How many proofs one agent may contribute; the newest ones win. */
 const MAX_PER_AGENT = 5;
 
-const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
-/** A PancakeSwap V3 position id: decimal, non-zero, within a plausible range. */
-const POSITION_ID = /^[1-9][0-9]{0,19}$/;
+/**
+ * The three shapes a harvested (or hand-passed, via attest.ts --ref) execution
+ * reference can take. Exported so attest.ts validates an explicit --ref
+ * against the same patterns instead of keeping its own copy.
+ */
+export const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
+/**
+ * An Ophis (CoW Protocol) order uid: 56 bytes, orderDigest (32) ++ owner (20)
+ * ++ validTo (4), hex-encoded as 112 chars. grid, grid-b and weight-rebalancer
+ * settle every trade through Ophis batch auctions and never see a settlement
+ * tx hash of their own (the batcher signs that), so the order uid is the only
+ * reference their logs ever carry. Matches apps/web/src/lib/proof.ts's
+ * ORDER_UID.
+ */
+export const ORDER_UID = /^0x[0-9a-fA-F]{112}$/;
+/**
+ * A PancakeSwap V3 position id: decimal, non-zero, capped at 18 digits.
+ * PancakeSwap's token ids increment from a small integer and will not reach
+ * that width for a very long time; the cap exists so a line where a hash or
+ * some other oversized number was pasted into positionTokenId by mistake
+ * cannot pass here as a plausible-looking one, and matches the reach of the
+ * Number.isSafeInteger guard already applied to the numeric-value form below.
+ */
+export const POSITION_ID = /^[1-9][0-9]{0,17}$/;
 
 /**
  * Event names whose suffix says the execution did NOT happen: the transaction
@@ -65,6 +86,11 @@ function txRef(value: unknown): string | undefined {
   return text && TX_HASH.test(text) ? text : undefined;
 }
 
+function orderUidRef(value: unknown): string | undefined {
+  const text = stringValue(value);
+  return text && ORDER_UID.test(text) ? text : undefined;
+}
+
 function positionRef(value: unknown): string | undefined {
   const text = typeof value === 'number' && Number.isSafeInteger(value)
     ? String(value)
@@ -82,17 +108,25 @@ function proofFromEntry(entry: Record<string, unknown>, fallbackSlug: string): H
   const at = validAt(entry.at);
   if (!event || !at || NOT_AN_EXECUTION.test(event)) return null;
 
-  // A line that carries both (lp-range's `minted`) is anchored to the
-  // transaction: it is the stronger reference, and the position id is logged
-  // again on every later range check.
+  // A line that carries more than one reference is anchored to the strongest
+  // one: a settlement tx hash beats an Ophis order uid beats a position id.
+  // lp-range's `minted` logs both tx and position id (the position id is
+  // logged again on every later range check); grid's `order-filled` logs only
+  // an order uid, since Ophis batch auctions never hand the agent a
+  // settlement tx hash of its own. An order uid is stored as kind: 'tx', the
+  // same convention the registry already uses for grid's pinned proof
+  // (packages/shared/src/agents.ts, grid record): it is as strong an anchor
+  // as a tx hash, just not shaped like one.
   const tx = txRef(entry.txHash);
-  const position = tx ? undefined : positionRef(entry.positionTokenId ?? entry.tokenId);
-  const ref = tx ?? position;
+  const orderUid = tx ? undefined : orderUidRef(entry.orderUid);
+  const txLike = tx ?? orderUid;
+  const position = txLike ? undefined : positionRef(entry.positionTokenId ?? entry.tokenId);
+  const ref = txLike ?? position;
   if (!ref) return null;
 
   return {
     slug: stringValue(entry.agent) ?? fallbackSlug,
-    kind: tx ? 'tx' : 'position',
+    kind: txLike ? 'tx' : 'position',
     ref,
     at,
     summary: stringValue(entry.summary) ?? event,
@@ -161,6 +195,20 @@ export function feedbackAnchor(label: string, ref: string): string {
   return `${label}:${ref}`;
 }
 
+/**
+ * A paste-ready `ExecutionProof` object literal for a harvested proof, meant
+ * to go straight into the `proofs` array of an agent's record in
+ * packages/shared/src/agents.ts. String fields go through JSON.stringify:
+ * a summary lifted verbatim from a log line can carry an apostrophe or a
+ * backslash (a fill percentage, a route description), and single-quoting it
+ * by hand would either break as TypeScript or silently paste in a different
+ * string than the one that was logged.
+ */
+export function formatHarvestedProof(proof: HarvestedProof): string {
+  const note = `harvested from the ${proof.slug} log, ${proof.at}`;
+  return `    { label: ${JSON.stringify(proof.summary)}, ref: ${JSON.stringify(proof.ref)}, kind: ${JSON.stringify(proof.kind)}, note: ${JSON.stringify(note)} },`;
+}
+
 const HARVEST_FLAGS: FlagSpec = { value: ['--dir'], boolean: [] };
 
 function main(): void {
@@ -185,7 +233,7 @@ function main(): void {
     // rewrite them into the phrase a hirer should read before pasting.
     console.log('  proofs: [');
     for (const proof of proofs) {
-      console.log(`    { label: '${proof.summary}', ref: '${proof.ref}', kind: '${proof.kind}', note: 'harvested from the ${proof.slug} log, ${proof.at}' },`);
+      console.log(formatHarvestedProof(proof));
     }
     console.log('  ],');
     const anchor = proofs[0]!;
