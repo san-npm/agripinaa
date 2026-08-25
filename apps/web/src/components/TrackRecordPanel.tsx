@@ -1,14 +1,5 @@
 import { EXEC_ORDER_WINDOW, getTrackRecord } from "@/lib/exec";
-
-/** "+4.2" / "-1.0": the sign carries the meaning, so never assume a plus. */
-function signedBps(value: number): string {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
-}
-
-/** "18 Aug 2026", read off the UTC string so no locale shifts the day. */
-function utcDay(iso: string): string {
-  return new Date(iso).toUTCString().slice(5, 16);
-}
+import { signedBps, utcDay } from "@/lib/format";
 
 /**
  * What an agent has done across its recent settlement history: how many orders

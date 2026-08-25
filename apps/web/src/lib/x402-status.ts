@@ -1,8 +1,9 @@
 'use server';
 
 import { agentBySlug } from '@agripinaa/shared/agents';
-import { OversizedBodyError, safeFetchBytes } from '@agripinaa/shared/ssrf';
+import { safeFetchBytes } from '@agripinaa/shared/ssrf';
 
+import { runnerFailure } from '@/lib/proxy-runner';
 import { runnerUrl } from '@/lib/runner-url';
 
 /** A status body is a few hundred bytes of numbers plus ten fills; 64 KB is ample. */
@@ -42,7 +43,7 @@ export async function askStatusEndpoint(slug: string): Promise<StatusEndpointAns
     });
     return { kind: 'answered', status: upstream.status, body: parseJson(upstream.bytes) };
   } catch (err) {
-    return { kind: err instanceof OversizedBodyError ? 'oversized' : 'unreachable' };
+    return { kind: runnerFailure(err) };
   }
 }
 

@@ -7,9 +7,9 @@ import { listStoredSessions } from '@/lib/session-store';
 import { askStatusEndpoint, type StatusEndpointAnswer } from '@/lib/x402-status';
 import {
   checkPayTo,
-  decodeChallenge,
   networkLabel,
   previewPayload,
+  readStatusAnswer,
   type PayToCheck,
   type X402Ask,
 } from '@/lib/x402-demo';
@@ -51,29 +51,19 @@ async function fetchStatus(slug: AgentSlug, tokenId: string): Promise<Outcome> {
     // A failed POST, or a stale action id after a redeploy; either way no answer.
     return { kind: 'offline' };
   }
-  switch (answer.kind) {
-    case 'unreachable':
-    case 'timeout':
-      return { kind: 'offline' };
-    case 'oversized':
-      return { kind: 'unexpected', detail: 'The runner answered with a body larger than a status can be.' };
-    case 'unknown-agent':
-      return { kind: 'unexpected', detail: 'This agent is not in the registry the server holds.' };
-    case 'answered':
-      break;
-  }
-  if (answer.status === 402) {
-    const ask = decodeChallenge(answer.body);
-    if (!ask) return { kind: 'unexpected', detail: 'The runner answered 402 with a challenge this page could not read.' };
-    // Read only: which sessions exist is the one thing this panel learns from
-    // storage, and it is never written back or sent anywhere.
-    const storedSession = listStoredSessions().some(
-      (session) => session.agent.tokenId === tokenId && session.revokedAt === null,
-    );
-    return { kind: 'challenge', ask, payTo: checkPayTo(slug, ask.payTo), storedSession };
-  }
-  if (answer.status >= 200 && answer.status < 300) return { kind: 'paid', payload: answer.body };
-  return { kind: 'unexpected', detail: `The runner answered ${answer.status}.` };
+  const verdict = readStatusAnswer(answer);
+  if (verdict.kind !== 'challenge') return verdict;
+  // Read only: which sessions exist is the one thing this panel learns from
+  // storage, and it is never written back or sent anywhere.
+  const storedSession = listStoredSessions().some(
+    (session) => session.agent.tokenId === tokenId && session.revokedAt === null,
+  );
+  return {
+    kind: 'challenge',
+    ask: verdict.ask,
+    payTo: checkPayTo(slug, verdict.ask.payTo),
+    storedSession,
+  };
 }
 
 /** The status tag beside the heading, in the proof feed's wording. */
@@ -197,9 +187,27 @@ export function X402Demo({
   const wallet = AGENTS[slug].wallet;
   const tag = statusTag(outcome);
 
+  /**
+   * The button is disabled while `outcome` is loading, so the one thing this
+   * must guarantee is that the loading state is always replaced. `fetchStatus`
+   * answers rather than throws, but it reads localStorage on the challenge
+   * path, which a browser with site data blocked makes throw: without the
+   * finally that would leave the button reading "Asking the runner…" with no
+   * way back.
+   */
   async function run() {
     setOutcome({ kind: 'loading', again: outcome.kind === 'offline' || outcome.kind === 'unexpected' });
-    setOutcome(await fetchStatus(slug, tokenId));
+    let next: Outcome = {
+      kind: 'unexpected',
+      detail: 'This page could not finish reading the answer.',
+    };
+    try {
+      next = await fetchStatus(slug, tokenId);
+    } catch {
+      // Keep the fallback above; there is nothing more specific to say.
+    } finally {
+      setOutcome(next);
+    }
   }
 
   return (
@@ -275,9 +283,8 @@ export function X402Demo({
           <div className="rounded-lg border border-border bg-surface-2 p-4">
             <p className="text-sm font-medium text-foreground">Runner offline, on-chain data still live.</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-2">
-              The status endpoint did not answer within 5 seconds. Everything else on this
-              page reads from BNB Chain and stays current; the endpoint comes back with the
-              tunnel.
+              The status endpoint did not answer. Everything else on this page reads from
+              BNB Chain and stays current; the endpoint comes back with the tunnel.
             </p>
           </div>
         )}

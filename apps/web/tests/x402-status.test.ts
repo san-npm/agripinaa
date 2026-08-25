@@ -28,7 +28,9 @@ test('a body that is not JSON is passed on as null rather than thrown', async ()
 test('a slug outside the registry is refused and the runner is never asked', async () => {
   const state = newState();
   const stub = recordingFetch(state, () => new Response(JSON.stringify(CHALLENGE), { status: 402 }));
-  for (const slug of ['nope', 'healthz', '../proof', 'GRID', 'grid/status', '']) {
+  // 'constructor' and '__proto__' are the ones a plain-object lookup answers
+  // truthy for, which would put an attacker-chosen path past the gate.
+  for (const slug of ['nope', 'healthz', '../proof', 'GRID', 'grid/status', '', 'constructor', '__proto__', 'toString']) {
     const answer = await withFetch(stub, () => askStatusEndpoint(slug));
     assert.deepEqual(answer, { kind: 'unknown-agent' }, JSON.stringify(slug));
   }
