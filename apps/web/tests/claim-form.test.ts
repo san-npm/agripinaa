@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { CLAIM_CATEGORY_OPTIONS, prepareClaim } from '../src/lib/claim-form';
+import { CLAIM_CATEGORY_OPTIONS, ownerStatus, prepareClaim } from '../src/lib/claim-form';
 
 const values = {
   description: 'Rotates USDT between lending venues.',
@@ -11,6 +11,9 @@ const values = {
 };
 
 const issuedAt = '2026-08-25T10:00:00.000Z';
+
+const OWNER = '0x85115c8ad0f4dc0d84a4d9d0c0a7f0ef0b12f3ff';
+const OTHER = '0x1111111111111111111111111111111111111111';
 
 test('prepares the sanitised fields the browser has to sign', () => {
   const { fields } = prepareClaim({ chainId: 56, tokenId: '000297380', values, issuedAt });
@@ -75,4 +78,19 @@ test('every category the sanitiser accepts is offered by the form', () => {
     });
     assert.equal(fields.category, value);
   }
+});
+
+test('the owner is recognised whatever case the wallet returns the address in', () => {
+  const shouted = `0x${OWNER.slice(2).toUpperCase()}`;
+  assert.equal(ownerStatus({ account: shouted, owner: OWNER, ownerFromChain: true }), 'match');
+});
+
+test('an account the chain says does not own the agent is refused before signing', () => {
+  assert.equal(ownerStatus({ account: OTHER, owner: OWNER, ownerFromChain: true }), 'mismatch');
+});
+
+test('a difference from an owner the index supplied is left for the server to answer', () => {
+  // The RPC did not answer, so the address on the page can be a transfer
+  // behind. Refusing here would lock out the very person the form is for.
+  assert.equal(ownerStatus({ account: OTHER, owner: OWNER, ownerFromChain: false }), 'unconfirmed');
 });

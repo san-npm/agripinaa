@@ -6,15 +6,16 @@ import { isAddress } from 'viem';
 
 import {
   CLAIM_CATEGORY_OPTIONS,
+  ownerStatus,
   prepareClaim,
   type ClaimFormValues,
   type DroppedLink,
+  type OwnerStatus,
 } from '@/lib/claim-form';
 import {
   MAX_DESCRIPTION_CHARS,
   MAX_URL_CHARS,
   buildClaimMessage,
-  sameAddress,
   type ClaimFields,
 } from '@/lib/claim-message';
 import { NoWalletError, connectInjected, injectedProvider } from '@/lib/injected-wallet';
@@ -80,7 +81,7 @@ export function ClaimForm({
   // does not exist on the server, and a bare check would make the server and
   // the first client render disagree about which of the two panels below shows.
   const hasWallet = useSyncExternalStore(subscribeNever, hasInjectedWallet, () => false);
-  const ownerMatches = sameAddress(account, owner);
+  const status = account ? ownerStatus({ account, owner, ownerFromChain }) : null;
 
   function set<K extends keyof ClaimFormValues>(key: K, value: ClaimFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -117,7 +118,11 @@ export function ClaimForm({
       // and this is the point where a stale one would matter.
       const { address, client } = await connectInjected();
       setAccount(address);
-      if (!sameAddress(address, owner)) {
+      // Refused here only when the chain itself named a different owner. With
+      // an owner that came from the index instead, a difference proves nothing
+      // and blocking would lock out the current owner, who is exactly who this
+      // form is for; the endpoint reads `ownerOf` and answers.
+      if (ownerStatus({ account: address, owner, ownerFromChain }) === 'mismatch') {
         fail('connected wallet is not the owner of this agent');
         return;
       }
@@ -183,7 +188,9 @@ export function ClaimForm({
         <h2 className="font-display text-lg font-semibold">Prove you own it</h2>
         <dl className="space-y-2 rounded-lg border border-border bg-surface-2 p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <dt className="text-muted-2">On-chain owner</dt>
+            <dt className="text-muted-2">
+              {ownerFromChain ? 'On-chain owner' : 'Owner in the index'}
+            </dt>
             <dd className="break-all font-mono text-xs text-muted">{owner}</dd>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -201,13 +208,7 @@ export function ClaimForm({
           </p>
         )}
 
-        {account && (
-          <p className={`text-xs ${ownerMatches ? 'text-success' : 'text-danger'}`}>
-            {ownerMatches
-              ? 'This account matches the on-chain owner.'
-              : 'connected wallet is not the owner of this agent'}
-          </p>
-        )}
+        {status && <p className={`text-xs ${STATUS_TONE[status]}`}>{STATUS_LINE[status]}</p>}
 
         {ownerIsContract && (
           <p className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm leading-relaxed text-danger">
@@ -323,6 +324,19 @@ export function ClaimForm({
     </form>
   );
 }
+
+const STATUS_TONE: Record<OwnerStatus, string> = {
+  match: 'text-success',
+  mismatch: 'text-danger',
+  unconfirmed: 'text-muted',
+};
+
+const STATUS_LINE: Record<OwnerStatus, string> = {
+  match: 'This account matches the owner shown above.',
+  mismatch: 'connected wallet is not the owner of this agent',
+  unconfirmed:
+    'This account does not match the owner the index reported. The registry decides when you submit.',
+};
 
 const subscribeNever = () => () => {};
 const hasInjectedWallet = () => injectedProvider() !== null;
