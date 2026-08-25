@@ -90,6 +90,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               Leaderboard
             </Link>
             <Link
+              href="/funds"
+              className="text-muted transition-colors hover:text-foreground"
+            >
+              Funds
+            </Link>
+            <Link
               href="/dashboard"
               className="text-muted transition-colors hover:text-foreground"
             >
