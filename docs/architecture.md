@@ -162,9 +162,12 @@ downloadable receipt behind `/api/exec/receipt/[uid]`.
 **Browse.** `/` and `/agents` list BSC-scoped agents from the merged index.
 `/agents` keeps two sections: the agents we built and attested on-chain, then
 the permissionless registry, ranked and collapsed by `rankAndDedupe`
-(`packages/agent-index/src/quality.ts`) and cut to the first 45 cards
-(`DIRECTORY_PAGE_SIZE` in `apps/web/src/lib/data.ts`), with same-name low-signal
-registrations collapsed into one card and a count.
+(`packages/agent-index/src/quality.ts`), with same-name low-signal
+registrations collapsed into one card and a count. That second section is
+narrowed rather than cut short: a text search, a category, and live and claimed
+toggles are read from the URL's query params, so a filtered directory is a
+link someone can share, and the list pages forward on an opaque cursor instead
+of stopping at a fixed card count.
 
 Category hubs at `/c/<category>` cover the four mandated categories and take a
 page of 24 from `listAgents`. A hub is the only listing a stored claim can pull

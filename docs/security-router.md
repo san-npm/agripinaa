@@ -215,11 +215,33 @@ data dir tightened to 0700`).
 
 A dedicated Solidity audit pass ran over the live BSC deployments on
 2026-08-24, one of five review lenses turned on the project that day. No High
-and no Critical findings. The L-1 delta-accounting fix was checked rather than
-assumed: both deployments' runtime bytecode matched the compiled source, the ten
-fork tests passed, Echidna and Medusa each completed 60,000-case campaigns with
-both properties holding, and 30-day fork simulations showed yield reaching the
-user while donated aTokens and vTokens stayed untouched.
+and no Critical findings. The pass, its scope and its result are written down in
+the plan, under the heading "Verification sweep, 2026-08-24 (five independent
+lenses)" and its "Router audit" paragraph
+([`docs/superpowers/plans/2026-08-24-marketplace-expansion.md`](./superpowers/plans/2026-08-24-marketplace-expansion.md)).
+
+The L-1 delta-accounting fix was checked rather than assumed. Claim by claim,
+with where each one can be checked from this repo and where it cannot:
+
+- **Both deployments' runtime bytecode matched the compiled source.** Re-run
+  that comparison with `cast code` against a local `forge build` artifact, using
+  the two addresses in the table at the top of this document. The audit's own
+  comparison output is not committed.
+- **The ten fork tests passed.** Each is named under "Ten fork tests against
+  live BSC venues" above, in
+  [`contracts/test/AgripinaaYieldRouter.t.sol`](../contracts/test/AgripinaaYieldRouter.t.sol),
+  and `forge test --fork-url bsc` runs them against the live venues.
+- **Echidna and Medusa each completed 60,000-case campaigns with both
+  properties holding.** The properties are `echidna_no_actor_exceeds_deposits`
+  and `echidna_router_holds_only_donations` in
+  [`contracts/test/fuzz/RouterFuzz.sol`](../contracts/test/fuzz/RouterFuzz.sol);
+  the 60,000-case limit is in `contracts/echidna.yaml` and
+  `contracts/medusa.json`. The campaign logs are not committed, so re-running
+  the two engines is the check.
+- **30-day fork simulations showed yield reaching the user while donated aTokens
+  and vTokens stayed untouched.** Run by the audit on 2026-08-24. No simulation
+  script and no output from it are committed here, so this figure is reported
+  rather than reproducible from this repo.
 
 ## The open Medium, with its precondition
 
@@ -236,7 +258,9 @@ borrow **in the same venue**, the forced rotation removes the collateral while
 the debt stays, and a barely solvent account can be pushed toward liquidation.
 The PoC used $1,000 aUSDT plus $2,000 WBNB against $1,390 USDC debt:
 health factor 1.4784 to 1.0792 on the forced rotation, to 0.9173 after a 15
-percent WBNB move, attacker profit about $125.
+percent WBNB move, attacker profit about $125. Those figures come from the
+audit's proof of concept, run on 2026-08-24, and the PoC itself is not
+committed here, so they are reported rather than re-runnable from this repo.
 
 Three things follow, and none of them are softened here:
 
@@ -246,8 +270,13 @@ Three things follow, and none of them are softened here:
    general.
 2. **Checked on-chain, not assumed:** read back on 2026-08-24, the single live
    managed account has zero debt in both venues and has entered no Venus market
-   as collateral, so no user is exposed. Re-read it before adding another
-   mandate, since that is a fact about accounts and not about the code.
+   as collateral, so no user is exposed. No transcript of that read is
+   committed, and it is a fact about accounts rather than about the code, so it
+   expires: re-read it before adding another mandate, with Aave's
+   `getUserAccountData` and the Venus comptroller's `getAssetsIn` and
+   `getAccountLiquidity` (the same reads `apps/agents/src/agents/health-factor.ts`
+   and `apps/agents/src/agents/venus-guardian.ts` use) against the managed
+   account.
 3. **The fuzz harness could never have found this.** Its mocks have no debt, no
    collateral flags, no oracle and no liquidation, which is exactly why the
    blind spot is written down above rather than left to be discovered.
