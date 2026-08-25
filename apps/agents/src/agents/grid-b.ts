@@ -1,20 +1,36 @@
 /**
- * Grid B: WBNB/USDC mean-reversion grid on BSC, the second agent in the grid
+ * Grid B: BTCB/USDT mean-reversion grid on BSC, the second agent in the grid
  * category and a deliberate contrast with `grid` rather than a copy of it.
  *
  * Same strategy, same venue (every swap is an Ophis batch auction), same halts,
- * different parameterisation on a different pair: five levels each side at 2.5
+ * different parameterisation on a different market: five levels each side at 2.5
  * percent spacing (grid runs four at 1.5), $1.50 clips (grid $2), 8 trades a day
  * (grid 12), and a 45 minute cooldown (grid 31). Wider and slower, so the two
- * track records answer a real question: on the same market, does a patient
- * ladder beat a tight one?
+ * track records answer a real question: does a patient ladder on BTC beat a
+ * tight one on BNB?
+ *
+ * The pair matters as much as the parameters. This agent first ran WBNB/USDC,
+ * which is the same underlying market as grid's WBNB/USDT priced in a second
+ * dollar: both agents would have seen identical BNB price action and produced
+ * correlated track records, so the grid hub would have listed one strategy
+ * twice. BTCB is a different asset with its own volatility, and its book is far
+ * deeper: measured on-chain 2026-08-25, the BTCB/USDT fee-500 pool held about
+ * 9.46 million USDT against the 1.47 million of the deepest WBNB/USDC pool.
+ * BTC also realises less volatility than BNB, so a 2.5 percent ladder here
+ * crosses less often than the same ladder would have on WBNB. That is the
+ * patient end of the comparison, not a defect.
+ *
+ * USDT stays the quote because inventoryValueUsd sums base * price + quote and
+ * calls the result dollars, and both the drawdown halt and the clip sizing rest
+ * on that. A non-dollar quote (BTCB/WBNB, say) would quietly make every one of
+ * those numbers mean something else.
  *
  * All of the strategy arithmetic is the shared core in ../grid-core, which
  * `grid` uses too. This file owns only THIS grid's parameters, its pair, and
  * its tick wiring, and every core call passes GRID_B_PARAMS explicitly so the
  * two agents cannot inherit each other's numbers.
  *
- * The WBNB/USDC pool is resolved through the PancakeSwap V3 factory at runtime
+ * The BTCB/USDT pool is resolved through the PancakeSwap V3 factory at runtime
  * and validated (pair, fee tier, deepest of the eligible tiers) exactly as
  * `grid` resolves WBNB/USDT: nothing about the book is hardcoded here.
  */
@@ -50,12 +66,12 @@ import type { AgentContext, AgentModule } from '../types';
 
 export { buildLadder };
 
-const WBNB = TOKENS_BSC.WBNB!;
-const USDC = TOKENS_BSC.USDC!;
+const BTCB = TOKENS_BSC.BTCB!;
+const USDT = TOKENS_BSC.USDT!;
 
-/** Base first: the price this agent works in is USDC per WBNB. */
-const PAIR: GridPair = { base: WBNB, quote: USDC };
-const CLIP_SYMBOLS = { base: 'WBNB', quote: 'USDC' } as const;
+/** Base first: the price this agent works in is USDT per BTCB. */
+const PAIR: GridPair = { base: BTCB, quote: USDT };
+const CLIP_SYMBOLS = { base: 'BTCB', quote: 'USDT' } as const;
 
 /**
  * Every number this agent enforces, in the units its manifest publishes them
@@ -63,12 +79,14 @@ const CLIP_SYMBOLS = { base: 'WBNB', quote: 'USDC' } as const;
  * x402 client reads and what the tick applies are the same values.
  */
 export const GRID_B_PARAMS: GridParams = {
-  pair: 'WBNB/USDC',
+  pair: 'BTCB/USDT',
   spacingPct: 2.5,
   levelsPerSide: 5,
   clipUsd: 1.5,
   /* Same floor as grid and lp-range: below a dollar a swap is not worth its
-   * own fee on this venue. */
+   * own fee on this venue. On BTCB a $1 clip is about 0.0000127 of a coin, and
+   * clipForLevel quotes it to 6 significant figures, so the order still carries
+   * ten decimal places of resolution against the token's eighteen. */
   minClipUsd: 1,
   /* Must exceed the Ophis order validity (~30 min), or a new clip can be
    * submitted while a previous order is still executable and the two fill
@@ -106,9 +124,9 @@ export const gridBAgent: AgentModule = {
     const pool = await resolveReferencePool(ctx, PAIR);
     const price = await readMidPrice(ctx, pool);
     const balances = await readBalances(ctx, PAIR);
-    const wbnbWhole = Number(fromBaseUnits(balances.base, WBNB.decimals));
-    const usdcWhole = Number(fromBaseUnits(balances.quote, USDC.decimals));
-    const inventoryNowUsd = inventoryValueUsd(wbnbWhole, usdcWhole, price);
+    const btcbWhole = Number(fromBaseUnits(balances.base, BTCB.decimals));
+    const usdtWhole = Number(fromBaseUnits(balances.quote, USDT.decimals));
+    const inventoryNowUsd = inventoryValueUsd(btcbWhole, usdtWhole, price);
 
     // Fail SAFE on a corrupt read: a non-finite or non-positive price or
     // inventory would make the breakout and loss comparisons quietly false, or
@@ -135,8 +153,8 @@ export const gridBAgent: AgentModule = {
         event: 'grid-init',
         center: price,
         inventoryStartUsd: inventoryNowUsd,
-        wbnbWhole,
-        usdcWhole,
+        btcbWhole,
+        usdtWhole,
         pool: pool.address,
         feeTier: pool.fee,
       });
@@ -234,9 +252,9 @@ export const gridBAgent: AgentModule = {
       return;
     }
 
-    // Size the clip to what the spending leg can fund: a buy spends USDC, a
-    // sell spends WBNB. This only ever shrinks the clip, never grows it.
-    const affordableUsd = hit.level.side === 'buy' ? usdcWhole : wbnbWhole * price;
+    // Size the clip to what the spending leg can fund: a buy spends USDT, a
+    // sell spends BTCB. This only ever shrinks the clip, never grows it.
+    const affordableUsd = hit.level.side === 'buy' ? usdtWhole : btcbWhole * price;
     const clipUsd = effectiveClipUsd(
       GRID_B_PARAMS.clipUsd,
       affordableUsd,
@@ -255,9 +273,9 @@ export const gridBAgent: AgentModule = {
     const clipAdaptation = reducedClip
       ? { desiredClipUsd: GRID_B_PARAMS.clipUsd, effectiveClipUsd: clipUsd }
       : {};
-    const clipToken = clip.token === 'WBNB' ? WBNB : USDC;
+    const clipToken = clip.token === 'BTCB' ? BTCB : USDT;
     const clipBaseUnits = toBaseUnits(clip.amount, clipToken.decimals);
-    const balanceBaseUnits = clip.token === 'WBNB' ? balances.base : balances.quote;
+    const balanceBaseUnits = clip.token === 'BTCB' ? balances.base : balances.quote;
 
     const guard = evaluateGuards({
       nowMs: Date.now(),
@@ -287,8 +305,8 @@ export const gridBAgent: AgentModule = {
       return;
     }
 
-    const sellToken = hit.level.side === 'sell' ? WBNB.address : USDC.address;
-    const buyToken = hit.level.side === 'sell' ? USDC.address : WBNB.address;
+    const sellToken = hit.level.side === 'sell' ? BTCB.address : USDT.address;
+    const buyToken = hit.level.side === 'sell' ? USDT.address : BTCB.address;
     ctx.log({
       event: 'trade-intent',
       side: hit.level.side,
@@ -358,8 +376,8 @@ export const gridBAgent: AgentModule = {
       price = await readMidPrice(ctx, pool);
       const balances = await readBalances(ctx, PAIR);
       inventoryNowUsd = inventoryValueUsd(
-        Number(fromBaseUnits(balances.base, WBNB.decimals)),
-        Number(fromBaseUnits(balances.quote, USDC.decimals)),
+        Number(fromBaseUnits(balances.base, BTCB.decimals)),
+        Number(fromBaseUnits(balances.quote, USDT.decimals)),
         price,
       );
     } catch (err) {

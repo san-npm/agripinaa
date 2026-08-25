@@ -26,24 +26,29 @@ import {
 } from '../src/agent-config';
 
 test('the funding plan carries the live amounts, keyed by wallet name', () => {
+  // Every ERC20 leg the plan can carry gets a column here, BTCB included. A leg
+  // that exists in FundingEntry but is missing from this row is a leg fund.ts
+  // can budget, print under --plan, and then never send, which reads as a
+  // funded agent right up until its first trade blocks on an empty balance.
   assert.deepEqual(
-    FUNDING_PLAN.map((e) => [e.name, e.bnb, e.usdt, e.wbnb, e.usdc]),
+    FUNDING_PLAN.map((e) => [e.name, e.bnb, e.usdt, e.wbnb, e.usdc, e.btcb]),
     [
-      ['agent-grid', '0.0011', '5', '0.004', '0'],
-      // Budgeted, not yet sent: grid-b holds no wallet to send to. Its
-      // stablecoin leg is USDC because that is the token its buys spend.
-      ['agent-grid-b', '0.0015', '0', '0.003', '2'],
-      ['agent-health-factor', '0.0011', '2', '0.005', '0'],
+      ['agent-grid', '0.0011', '5', '0.004', '0', '0'],
+      // Budgeted, not yet sent: grid-b holds no wallet to send to. One leg per
+      // side of BTCB/USDT, because a grid spends both: the buys sell USDT and
+      // the sells sell BTCB.
+      ['agent-grid-b', '0.0015', '2', '0', '0', '0.000025'],
+      ['agent-health-factor', '0.0011', '2', '0.005', '0', '0'],
       // Budgeted, not yet sent: the Venus guardian repays from a USDT budget,
       // and the WBNB leg is what a demo borrow position would be opened against.
-      ['agent-venus-guardian', '0.0015', '2', '0.005', '0'],
-      ['agent-yield', '0.0009', '2.5', '0', '0'],
+      ['agent-venus-guardian', '0.0015', '2', '0.005', '0', '0'],
+      ['agent-yield', '0.0009', '2.5', '0', '0', '0'],
       // Budgeted, not yet sent: yield-b manages user deposits, so its own
       // capital is a token position that gives it a track record of its own.
-      ['agent-yield-b', '0.0015', '1', '0', '0'],
-      ['agent-lp-range', '0.0011', '1.5', '0.003', '0'],
-      ['agent-weight-rebalancer', '0.0015', '2.5', '0.004', '0'],
-      ['facilitator', '0.0008', '0', '0', '0'],
+      ['agent-yield-b', '0.0015', '1', '0', '0', '0'],
+      ['agent-lp-range', '0.0011', '1.5', '0.003', '0', '0'],
+      ['agent-weight-rebalancer', '0.0015', '2.5', '0.004', '0', '0'],
+      ['facilitator', '0.0008', '0', '0', '0', '0'],
     ],
   );
 });

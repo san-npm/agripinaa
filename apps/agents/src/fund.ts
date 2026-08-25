@@ -5,6 +5,11 @@
  * The split itself lives in the shared agent registry (see agent-config.ts), so
  * adding an agent does not mean remembering to add it here too.
  *
+ * grid-b's plan asks for a BTCB leg, which spike-a does not hold: that leg has
+ * to be acquired before --execute reaches it, or the transfer reverts on an
+ * insufficient balance partway through the run (funding is not idempotent, so a
+ * retry then needs --only for the wallets that were missed).
+ *
  * Usage:
  *   pnpm --filter @agripinaa/agents fund -- --gen      # create missing wallets
  *   pnpm --filter @agripinaa/agents fund -- --plan     # print the split
@@ -42,9 +47,34 @@ function onlyArg(): string | undefined {
   return process.argv[i + 1] ?? '';
 }
 
+/**
+ * Every ERC20 leg the plan can carry, in the order --execute sends them, each
+ * paired with the TOKENS_BSC symbol it transfers as.
+ *
+ * ONE list, read by both the printer and the transfer loop below, so a leg
+ * cannot be budgeted and printed and then silently never sent. That is not
+ * hypothetical: USDC was in the plan and missing from the loop, so grid-b's
+ * whole buy side would have been funded on paper and empty on chain. Adding a
+ * field to FundingEntry without adding it here now leaves it out of BOTH, which
+ * at least fails visibly at the plan.
+ */
+const ERC20_LEGS: readonly [symbol: 'USDT' | 'WBNB' | 'USDC' | 'BTCB', of: (e: FundingEntry) => string][] = [
+  ['USDT', (e) => e.usdt],
+  ['WBNB', (e) => e.wbnb],
+  ['USDC', (e) => e.usdc],
+  ['BTCB', (e) => e.btcb],
+];
+
+/** The legs of this entry that carry a non-zero amount. */
+function legs(entry: FundingEntry): { symbol: 'USDT' | 'WBNB' | 'USDC' | 'BTCB'; amount: string }[] {
+  return ERC20_LEGS.map(([symbol, of]) => ({ symbol, amount: of(entry) })).filter(
+    (leg) => Number(leg.amount) > 0,
+  );
+}
+
 function describe(entry: FundingEntry): string {
-  const line = `${entry.name}: ${entry.bnb} BNB + ${entry.usdt} USDT + ${entry.wbnb} WBNB`;
-  return Number(entry.usdc) > 0 ? `${line} + ${entry.usdc} USDC` : line;
+  const parts = legs(entry).map((leg) => `${leg.amount} ${leg.symbol}`);
+  return [`${entry.name}: ${entry.bnb} BNB`, ...parts].join(' + ');
 }
 
 async function loadKey(name: string): Promise<`0x${string}`> {
@@ -107,12 +137,7 @@ async function main() {
       await publicClient.waitForTransactionReceipt({ hash });
       console.log(`${entry.name} ← ${entry.bnb} BNB (${hash})`);
     }
-    for (const [symbol, amount] of [
-      ['USDT', entry.usdt],
-      ['WBNB', entry.wbnb],
-      ['USDC', entry.usdc],
-    ] as const) {
-      if (Number(amount) <= 0) continue;
+    for (const { symbol, amount } of legs(entry)) {
       const token = TOKENS_BSC[symbol]!;
       const hash = await walletClient.writeContract({
         address: token.address,
