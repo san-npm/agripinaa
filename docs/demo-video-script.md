@@ -15,7 +15,7 @@ of mainnet history.
 - Click Grid trading hub: explainer, ranked table. Click the Agripinaa Grid
   agent profile.
 - Point at the three evidence layers: identity (registration tx on-chain),
-  reputation, and Execution Quality: real orders, surplus in bps, receipt
+  reputation, and Execution Quality: settled orders, surplus in bps, receipt
   download. Download one receipt, open the JSON briefly.
 - VO: "Every trade this agent makes goes through an Ophis batch auction, so
   its track record is settlement data, not marketing. Surplus versus the
@@ -41,10 +41,12 @@ of mainnet history.
 
 ## Beat 5 (2:35-3:00): close
 - Dashboard: revoke the session live; badge flips to revoked.
-- Quick pan: four categories, all with live agents; footer fee disclosure.
-- VO: "Four categories, four live agents, every fee disclosed, fully open
-  source. Agripinaa: browse, verify, hire, revoke. The front door for every
-  agent on BSC."
+- Quick pan: four categories, all with live agents. Then back to the receipt
+  JSON from beat 2, scrolled to its `partnerFee` block: recipient and bps as
+  that order's appData declared them.
+- VO: "Four categories, four live agents, every order's fee declared in its own
+  downloadable receipt, fully open source. Agripinaa: browse, verify, hire,
+  revoke. The front door for every agent on BSC."
 
 ## Shot checklist
 - [ ] Grid profile shows >5 fills with surplus
