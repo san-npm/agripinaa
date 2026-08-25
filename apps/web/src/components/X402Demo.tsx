@@ -1,10 +1,17 @@
 'use client';
 
-import type { AgentSlug } from '@agripinaa/shared/agents';
+import { AGENTS, type AgentSlug } from '@agripinaa/shared/agents';
 import { useState } from 'react';
 
 import { listStoredSessions } from '@/lib/session-store';
-import { decodeChallenge, networkLabel, previewPayload, type X402Ask } from '@/lib/x402-demo';
+import {
+  checkPayTo,
+  decodeChallenge,
+  networkLabel,
+  previewPayload,
+  type PayToCheck,
+  type X402Ask,
+} from '@/lib/x402-demo';
 
 /**
  * How long the browser waits on the proxy. The route gives the runner 5 s and
@@ -15,9 +22,10 @@ const CLIENT_TIMEOUT_MS = 7_000;
 
 type Outcome =
   | { kind: 'idle' }
-  | { kind: 'loading' }
-  /** The runner's 402, decoded: what it asks for before it answers. */
-  | { kind: 'challenge'; ask: X402Ask; storedSession: boolean }
+  /** In flight; `again` after a failed attempt, which is the proof feed's reconnecting state. */
+  | { kind: 'loading'; again: boolean }
+  /** The runner's 402, decoded, with its payTo judged against the registry. */
+  | { kind: 'challenge'; ask: X402Ask; payTo: PayToCheck; storedSession: boolean }
   /** A 200, which only a paid request gets; shown as the runner returned it. */
   | { kind: 'paid'; payload: unknown }
   /** No answer from the runner within the timeout, or the proxy said so. */
@@ -43,11 +51,25 @@ async function fetchStatus(slug: AgentSlug, tokenId: string): Promise<Outcome> {
     const storedSession = listStoredSessions().some(
       (session) => session.agent.tokenId === tokenId && session.revokedAt === null,
     );
-    return { kind: 'challenge', ask, storedSession };
+    return { kind: 'challenge', ask, payTo: checkPayTo(slug, ask.payTo), storedSession };
   }
   if (res.ok) return { kind: 'paid', payload: body };
   if (res.status === 502) return { kind: 'offline' };
   return { kind: 'unexpected', detail: `The runner answered ${res.status}.` };
+}
+
+/** The status tag beside the heading, in the proof feed's wording. */
+function statusTag(outcome: Outcome): string | null {
+  switch (outcome.kind) {
+    case 'idle':
+      return null;
+    case 'loading':
+      return outcome.again ? 'reconnecting…' : 'connecting…';
+    case 'offline':
+      return 'runner offline';
+    default:
+      return 'runner live';
+  }
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -59,7 +81,43 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function Challenge({ ask, storedSession }: { ask: X402Ask; storedSession: boolean }) {
+/**
+ * The destination is shown as somewhere to pay only when it is the wallet the
+ * registry commits for this agent; otherwise the panel refuses the challenge
+ * and says why, and the how-to-pay text below is not rendered at all.
+ */
+function PayToRefused({ payTo }: { payTo: Exclude<PayToCheck, { verdict: 'pinned' }> }) {
+  return (
+    <div className="mt-3 rounded-lg border border-danger/40 bg-danger/5 p-3 text-xs leading-relaxed text-muted">
+      <p className="font-medium text-foreground">Do not pay this challenge.</p>
+      {payTo.verdict === 'mismatch' ? (
+        <p className="mt-1">
+          It names <span className="break-all font-mono">{payTo.reported}</span> as the
+          destination, and the registry wallet for this agent is{' '}
+          <span className="break-all font-mono">{payTo.expected}</span>. The runner base is a
+          rotating tunnel hostname, so an answer that pays anywhere else is treated as not
+          coming from this agent.
+        </p>
+      ) : (
+        <p className="mt-1">
+          The registry holds no wallet for this agent yet, so nothing can vouch for{' '}
+          <span className="break-all font-mono">{payTo.reported}</span> as the destination.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Challenge({
+  ask,
+  payTo,
+  storedSession,
+}: {
+  ask: X402Ask;
+  payTo: PayToCheck;
+  storedSession: boolean;
+}) {
+  const pinned = payTo.verdict === 'pinned';
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
       <p className="text-xs font-medium uppercase tracking-wider text-primary">
@@ -69,21 +127,30 @@ function Challenge({ ask, storedSession }: { ask: X402Ask; storedSession: boolea
       <dl className="mt-3 space-y-2 text-sm">
         <Row label="Amount">{ask.amountFormatted}</Row>
         <Row label="Asset">{ask.asset}</Row>
-        <Row label="Pays to">{ask.payTo}</Row>
+        {pinned && (
+          <Row label="Pays to">
+            {payTo.wallet}{' '}
+            <span className="font-sans text-muted-2">(this agent&apos;s registry wallet)</span>
+          </Row>
+        )}
         <Row label="Network">{networkLabel(ask)}</Row>
         {ask.rail && <Row label="Rail">{ask.rail}</Row>}
         {ask.spender && <Row label="Permit2 spender">{ask.spender}</Row>}
         {ask.timeoutSeconds !== null && <Row label="Valid for">{ask.timeoutSeconds} s</Row>}
       </dl>
-      <p className="mt-3 text-xs leading-relaxed text-muted-2">
-        {storedSession
-          ? 'A session for this agent is stored in this browser, but only its public half: the signer is stripped before storage on purpose, so this page cannot sign the payment.'
-          : 'No session for this agent is stored in this browser, and a stored one keeps only its public half anyway, so this page cannot sign the payment.'}{' '}
-        Paying needs an Altana session with its signer in hand (the activation flow grants
-        one) or a wallet holding USDT with a Permit2 approval; what such a client signs is
-        exactly the ask above, and the same request retried with the payment header returns
-        the status.
-      </p>
+      {pinned ? (
+        <p className="mt-3 text-xs leading-relaxed text-muted-2">
+          {storedSession
+            ? 'A session for this agent is stored in this browser, but only its public half: the signer is stripped before storage on purpose, so this page cannot sign the payment.'
+            : 'No session for this agent is stored in this browser, and a stored one keeps only its public half anyway, so this page cannot sign the payment.'}{' '}
+          Paying needs an Altana session with its signer in hand (the activation flow grants
+          one) or a wallet holding USDT with a Permit2 approval; what such a client signs is
+          exactly the ask above, and the same request retried with the payment header returns
+          the status.
+        </p>
+      ) : (
+        <PayToRefused payTo={payTo} />
+      )}
     </div>
   );
 }
@@ -92,7 +159,8 @@ function Challenge({ ask, storedSession }: { ask: X402Ask; storedSession: boolea
  * The x402 status endpoint, made usable from the agent page: where it is, what
  * it costs, what comes back, and a button that asks the runner itself. The
  * endpoint arrives as a prop resolved on the server from the runner base, so
- * this component never decides where the runner is.
+ * this component never decides where the runner is. The wallet the payment
+ * must go to comes from the committed registry, never from the runner.
  */
 export function X402Demo({
   slug,
@@ -108,17 +176,22 @@ export function X402Demo({
 }) {
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
   const busy = outcome.kind === 'loading';
+  const wallet = AGENTS[slug].wallet;
+  const tag = statusTag(outcome);
 
   async function run() {
-    setOutcome({ kind: 'loading' });
+    setOutcome({ kind: 'loading', again: outcome.kind === 'offline' || outcome.kind === 'unexpected' });
     setOutcome(await fetchStatus(slug, tokenId));
   }
 
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
-      <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-2">
-        x402 status endpoint
-      </h2>
+      <div className="mb-4 flex items-center gap-2">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-2">
+          x402 status endpoint
+        </h2>
+        {tag && <span className="text-[10px] text-muted-2">{tag}</span>}
+      </div>
       <p className="text-sm leading-relaxed text-muted">
         Reading this agent&apos;s live status is one paid HTTP call on the B402 wire
         (Binance x402 v2) over BNB Smart Chain: the endpoint answers 402 with its
@@ -138,7 +211,15 @@ export function X402Demo({
           </a>
         </Row>
         <Row label="Price">{priceUsdt} USDT per call</Row>
-        <Row label="Pays to">the agent&apos;s own wallet</Row>
+        <Row label="Pays to">
+          {wallet ?? 'no registry wallet yet'}
+          {wallet && (
+            <>
+              {' '}
+              <span className="font-sans text-muted-2">(this agent&apos;s registry wallet)</span>
+            </>
+          )}
+        </Row>
       </dl>
 
       <p className="mt-4 text-xs text-muted-2">
@@ -165,7 +246,7 @@ export function X402Demo({
 
       <div className="mt-4" aria-live="polite">
         {outcome.kind === 'challenge' && (
-          <Challenge ask={outcome.ask} storedSession={outcome.storedSession} />
+          <Challenge ask={outcome.ask} payTo={outcome.payTo} storedSession={outcome.storedSession} />
         )}
         {outcome.kind === 'paid' && (
           <pre className="overflow-x-auto rounded-lg border border-success/25 bg-success/5 p-3 font-mono text-[11px] leading-relaxed text-muted">
@@ -174,10 +255,11 @@ export function X402Demo({
         )}
         {outcome.kind === 'offline' && (
           <div className="rounded-lg border border-border bg-surface-2 p-4">
-            <p className="text-sm font-medium text-foreground">Runner offline</p>
+            <p className="text-sm font-medium text-foreground">Runner offline, on-chain data still live.</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-2">
-              The status endpoint did not answer within 5 seconds. On-chain data on this
-              page is still live; the endpoint comes back with the tunnel.
+              The status endpoint did not answer within 5 seconds. Everything else on this
+              page reads from BNB Chain and stays current; the endpoint comes back with the
+              tunnel.
             </p>
           </div>
         )}

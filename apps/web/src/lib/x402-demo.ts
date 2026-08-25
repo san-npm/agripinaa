@@ -90,6 +90,35 @@ export function decodeChallenge(body: unknown): X402Ask | null {
   return { ...chosen, description: typeof description === 'string' ? description : null };
 }
 
+/** Where a challenge's payment goes, judged against the committed registry. */
+export type PayToCheck =
+  /** The challenge pays the wallet the registry commits for this agent. */
+  | { verdict: 'pinned'; wallet: `0x${string}` }
+  /** The challenge pays somewhere else: what a replaced runner base would produce. */
+  | { verdict: 'mismatch'; expected: `0x${string}`; reported: `0x${string}` }
+  /** The registry holds no wallet for this agent, so nothing can vouch for the destination. */
+  | { verdict: 'unpinned'; reported: `0x${string}` };
+
+/**
+ * Pin the challenge's payTo to AGENTS[slug].wallet. The 402 body comes off a
+ * rotating quick-tunnel hostname, and a dead name could be re-issued to
+ * someone else, so the address it asks to be paid at is the point where a
+ * hijacked base would be paid; the same reasoning as the manager-key pin
+ * (packages/shared/src/agents.ts, managerKeys). Unlike that pin, an agent with
+ * no wallet yet is closed rather than accepted with a warning: a missing key
+ * only delays activation, whereas a payment sent to an unvouched address is
+ * gone. Case-insensitive because the wire may checksum and the registry may
+ * not.
+ */
+export function checkPayTo(slug: AgentSlug, reported: `0x${string}`): PayToCheck {
+  const wallet = AGENTS[slug].wallet;
+  if (!wallet) return { verdict: 'unpinned', reported };
+  if (wallet.toLowerCase() !== reported.toLowerCase()) {
+    return { verdict: 'mismatch', expected: wallet, reported };
+  }
+  return { verdict: 'pinned', wallet };
+}
+
 /** Human label for a CAIP-2 network the challenge names. */
 export function networkLabel(ask: Pick<X402Ask, 'network' | 'chainId'>): string {
   if (ask.chainId === 56) return 'BNB Smart Chain (56)';

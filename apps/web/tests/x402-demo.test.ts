@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { AGENT_LIST } from '@agripinaa/shared/agents';
+import { AGENT_LIST, AGENTS } from '@agripinaa/shared/agents';
 
-import { decodeChallenge, previewPayload } from '../src/lib/x402-demo';
+import { checkPayTo, decodeChallenge, previewPayload } from '../src/lib/x402-demo';
 
 /**
  * The 402 body the live runner answered for GET /grid/status on 2026-08-25,
@@ -71,6 +71,34 @@ test('bodies that are not an x402 challenge decode to null', () => {
   ]) {
     assert.equal(decodeChallenge(body), null, JSON.stringify(body));
   }
+});
+
+test('the live Grid challenge pays the wallet the registry pins for grid', () => {
+  const ask = decodeChallenge(LIVE_GRID_402);
+  assert.ok(ask);
+  assert.deepEqual(checkPayTo('grid', ask.payTo), { verdict: 'pinned', wallet: AGENTS.grid.wallet });
+  // The pin is on the address, not its spelling: a lower-cased payTo still matches.
+  assert.equal(checkPayTo('grid', ask.payTo.toLowerCase() as `0x${string}`).verdict, 'pinned');
+});
+
+test('a challenge paying any other address is refused and names both wallets', () => {
+  // Another first-party wallet is the sharpest case: a valid address, ours,
+  // and still not where a payment for grid may go.
+  const reported = AGENTS['health-factor'].wallet!;
+  assert.deepEqual(checkPayTo('grid', reported), {
+    verdict: 'mismatch',
+    expected: AGENTS.grid.wallet,
+    reported,
+  });
+  assert.equal(checkPayTo('grid', '0x0000000000000000000000000000000000000000').verdict, 'mismatch');
+});
+
+test('an agent with no registry wallet can vouch for no destination', () => {
+  // grid-b is configured but not funded, so its wallet is null: nothing to pin
+  // against, so the answer is closed rather than open.
+  assert.equal(AGENTS['grid-b'].wallet, null);
+  const reported = AGENTS.grid.wallet!;
+  assert.deepEqual(checkPayTo('grid-b', reported), { verdict: 'unpinned', reported });
 });
 
 test('every first-party agent has a preview in the shape x402-server returns', () => {
