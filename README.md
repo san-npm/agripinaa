@@ -105,21 +105,31 @@ ops/             Start, stop, deploy, and runner-URL reporting for the agent VM
 docs/            Architecture, router security, the TermiX report and its evidence
 ```
 
-Over 400 tests across the six workspaces (`pnpm test` at the root). Every protocol
-address the agents use was probed on-chain before use, with the probe recorded
-in a comment next to it. [`docs/architecture.md`](docs/architecture.md) has the
-diagram and what runs where.
+616 tests across the six workspaces, all passing on 2026-08-25 (`pnpm test` at
+the root: shared 29, agent-index 7, exec-metrics 25, session-kit 37, web 175,
+agents 343). Every protocol address the agents use was probed on-chain before
+use, with the probe recorded in a comment next to it.
+[`docs/architecture.md`](docs/architecture.md) has the diagram and what runs
+where.
 
 ## Fee and trust disclosure
 
 Agripinaa takes no fee. Trades routed through Ophis carry the Ophis fee, taken
-inside the settlement rather than billed separately; since 2026-08-11 its
-schedule is a 1 bp base plus a share of price improvement. Each fill's
-downloadable receipt carries the partner-fee entries that order's appData
-declared (`partnerFee`), and the agents' live orders still carry the appData the
-pinned `@ophis/sdk` 0.3.0 emits, which
-[`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md)
-records per fill alongside the fee each settlement took.
+inside the settlement rather than billed separately; since 2026-08-11 the
+published protocol schedule is a 1 bp base plus a share of price improvement.
+
+That schedule is not the number a receipt shows. A receipt reports the
+partner-fee entries decoded out of that order's own `appData`
+(`extractPartnerFees` in `packages/exec-metrics/src/receipt/build.ts`), and
+every order the agents sign is built by the pinned `@ophis/sdk` 0.3.0, which
+declares a flat 5 bps volume partner fee on a non-stable pair (1 bp stable to
+stable). So a downloaded receipt reads 5 bps under a paragraph that opens with
+1 bp, and the gap is the SDK pin rather than a second fee. The same
+reconciliation is in
+[`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md),
+which records the 5 bps declaration and its recipient per order alongside the
+fee each settlement took, and keeps the schedule change as the first of its
+owner review notes.
 
 Trust surfaces are reputation-based: no ValidationRegistry is deployed for
 ERC-8004 yet, and the UI says so rather than pretending.
@@ -139,7 +149,8 @@ ERC-8004 yet, and the UI says so rather than pretending.
 
 The Graph subgraph as a drop-in agent-index source · sybil-resistant reviews
 (World ID) · ERC-8183 job escrow · marketplace take-rate via appData
-partner-fee stacking, disclosed in-UI like everything else.
+partner-fee stacking, which would be disclosed where the Ophis fee is disclosed
+today: in each fill's downloadable receipt and in this README.
 
 ## License
 
