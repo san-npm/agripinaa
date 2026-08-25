@@ -163,3 +163,23 @@ test('the Harvester pins the manager key each managed token grants to', () => {
   assert.equal(pinnedManagerKeyAddress('yield-b', 'USDT'), undefined);
   assert.equal(pinnedManagerKeyAddress('nope', 'USDT'), undefined);
 });
+
+test('every managed agent that is registered on chain carries its manager-key pins', () => {
+  // The gate this holds up: apps/web/src/lib/manager-key.ts refuses a runner
+  // report for a registered agent it has no pin for, because a registered
+  // agent is one a visitor can reach an activate page for. Registering a
+  // managed agent without capturing its pins here would take its activate page
+  // down rather than hand a mandate to whatever key the runner reported, and
+  // this fails first so that never ships.
+  for (const agent of AGENT_LIST) {
+    if (!agent.managed || agent.tokenId == null) continue;
+    const pins = Object.keys(agent.managerKeys ?? {});
+    assert.ok(
+      pins.length > 0,
+      `${agent.slug} is registered and managed with no pinned manager key: generate its session key and capture the addresses the runner reports`,
+    );
+    for (const token of MANAGED_TOKENS) {
+      assert.ok(pins.includes(token), `${agent.slug} pins no ${token} manager key`);
+    }
+  }
+});
