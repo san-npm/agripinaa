@@ -2,6 +2,14 @@
 # Deploy the agent runner to a Debian/Ubuntu Aleph Cloud instance.
 # Usage: ./ops/deploy-aleph.sh <user@host> [ssh-key-path]
 # Idempotent: re-running updates code, resyncs secrets, restarts services.
+#
+# The VM's host keys are pinned in ops/known_hosts and checked strictly on
+# every ssh and rsync below, since this connection ships the wallet keys. The
+# file holds "[46.247.131.210]:28092" entries, so pass the VM by that address
+# (directly, or through an ssh_config alias whose HostName and Port resolve to
+# it). For a rebuilt VM, or a different name, re-capture with
+#   ssh-keyscan -p 28092 46.247.131.210 >> ops/known_hosts
+# and review the diff before committing it.
 set -e
 HOST="$1"
 KEY="${2:-$HOME/.ssh/agripinaa-aleph}"
@@ -11,9 +19,16 @@ KEY="${2:-$HOME/.ssh/agripinaa-aleph}"
 # bare ssh_config alias, but nothing with a leading dash or shell metachars.
 case "$HOST" in -*) echo "refusing HOST starting with '-'"; exit 1;; esac
 case "$KEY"  in -*) echo "refusing KEY starting with '-'"; exit 1;; esac
+# grep matches per line, so the whole-line pattern below would pass a HOST
+# whose first line is clean and whose second is not.
+case "$HOST" in *$'\n'*|*$'\r'*) echo "refusing HOST spanning more than one line"; exit 1;; esac
 echo "$HOST" | grep -qE '^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$' || { echo "HOST has invalid characters"; exit 1; }
 [ -f "$KEY" ] || { echo "key file not found: $KEY"; exit 1; }
-S() { ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$HOST" "$@"; }
+OPS_DIR="$(cd "$(dirname "$0")" && pwd)"
+KNOWN_HOSTS="$OPS_DIR/known_hosts"
+[ -f "$KNOWN_HOSTS" ] || { echo "host key file not found: $KNOWN_HOSTS"; exit 1; }
+SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN_HOSTS")
+S() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 RUSER=$(S whoami)
 RHOME=$(S 'echo $HOME')
 
@@ -32,7 +47,9 @@ echo "== syncing repo (git) and secrets (rsync)…"
 S 'test -d ~/agripinaa/.git || git clone https://github.com/san-npm/agripinaa.git ~/agripinaa'
 S 'cd ~/agripinaa && git fetch -q && git reset -q --hard origin/main && pnpm install --frozen-lockfile'
 # -a preserves the local 600 modes (macOS rsync lacks modern --chmod syntax).
-rsync -e "ssh -i $KEY" -av "$(dirname "$0")/../wallets/" "$HOST:agripinaa/wallets/"
+# rsync splits -e on spaces and honours quotes, so the key and host-key paths
+# are quoted for it, not for this shell.
+rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av "$OPS_DIR/../wallets/" "$HOST:agripinaa/wallets/"
 S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync did not land"; exit 1; }
 # Enforce 0600 on the remote regardless of what the local modes were (some
 # key files predate the chmod-on-write and could be 0644).
@@ -79,6 +96,12 @@ S 'sudo journalctl -u agripinaa-tunnel --since "3 min ago" 2>/dev/null | grep -o
 # The tunnel is deliberately started, not restarted, so its URL stays stable,
 # which also means ExecStartPost does not fire on a redeploy. Report it here so
 # a deploy still leaves the marketplace pointing at the live endpoint.
+# ops.env carries OPS_TOKEN, so it is only read at mode 600: a wider mode is
+# an operator mistake worth a failed deploy step rather than a quiet source.
 echo "== reporting the tunnel URL to the marketplace…"
-S "set -a; . $APPDIR/ops/ops.env 2>/dev/null || true; set +a; REPORT_ATTEMPTS=5 $APPDIR/ops/report-runner-url.sh" \
-  || echo "   skipped (no OPS_TOKEN on the VM yet: see ops/launch.md)"
+if S "test -f $APPDIR/ops/ops.env"; then
+  S "mode=\$(stat -c %a $APPDIR/ops/ops.env); [ \"\$mode\" = 600 ] || { echo \"ops.env is mode \$mode, expected 600; run: chmod 600 $APPDIR/ops/ops.env\" >&2; exit 1; }"
+  S "set -a; . $APPDIR/ops/ops.env; set +a; REPORT_ATTEMPTS=5 $APPDIR/ops/report-runner-url.sh"
+else
+  echo "   skipped (no ops/ops.env on the VM yet: see ops/launch.md)"
+fi
