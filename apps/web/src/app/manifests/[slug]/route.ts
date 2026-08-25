@@ -21,12 +21,16 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ): Promise<Response> {
   const { slug } = await params;
+  const name = slug.replace(/\.json$/, '');
+  // Refuse an unknown slug before anything is resolved: runnerBase() spends a
+  // credentialed KV command per call, and this path is open to anyone.
+  if (!MANIFEST_SLUGS.includes(name)) return new Response('Not found', { status: 404 });
   // runnerBase() is deterministic with no KV configured, so without this the
   // build would prerender all four bodies and freeze the committed default
   // endpoint into static files, which is the redeploy-to-rotate problem this
   // route exists to remove. Resolve against the live request instead.
   await connection();
-  const manifest = buildManifest(slug.replace(/\.json$/, ''), await runnerBase());
+  const manifest = buildManifest(name, await runnerBase());
   if (!manifest) return new Response('Not found', { status: 404 });
   return Response.json(manifest, {
     headers: { 'cache-control': 'public, max-age=60, s-maxage=60' },
