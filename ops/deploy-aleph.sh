@@ -74,11 +74,19 @@ for UNIT in runner tunnel; do
     # leading '-' on both lines matters: a missing env file or a failed report
     # must not fail the unit, because Restart=always would then rotate the URL
     # again and again. ops.env is operator-created and never committed.
-    # ExecStartPost runs inside the unit's start timeout (90s by default), and
-    # the reporter waits for cloudflared to print its hostname, so cap the wait
-    # well under that: 20 attempts x 2s, plus a bounded curl.
+    #
+    # ExecStartPost runs INSIDE the unit's start timeout, and '-' forgives a
+    # non-zero exit but not a timeout: if the reporter is still running when the
+    # timeout expires, systemd kills cloudflared, Restart=always brings it back
+    # with a fresh hostname, and the reporter runs again, so a slow edge turns
+    # into a hostname-rotation loop. The reporter's worst case is 97s
+    # (REPORT_ATTEMPTS 20 x 2s discovery + 5 probes x 5s + 4 x 3s between them +
+    # the report POST's --max-time 20; see ops/report-runner-url.sh), typically
+    # about 20s. TimeoutStartSec is set here rather than left at the 90s default
+    # so that worst case fits with room to spare instead of overrunning it.
     EXTRA="EnvironmentFile=-$APPDIR/ops/ops.env
 Environment=REPORT_ATTEMPTS=20
+TimeoutStartSec=300
 ExecStartPost=-$APPDIR/ops/report-runner-url.sh"
   fi
   printf '[Unit]\nDescription=%s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nUser=%s\n%s\nExecStart=%s\n%s\nRestart=always\nRestartSec=10\n[Install]\nWantedBy=multi-user.target\n' \
