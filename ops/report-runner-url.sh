@@ -23,6 +23,22 @@
 #   REPORT_ATTEMPTS  polls (2s apart) waiting for the hostname to be logged
 #   PROBE_ATTEMPTS   polls (3s apart, 5s timeout each) waiting for the edge to
 #                    answer for the hostname (a 2xx stops early)
+#
+# Wall-clock budget. This runs as the tunnel unit's ExecStartPost, i.e. inside
+# that unit's start timeout, and overrunning it gets cloudflared killed and
+# restarted on a new hostname, so every wait here is bounded and the total is
+# stated rather than implied:
+#
+#   discovery   REPORT_ATTEMPTS x 2s sleep            20 x 2  =  40s
+#   probe       PROBE_ATTEMPTS x 5s (curl --max-time)  5 x 5  =  25s
+#               plus (PROBE_ATTEMPTS - 1) x 3s sleep    4 x 3  =  12s
+#   report      curl --max-time 20                             =  20s
+#                                                       worst case 97s
+#
+# The typical path is about 20s (the hostname appears in a few seconds and the
+# edge answers on the first probe). The unit sets TimeoutStartSec=300 in
+# ops/deploy-aleph.sh, so the worst case fits with room to spare; raising
+# REPORT_ATTEMPTS or PROBE_ATTEMPTS means recounting against that number.
 set -euo pipefail
 
 SITE="${AGRIPINAA_SITE:-https://agripinaa.vercel.app}"

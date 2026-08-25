@@ -91,7 +91,13 @@ a hostname that has since rotated.
 
 1. `pnpm --filter @agripinaa/agents fund -- --gen` create wallets
 2. `pnpm --filter @agripinaa/agents fund -- --execute` split the budget from spike-a
-3. `pnpm --filter @agripinaa/agents register` mint ERC-8004 identities (mainnet)
+3. `pnpm --filter @agripinaa/agents register -- --only grid,health-factor,yield,lp-range`
+   mint ERC-8004 identities (mainnet). Name the slugs: a mint is permanent, and
+   the run does exactly what the flag says. An agent that already carries a
+   `tokenId` or a `registrationTx` in `packages/shared/src/agents.ts`, or an
+   entry in `apps/agents/data/registry.json`, is skipped, and the wallet is
+   asked on-chain whether it already holds an identity before anything is
+   signed, so a re-run cannot mint a second one for the same agent.
 
 ## Aleph Cloud migration (preferred)
 
