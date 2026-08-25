@@ -153,10 +153,10 @@ export default function LeaderboardPage() {
           </code>
           . Surplus is what a fill executed at against the limit price the agent
           signed, in basis points, and the second factor discounts that average
-          by how deep the sample behind it is. An agent counts at full weight
-          from {FULL_CONFIDENCE_FILLS} fills. Below that the discount is
-          squared, so a three-fill run averaging 90 bps scores 8.1 and stays
-          behind a twenty-fill record averaging 10 bps.
+          by how deep the sample behind it is. A sample counts at full weight
+          from {FULL_CONFIDENCE_FILLS} fills, and squaring the factor prices a
+          shallower one for its thinness: a three-fill run averaging 90 bps
+          scores 8.1 and stays behind a twenty-fill record averaging 10 bps.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
           Fills and surplus are computed over each agent&apos;s{' '}
