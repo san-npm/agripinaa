@@ -485,7 +485,7 @@
     "aUsdtMintedAtSupply": "2399999999999999999",
     "aUsdtNow": "2400979956867106525",
     "accruedRaw": "979956867106526",
-    "elapsedDays": 6.898,
+    "elapsedDays": 6.8981,
     "annualizedBps": 216.05
   },
   "venueRates": {
@@ -551,9 +551,9 @@
     },
     "accrual": {
       "principalUsdt": "3",
-      "underlyingNowUsdt": "3.000859683081289031",
-      "accruedUsdt": "0.000859683081289031",
-      "elapsedDays": 4.664,
+      "underlyingNowUsdt": "3.00085968308128929",
+      "accruedUsdt": "0.00085968308128929",
+      "elapsedDays": 4.6638,
       "annualizedBps": 224.27
     }
   },
@@ -592,9 +592,14 @@
     "totalGasUsed": "175746",
     "effectiveGasPriceWei": "50000000",
     "totalGasCostBnb": 8.7873e-06,
+    "approveGasCostBnb": 1.447e-06,
+    "swapGasCostBnb": 7.3403e-06,
     "rateUsdtPerWbnb": 603.5552883304441,
     "rateSource": "this swap's own executed rate, evidence/task1-baseline.json effectiveRate",
-    "totalGasCostUsdAtSwapRate": 0.005304
+    "totalGasCostUsdAtSwapRate": 0.005304,
+    "approveGasCostUsdAtSwapRate": 0.000873,
+    "swapGasCostUsdAtSwapRate": 0.00443,
+    "approvalScope": "the approval is for the exact amount being swapped (apps/agents/src/baseline-swap.ts approves amountIn), so it recurs with every swap rather than being a one-time setup cost."
   },
   "aaveReserveParams": {
     "pool": "0x6807dc923806fE8Fd134338EABCA509979a7e0cB",
@@ -616,8 +621,9 @@
     "vsQuoteBps": "the same fill measured against the quote it was signed against: @ophis/agent-swap builds buyAmount = quote * (1 - slippageBps/10000), so vsQuote = (1 - slippageBps/10000) * (1 + surplus/10000) - 1.",
     "executedFee": "network fee the orderbook reports for the fill, taken in the sell token inside the settlement; executedBuyAmount is already net of it.",
     "solverCompetition": "'not-retained' means GET /solver_competition/by_tx_hash returned 404 for that settlement at the time of this pull.",
-    "derived": "per-fill derived block: surplusRaw is executedBuyAmount minus signedBuyAmountLimit in the buy token's smallest unit; executedUsdtPerWbnb is that fill's own executed rate; notionalUsdAtFillPrice, surplusUsdAtFillPrice and feeUsdAtFillPrice value that fill's notional, surplus and executedFee at that rate rather than at any single spot price; feeBps is executedFee over executedSellAmount.",
-    "dollarValuation": "every dollar figure in the report is computed at a rate named on its own line: a fill uses its own executed rate, the baseline swap's gas uses that swap's executed rate, the managed rotation's gas uses the nearest fill of ours to it. No figure is valued at the block-118027877 spot except where the report says so."
+    "derived": "per-fill derived block: surplusRaw is executedBuyAmount minus signedBuyAmountLimit in the buy token's smallest unit; executedUsdtPerWbnb is that fill's own executed rate. notionalUsdAtFillPrice, surplusUsdAtFillPrice and feeUsdAtFillPrice are the dollar values of that fill's notional (its executedSellAmount), its surplus and its executedFee, and the rate is applied only to the legs denominated in WBNB: an amount already denominated in USDT is taken at 1 USDT = 1 USD with no rate applied. Six of the eight fills sell USDT and pay executedFee in USDT, so for those the notional and the fee are 1:1 and only the WBNB-denominated surplus uses the rate; the two WBNB-selling fills (grid 2026-08-19 and spike-a 2026-08-18) are the mirror image, notional and fee at the rate and surplus 1:1. feeBps is executedFee over executedSellAmount.",
+    "dollarValuation": "every dollar figure in the report is computed at a rate named on its own line: a WBNB-denominated leg of a fill uses that fill's own executed rate, the baseline swap's gas uses that swap's executed rate, the managed rotation's gas uses the nearest fill of ours to it. No figure is valued at the block-118027877 spot except where the report says so.",
+    "accrual": "managed.accrual: underlyingNowUsdt and accruedUsdt are exact decimal values of the integer venusPositionNow.underlyingUsdtRaw above them (vUsdtRaw * exchangeRateStored / 1e18, division floored), not float conversions; yieldAccrual keeps its balances as raw integers. In both blocks elapsedDays is the interval between the entry's own start timestamp and asOf.blockTimestamp (2026-08-25T15:58:34Z), rounded to four decimals, and annualizedBps follows from it at that precision."
   },
   "derivedTotals": {
     "agentFills": 7,
