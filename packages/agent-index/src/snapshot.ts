@@ -136,6 +136,46 @@ export function fromCompact(
   };
 }
 
+/**
+ * What a seed run writes: the rows it just fetched, then whatever the committed
+ * file already had, deduped by token id and capped.
+ *
+ * A seed run replaces the file it reads, so this is the rule that keeps a run
+ * from costing more than it adds. A run that stops on page five (an expired
+ * key, a 422, a dropped connection) has five pages of fresh rows and no reason
+ * to throw away the thousands already on disk, and a run that fetched nothing
+ * leaves the file exactly as it was. Fresh rows come first because the listing
+ * is ordered by registration, and a row fetched now wins over the older copy of
+ * itself.
+ *
+ * One thing a carried row does not keep: every row reads its `trust.asOf` from
+ * the envelope, so a row carried through a stopped run is stamped with that
+ * run's clock while its scores are the ones the earlier run fetched. The gap is
+ * one seed interval, and it costs a per-row timestamp to close, so it is left
+ * open and written down here.
+ */
+export function mergeSnapshotItems(input: {
+  fetched: AgentSummary[];
+  onDisk: AgentSummary[];
+  /** Rows to end up with. Never applied to the fetched rows, only to the carried ones. */
+  keep: number;
+}): AgentSummary[] {
+  const out: AgentSummary[] = [];
+  const seen = new Set<string>();
+  for (const item of input.fetched) {
+    if (seen.has(item.tokenId)) continue;
+    seen.add(item.tokenId);
+    out.push(item);
+  }
+  for (const item of input.onDisk) {
+    if (out.length >= input.keep) break;
+    if (seen.has(item.tokenId)) continue;
+    seen.add(item.tokenId);
+    out.push(item);
+  }
+  return out;
+}
+
 /** The file the seeder writes. One line per row keeps a diff readable. */
 export function encodeSnapshot(snapshot: {
   chainId: number;
