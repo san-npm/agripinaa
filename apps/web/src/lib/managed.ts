@@ -62,25 +62,9 @@ export function destinationProblem(to: string, account: string, chainId: number)
   return null;
 }
 
-export interface ManagerKeyInfo {
-  agent: string;
-  publicKey: Hex;
-  address: Hex;
-}
-
-/**
- * Fetch the agent's public manager key for a specific token (via the server
- * proxy). Each token has its OWN key, so a USDC grant never shares the USDT
- * key's on-chain identity, expiry, or revocation.
- */
-export async function fetchManagerKey(agent: string, token = 'USDT'): Promise<ManagerKeyInfo> {
-  const res = await fetch(`/api/managed/${agent}/manager-key?token=${encodeURIComponent(token)}`);
-  const body = (await res.json().catch(() => ({}))) as Partial<ManagerKeyInfo> & { error?: string };
-  if (!res.ok || !body.publicKey) {
-    throw new Error(body.error ?? `manager key unavailable (${res.status})`);
-  }
-  return { agent, publicKey: body.publicKey, address: body.address as Hex };
-}
+// The manager key is fetched and validated in its own module (pin check,
+// shape check, point-to-address binding); re-exported so callers are unchanged.
+export { fetchManagerKey, type ManagerKeyInfo } from './manager-key';
 
 /**
  * A verify-only session signer: grantSession reads only publicKey/address, so
