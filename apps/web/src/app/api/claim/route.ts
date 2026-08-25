@@ -1,4 +1,5 @@
 import { decideClaim, decideClaimLookup, liveClaimChain } from '@/lib/claims';
+import { recordLiveness } from '@/lib/liveness';
 
 /**
  * An agent's on-chain owner proves control with an EIP-712 signature and
@@ -19,6 +20,17 @@ export async function POST(request: Request): Promise<Response> {
   if (!decision.ok) {
     return Response.json({ stored: false, error: decision.message }, { status: decision.status });
   }
+
+  // The one probe that happens outside the cron, so an owner who just attached
+  // an endpoint sees the answer on their listing instead of waiting for the next
+  // re-probe. It runs only after the claim is stored (an ownership signature has
+  // been checked by now, so nobody can aim it), it is bounded by the probe's own
+  // 5s timeout, and it never throws: a claim is saved whatever the endpoint says.
+  const { chainId, tokenId, endpoint } = decision.record.fields;
+  if (endpoint) {
+    await recordLiveness(chainId, tokenId, endpoint).catch(() => null);
+  }
+
   return Response.json({ stored: true, claim: decision.record });
 }
 

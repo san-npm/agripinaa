@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { EndpointLiveBadge } from "@/components/EndpointLive";
 import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
@@ -150,9 +151,12 @@ async function AgentContent({
   const claimable = registryRecord === undefined;
   const claimed = agent.claimed === true;
   const ownerProvided = claimProvenanceLabel(agent);
+  // One read, two uses: the gate below and the badge in the identity panel say
+  // the same thing about this endpoint because they are the same answer.
+  const endpointLive = await endpointIsLive(agent);
   const blocked = activationBlockedReason({
     tokenId: agent.tokenId,
-    endpointLive: await endpointIsLive(agent),
+    endpointLive,
     consumesSession: agentConsumesSession(agent.tokenId),
   });
   const blockedCopy = blocked ? ACTIVATION_BLOCKED_COPY[blocked] : null;
@@ -268,6 +272,14 @@ async function AgentContent({
                 {/* Owner-provided, so it renders as text: the stamp above says
                     where it came from, and nothing here links out to it. */}
                 <dd className="truncate font-mono text-xs text-muted">{agent.website}</dd>
+              </div>
+            )}
+            {endpointLive && (
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-2">Endpoint</dt>
+                {/* The url itself stays unlinked, like the website above: it is
+                    owner-provided. What is shown is what our own probe found. */}
+                <dd><EndpointLiveBadge /></dd>
               </div>
             )}
             {agent.supportedProtocols.length > 0 && (
