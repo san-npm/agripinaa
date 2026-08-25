@@ -30,7 +30,7 @@ interface Listing {
   searched: boolean;
   /** True when the search could not run, so this is the listing instead. */
   searchUnavailable: boolean;
-  /** True when the requested page sits deeper than one request walks. */
+  /** True when the walk stops here with the listing still going. */
   capped: boolean;
 }
 
@@ -148,8 +148,12 @@ function emptyReason(query: DirectoryQuery, listing: Listing): string {
     return "No agents on the pages loaded so far match this filter.";
   }
   if (listing.searched) return `No agents match "${query.query}".`;
+  // A capped walk stops short of where the registry ends, so a page past it is
+  // past what one request reads, not past what the registry holds.
   if (query.cursor) {
-    return "This page held nothing the pages before it had not already shown.";
+    return listing.capped
+      ? "This page sits deeper than one walk of the registry reaches."
+      : "This page sits past the end of the listing.";
   }
   return "No agents in this listing yet.";
 }
@@ -183,10 +187,13 @@ function Pager({
 }) {
   // A search answers in one shot upstream, so there is nothing to page through.
   if (listing.searched) return null;
-  // Past the walk's cap the next cursor would hand back these same cards, so
-  // the page says where it stops instead of offering a link that goes nowhere.
-  const more = listing.capped ? null : listing.nextCursor;
-  if (!more && !query.cursor) return null;
+  // `nextCursor` is already null where the walk stops, so a capped listing says
+  // where it stops instead of offering a link that comes back to the same page.
+  const more = listing.nextCursor;
+  // Only under cards: on a page the walk never reached, the empty state has
+  // already said so and this would repeat it.
+  const capNote = listing.capped && listing.items.length > 0;
+  if (!more && !capNote && !query.cursor) return null;
   return (
     <div className="mt-6 flex flex-wrap items-center gap-4">
       {more && (
@@ -197,10 +204,10 @@ function Pager({
           Load more
         </Link>
       )}
-      {listing.capped && (
+      {capNote && (
         <p className="text-xs text-muted-2">
-          This is as deep as one directory page walks. Narrow the listing with a
-          search or a category to reach further.
+          This is as far as one walk of the registry reaches. Narrowing the
+          listing gets you further into it.
         </p>
       )}
       {query.cursor && (
