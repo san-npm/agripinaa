@@ -59,6 +59,28 @@ export async function assertResolvedHostPublic(
 }
 
 /**
+ * The slice of a response body stream `readBodyCapped` reads, described
+ * structurally instead of by the `ReadableStream` global. That global is
+ * lib.dom's under apps/web and @types/node's in the Node workspaces, and the
+ * two are not assignable to each other (their `pipeThrough` and
+ * async-iterator surfaces differ), so naming either one fails to compile on
+ * the other side. It also resolves nowhere in session-kit, agent-index and
+ * spikes, which typecheck these sources through the workspace link:
+ * tsconfig.base.json sets `lib` to ES2022 with no DOM, deliberately, so a Node
+ * package never sees `document` or `window`. A reader is all this function
+ * needs, and every platform's stream hands one out.
+ */
+export type ResponseBodyStream = {
+  getReader(): {
+    read(): Promise<
+      { done: false; value: Uint8Array } | { done: true; value?: Uint8Array | undefined }
+    >;
+    cancel(): Promise<void>;
+    releaseLock(): void;
+  };
+};
+
+/**
  * Read a body up to `maxBytes`, cancelling the stream (and with it the
  * connection) the moment the cap is crossed. Checking the length after
  * `arrayBuffer()` would buffer the whole body first, which lets one oversized
@@ -66,7 +88,7 @@ export async function assertResolvedHostPublic(
  * memory cost to the cap plus one chunk.
  */
 export async function readBodyCapped(
-  body: ReadableStream<Uint8Array> | null,
+  body: ResponseBodyStream | null,
   maxBytes: number,
 ): Promise<Uint8Array<ArrayBuffer>> {
   if (!body) return new Uint8Array(0);
