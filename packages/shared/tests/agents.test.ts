@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { AGENT_LIST, AGENTS, agentBySlug, agentByTokenId } from '../src/agents';
+import { AGENT_LIST, AGENTS, agentBySlug, agentByTokenId, pinnedManagerKeyAddress } from '../src/agents';
+import { MANAGED_TOKENS } from '../src/contracts';
 import { PROOF_AGENTS, PROOF_AGENT_LIST } from '../src/proof';
 
 test('the four live agents are registered with their on-chain ids', () => {
@@ -133,4 +134,32 @@ test('the proof feed is derived from the registry, registered agents only', () =
     assert.equal(proofAgent.wallet, agent.wallet);
     assert.equal(proofAgent.backfillOphisTrades, agent.backfillOphisTrades);
   }
+});
+
+test('manager-key pins sit only on managed agents, one distinct address per managed token', () => {
+  // A pin is what the browser checks a runner-reported manager key against
+  // before that key becomes a session grantee. Only an agent that can hold a
+  // mandate has one to pin, and two agents (or two tokens) never share a key.
+  const seen: string[] = [];
+  for (const agent of AGENT_LIST) {
+    const pins = Object.entries(agent.managerKeys ?? {});
+    if (!agent.managed) assert.equal(pins.length, 0, `${agent.slug} is not managed but pins a manager key`);
+    for (const [token, address] of pins) {
+      assert.ok((MANAGED_TOKENS as readonly string[]).includes(token), `${agent.slug} pins unmanaged token ${token}`);
+      assert.match(address, /^0x[0-9a-fA-F]{40}$/, `${agent.slug}/${token} pin is not an address`);
+      seen.push(address.toLowerCase());
+    }
+  }
+  assert.equal(new Set(seen).size, seen.length, 'two pins share one address');
+});
+
+test('the Harvester pins the manager key each managed token grants to', () => {
+  // Captured 2026-08-25 from GET <runnerBase>/yield/manager-key?token=<t>,
+  // the same path the web proxy reads; USDT is the master key, USDC derived.
+  assert.equal(pinnedManagerKeyAddress('yield', 'USDT'), '0x94Fb3dD927a7Bc17cEc1C6D8281A861Ffe76D8B6');
+  assert.equal(pinnedManagerKeyAddress('yield', 'USDC'), '0x38A5a310beE9C278BDAFF8E5783Dc0890ab2dfC1');
+  // The Steward's session key is not generated yet, so it has nothing to pin;
+  // an absent pin is the documented state until Task 17 captures it.
+  assert.equal(pinnedManagerKeyAddress('yield-b', 'USDT'), undefined);
+  assert.equal(pinnedManagerKeyAddress('nope', 'USDT'), undefined);
 });

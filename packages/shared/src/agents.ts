@@ -27,6 +27,8 @@
  * identity, and the runner skips it rather than failing to boot.
  */
 
+import type { ManagedToken } from './contracts';
+
 export type AgentSlug =
   | 'grid'
   | 'grid-b'
@@ -125,6 +127,16 @@ export interface AgentRecord {
   walletFile: string;
   /** Can manage user funds through a scoped session key on a router. */
   managed: boolean;
+  /**
+   * The PUBLIC address of the manager key each managed token's sessions are
+   * granted to, captured from the live runner's GET /<slug>/manager-key. The
+   * browser refuses a reported key that does not match this before it becomes
+   * a session grantee, which is what makes a hijacked runner base fail closed.
+   * Only a managed agent carries one; absent until the key is generated, and
+   * the browser logs and accepts a report it has no pin for. Never a secret:
+   * the private half lives only in wallets/agent-<slug>-session.json.
+   */
+  managerKeys?: Partial<Record<ManagedToken, `0x${string}`>>;
   /** Whether to backfill this wallet's Ophis settlements into the proof feed. */
   backfillOphisTrades: boolean;
   manifest: ManifestBase;
@@ -331,6 +343,12 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     wallet: '0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9',
     walletFile: 'agent-yield.json',
     managed: true,
+    // Read 2026-08-25 from the runner through the resolved base: USDT is the
+    // master key, USDC the key derived from it (apps/agents/src/manager-key.ts).
+    managerKeys: {
+      USDT: '0x94Fb3dD927a7Bc17cEc1C6D8281A861Ffe76D8B6',
+      USDC: '0x38A5a310beE9C278BDAFF8E5783Dc0890ab2dfC1',
+    },
     backfillOphisTrades: false,
     manifest: {
       name: 'Agripinaa Harvester',
@@ -364,7 +382,9 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
    * Configured, not yet on-chain, same as grid-b and venus-guardian. This one
    * carries `managed: true`, so Task 17 must also generate its master manager
    * key (fund --gen creates wallets/agent-yield-b-session.json) before any
-   * depositor can grant it a session.
+   * depositor can grant it a session, then pin the addresses the runner
+   * reports for it in `managerKeys` (none yet, so the browser accepts what the
+   * runner reports for this agent with a logged warning until then).
    */
   'yield-b': {
     slug: 'yield-b',
@@ -519,4 +539,13 @@ export function agentBySlug(slug: string): AgentRecord | undefined {
 /** Undefined before an agent is registered on-chain, or for a foreign id. */
 export function agentByTokenId(tokenId: string): AgentRecord | undefined {
   return AGENT_LIST.find((agent) => agent.tokenId === tokenId);
+}
+
+/**
+ * The manager-key address pinned for one agent and managed token, or undefined
+ * when nothing is pinned (an unknown agent, an unmanaged one, or a managed one
+ * whose key has not been generated and captured yet).
+ */
+export function pinnedManagerKeyAddress(agent: string, token: string): `0x${string}` | undefined {
+  return agentBySlug(agent)?.managerKeys?.[token as ManagedToken];
 }
