@@ -1,4 +1,4 @@
-import { getTrackRecord } from "@/lib/exec";
+import { EXEC_ORDER_WINDOW, getTrackRecord } from "@/lib/exec";
 
 /** "+4.2" / "-1.0": the sign carries the meaning, so never assume a plus. */
 function signedBps(value: number): string {
@@ -11,9 +11,11 @@ function utcDay(iso: string): string {
 }
 
 /**
- * What an agent has actually done, cumulatively, from settlement data: how
- * many orders it has filled, how those fills priced against the limit it
- * signed, its single best fill, and how far back the record goes.
+ * What an agent has done across its recent settlement history: how many orders
+ * it has filled, how those fills priced against the limit it signed, its single
+ * best fill, and how far back the window reaches. One fetch covers the wallet's
+ * EXEC_ORDER_WINDOW most recent orders, which the footnote states rather than
+ * letting the panel read as an all-time total.
  *
  * The per-order list next to this answers "what did it just do"; this answers
  * "has it been working", which is the question a reader arriving cold has.
@@ -54,8 +56,9 @@ export async function TrackRecordPanel({ wallet }: { wallet: string }) {
             />
           </dl>
           <p className="mt-3 text-[10px] leading-relaxed text-muted-2">
-            Every filled Ophis order from this agent&apos;s wallet, not a sampled
-            window. Surplus is executed against signed amounts.
+            Ophis-attributed fills within the {EXEC_ORDER_WINDOW} most recent
+            orders from this agent&apos;s wallet. Surplus is executed against
+            signed amounts.
           </p>
         </>
       )}
