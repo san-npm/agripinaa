@@ -14,7 +14,7 @@ import { AGENT_LIST } from '@agripinaa/shared/agents';
 import { cacheLife } from 'next/cache';
 
 import { mergeAttestation } from './attestation-merge';
-import { applyClaim } from './claim-merge';
+import { applyClaim, claimForCategory, claimedHubSlots } from './claim-merge';
 import {
   claimIsStale,
   getClaim,
@@ -69,6 +69,13 @@ export async function withOnchainAttestation(
 const CLAIMED_PER_HUB_LIMIT = 50;
 
 /**
+ * How many registry cards `/agents` renders. `listDirectory` hands back the
+ * whole list and the page slices it, so this is the page size the claimed
+ * injection is budgeted against, the way a hub budgets against its own limit.
+ */
+const DIRECTORY_PAGE_SIZE = 45;
+
+/**
  * Every stored claim, read once per cache window. Claims are an enrichment: a
  * KV outage answers with an empty list (or a short one, since the index can
  * lose an id) and every listing still renders, minus the owner-provided text.
@@ -111,17 +118,24 @@ function tokenIdSet(agents: AgentSummary[]): Set<string> {
 }
 
 /**
- * The claimed agents a hub would otherwise miss.
+ * The claimed agents a hub would otherwise miss, at most `slots` of them.
  *
  * An owner-provided category lives in our claim store, not in the indexed
  * metadata, so the upstream category filter cannot see it and the hub has to
  * resolve those ids itself. They join the unverified registry list: a claim
  * says who wrote the description, never that we vouch for the agent.
+ *
+ * A claim only names candidates. `claimForCategory` decides membership on the
+ * merged record, so an id whose indexed metadata declares another category is
+ * dropped here rather than shown on the wrong hub. More ids are resolved than
+ * a page can hold (up to the read cap), so dropped candidates leave the slots
+ * behind them fillable.
  */
 async function claimedInCategory(
   category: Category,
   claims: Map<string, ClaimRecord>,
   already: Set<string>,
+  slots: number,
 ): Promise<AgentSummary[]> {
   const matches = [...claims]
     .filter(([id, record]) => record.fields.category === category && !already.has(id))
@@ -130,10 +144,10 @@ async function claimedInCategory(
     matches.map(async ([id, record]) => {
       const agent = await source.getAgent(CHAIN_ID, id).catch(() => null);
       if (!agent || claimIsStale(record, agent.owner)) return null;
-      return applyClaim(agent, record);
+      return claimForCategory(agent, record, category);
     }),
   );
-  return resolved.filter((a): a is NonNullable<typeof a> => a != null);
+  return resolved.filter((a): a is NonNullable<typeof a> => a != null).slice(0, slots);
 }
 
 export interface Directory {
@@ -169,8 +183,15 @@ export async function listDirectory(category?: Category): Promise<Directory> {
   // Only a hub injects: the unfiltered directory already lists everything the
   // index knows, so there a claim can only annotate what is on the page.
   const claimed = category
-    ? await claimedInCategory(category, claims, tokenIdSet([...enriched, ...indexed]))
+    ? await claimedInCategory(
+        category,
+        claims,
+        tokenIdSet([...enriched, ...indexed]),
+        claimedHubSlots(DIRECTORY_PAGE_SIZE),
+      )
     : [];
+  // Claimed entries lead the unverified list so the page's slice reaches them,
+  // bounded to a share of that page so the ranked registrations keep most of it.
   const registry = [...claimed, ...indexed];
   return { verified: enriched, registry, registrySource: raw.source, asOf: new Date().toISOString() };
 }
@@ -210,10 +231,16 @@ export async function listAgents(
     .filter((a) => !pinnedIds.has(a.tokenId))
     .map((a) => withClaim(a, claims));
   const claimed = category
-    ? await claimedInCategory(category, claims, tokenIdSet([...pinnedEnriched, ...indexed]))
+    ? await claimedInCategory(
+        category,
+        claims,
+        tokenIdSet([...pinnedEnriched, ...indexed]),
+        claimedHubSlots(limit),
+      )
     : [];
-  // Ahead of the indexed tail so a hub's own claimed agents survive the slice;
-  // still behind the pinned ones, which are the only verified cards here.
+  // Ahead of the indexed tail so a hub's own claimed agents survive the slice,
+  // and capped at a third of the page so they cannot take it; still behind the
+  // pinned ones, which are the only verified cards here.
   const items = [...pinnedEnriched, ...claimed, ...indexed].slice(0, limit);
   return { ...raw, items };
 }

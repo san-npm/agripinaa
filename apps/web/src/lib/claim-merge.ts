@@ -1,4 +1,9 @@
-import { CATEGORIES, type AgentSummary, type ClaimedField } from '@agripinaa/agent-index';
+import {
+  CATEGORIES,
+  type AgentSummary,
+  type Category,
+  type ClaimedField,
+} from '@agripinaa/agent-index';
 
 import type { ClaimRecord } from './claims';
 
@@ -9,6 +14,10 @@ import type { ClaimRecord } from './claims';
  * only fill a gap the registration left. An owner who wants their listing to
  * read differently changes their agentURI document; the claim store is for the
  * registrations that carry no document at all, which is most of the registry.
+ *
+ * The same rule decides placement: a hub takes a claimed agent only when the
+ * merged record actually reads as that category, so a claim can never win a
+ * spot on a page that would then show a different chip.
  *
  * Pure, and free of `server-only`: the KV read stays in claims.ts, so every
  * path that renders a listing (both hubs, the directory, the detail page)
@@ -67,6 +76,40 @@ export function applyClaim<T extends AgentSummary>(
   }
 
   return { ...agent, ...filled, claimed: true, claimedFields };
+}
+
+/**
+ * Merge a claim for one category hub, or null when the merged listing does not
+ * belong on it.
+ *
+ * A claim wins a placement only when it also wins the display. An indexed
+ * registration that already declares `grid` keeps that category through the
+ * merge (metadata wins), so its owner's `yield` claim must not put it on the
+ * yield hub still wearing a grid chip. `other` classifies nothing, so it
+ * places nothing.
+ */
+export function claimForCategory<T extends AgentSummary>(
+  agent: T,
+  claim: ClaimRecord,
+  category: Category,
+): T | null {
+  const merged = applyClaim(agent, claim);
+  return merged.category === category ? merged : null;
+}
+
+/**
+ * How many claimed agents a hub page of `pageSize` may lead with.
+ *
+ * They have to lead, or a page that slices to its size would never reach them:
+ * they are absent from the upstream ranked list, which is why the hub resolves
+ * them separately. They must not lead in bulk either, because they arrive in
+ * claim order with no ranking behind them, so a category that collects many
+ * claims would otherwise push every indexed registration off its own hub. A
+ * third of the page is theirs and the ranked registrations keep the rest; a
+ * page too small to divide still shows one.
+ */
+export function claimedHubSlots(pageSize: number): number {
+  return Math.max(1, Math.floor(pageSize / 3));
 }
 
 /**
