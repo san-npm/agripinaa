@@ -28,10 +28,14 @@ interchangeable. A third convention governs every dollar figure in the document.
   (`SLIPPAGE_BPS` in `apps/agents/src/agents/grid.ts` and the `slippageBps: 100`
   in `lp-range.ts`); the 2026-08-18 order in Task 1 was signed at 50 bps
   (`packages/spikes/scripts/spike-a.ts`).
-- **Dollars.** BNB moved about 15% across the week, so no amount here is priced
-  at a single spot rate. Anything a fill produced (its notional, its surplus,
-  its fee) is valued at that fill's own executed USDT/WBNB rate. Anything else
-  denominated in BNB (gas) names the rate it uses and where that rate comes
+- **Dollars.** BNB moved 16.8% across the week the agents traded, so no amount
+  here is priced at a single spot rate. That figure is the spread of the rates
+  our own fills executed at, 611.4443 to 714.0883 USDT per WBNB between 08-19
+  and 08-25, and it is 18.4% counting the 2026-08-18 fill at 602.8648. Anything
+  a fill produced (its notional, its surplus, its fee) is valued at that fill's
+  own executed USDT/WBNB rate, with the rate applied to the leg denominated in
+  WBNB and a leg already denominated in USDT taken at 1 USDT = 1 USD. Anything
+  else denominated in BNB (gas) names the rate it uses and where that rate comes
   from, on the line itself. Each fill's rate is in the attached pull under
   `derived.executedUsdtPerWbnb`, alongside the dollar amounts derived from it.
 
@@ -48,9 +52,15 @@ Sent from wallet `0x053fff26d28ff4e94dfe862b184f918a50c6f706`.
 
 - Executed 0.0008 WBNB into 0.482844230664355319 USDT (603.5553 USDT per WBNB),
   fee tier 100, at block 116705948 (2026-08-18T18:40:49Z).
-- Cost: 28,940 gas on the approval plus 146,806 on the swap, 175,746 units at
-  0.05 gwei, so 0.0000087873 BNB, about $0.0053 at this swap's own executed rate
-  of 603.5553. Both receipts re-read on-chain for this refresh.
+- Cost: two transactions from the wallet, 28,940 gas on the ERC-20 approval plus
+  146,806 on the swap, 175,746 units at 0.05 gwei, so 0.0000087873 BNB, about
+  $0.0053 at this swap's own executed rate of 603.5553. Split out, because the
+  agent comparison below has to count the same items on both sides: the swap leg
+  is 0.0000073403 BNB, about $0.0044, and the approval is 0.000001447 BNB, about
+  $0.0009. That approval covers only the exact amount being sold
+  (`apps/agents/src/baseline-swap.ts` approves `amountIn`), so it recurs with
+  every swap rather than being a one-time setup cost. Both receipts re-read
+  on-chain for this refresh.
 - Time: 2.021 s of transaction latency. A person driving a wallet UI adds
   minutes of attention on top of that, every single time.
 - Output quality: two transaction hashes (approve
@@ -61,9 +71,9 @@ Sent from wallet `0x053fff26d28ff4e94dfe862b184f918a50c6f706`.
   slippage number the user picks, and there is no execution artifact beyond the
   raw transaction.
 
-**Agent path, same wallet, same day (2026-08-18T16:24:37Z).** The Ophis batch
-auction path the agents use: sign an intent off-chain, a solver competes for it
-and settles it.
+**Agent path, same wallet, same day (submitted 2026-08-18T16:24:37Z, settled
+16:24:45Z).** The Ophis batch auction path the agents use: sign an intent
+off-chain, a solver competes for it and settles it.
 
 - Order uid
   `0xa2fa52fa97922df8b884345a2959a71209a73957073098c4af76cbd72fa1f02b053fff26d28ff4e94dfe862b184f918a50c6f7066a848e4c`,
@@ -71,11 +81,18 @@ and settles it.
 - +48.61 bps over the signed limit (+0.058332742861982384 USDT), which at the
   50 bps tolerance it was signed with is 1.63 bps **below** the quote at
   signing. Stated plainly because the first draft of this report cited only the
-  first of those two numbers.
+  first of those two numbers. The attached receipt carries this same fill as
+  `surplusVsQuote: 0.00486148199243626`, which despite the field name divides by
+  the receipt's own `buyAmount`, the signed limit with the 50 bps tolerance
+  already taken out of the quote: the +48.61 bps and the 1.63 bps below the quote
+  are two baselines, not two readings of one (owner review note 7).
 - Settled 7.2 s after submission, in tx
   `0x4c7b847b75ae82337ac28655db861a5cd512e0de77c820f64dc58bbaa50523d1`
-  (block 116687812) submitted by solver `0x95480d3f…`. The wallet paid no BNB:
-  the winning solver submits and pays for the settlement.
+  (block 116687812) submitted by solver `0x95480d3f…`. The wallet paid no BNB on
+  the settlement: the winning solver submits and pays for it. It did pay gas on
+  its own ERC-20 approval beforehand, the same item the baseline's $0.0009
+  approval covers on the manual side, which is why the cost comparison below
+  leaves the approval out of both sides.
 - Fee: 0.000043920324779203 WBNB taken inside the settlement, 21.96 bps of the
   amount sold, about $0.0265 at this fill's own executed rate of 602.8648 USDT
   per WBNB. The surplus figure above is already net of it.
@@ -87,7 +104,7 @@ and settles it.
 This is the part the first draft could not show. Seven further fills, all
 through Ophis, all from agent wallets with no human in the loop, all fulfilled.
 
-| Date (UTC) | Agent | Sold | Surplus vs limit | vs quote | Settled in | Settlement |
+| Submitted (UTC) | Agent | Sold | Surplus vs limit | vs quote | Settled in | Settlement |
 | --- | --- | --- | --- | --- | --- | --- |
 | 08-19 15:15 | Grid | 0.00326503 WBNB | +122.65 bps | +21.42 bps | 8.4 s | [`0x666b21c8`](https://bscscan.com/tx/0x666b21c8a82a496a7a88c829618c8e37bb36d06f5bc38ebbd594e2a739d21dd4) |
 | 08-20 08:41 | Ranger | 1.249640 USDT | +152.67 bps | +51.14 bps | 8.3 s | [`0xd6a407f2`](https://bscscan.com/tx/0xd6a407f217011f9af360b9c252406e0b203e983117907857dcca67c6a6bd53c8) |
@@ -110,15 +127,31 @@ through Ophis, all from agent wallets with no human in the loop, all fulfilled.
   (118.8 bps of the amount traded).
 - Settlement latency across all eight Ophis fills in this report: 7.2 s min,
   9.5 s median, 168.9 s max.
-- Five distinct solver addresses submitted the eight settlements, which is the
-  competition doing its job. Each of these settlements carried exactly one trade,
-  so no other order was batched alongside ours in these particular auctions.
-- Cost per fill: no BNB leaves the agent wallet, and the network fee reported
-  inside the settlement ranged from 27.88 to 63.32 bps of notional, which is
-  $0.0045 to $0.0127 with each fill's fee valued at that fill's own executed
-  rate (`derived.feeUsdAtFillPrice`). At clip sizes of $1.25 to $2.00 that
+- Five distinct solver addresses submitted the eight settlements, so no single
+  solver won all of them. That is a count of winners rather than a measure of how
+  many solvers bid: the per-auction ranking is not retrievable for these orders
+  (owner review note 2). Each of these settlements carried exactly one trade, so
+  no other order was batched alongside ours in these particular auctions.
+- Cost per fill: no BNB leaves the agent wallet on the settlement itself, and
+  across the seven agent fills the network fee reported inside the settlement
+  ranged from 27.88 to 63.32 bps of notional, which is $0.0045 to $0.0127 with
+  each fill's fee valued at that fill's own executed rate
+  (`derived.feeUsdAtFillPrice`; the 2026-08-18 fill above sits outside both
+  ranges, at 21.96 bps and $0.0265). At clip sizes of $1.25 to $2.00 that
   percentage is dominated by the fixed cost of settling, and it is the same
-  order of magnitude as the $0.0053 of gas the manual baseline paid.
+  order of magnitude as the $0.0044 of gas the manual baseline's swap leg cost.
+- Both sides of that comparison leave out the ERC-20 approval, and neither path
+  avoids one. The manual baseline approves the exact amount it is about to swap
+  ($0.0009 of gas, measured above). The agent path does the same before signing:
+  `@ophis/agent-swap` asks the wallet for an allowance covering the gross sell
+  amount (`swap.js:158`), and the wallet implementations approve exactly that
+  amount when the standing allowance is short
+  (`ChassisOphisWallet.ensureErc20Allowance` in `apps/agents/src/ophis-wallet.ts`
+  for the agents, the same method in `packages/spikes/src/viem-agent-wallet.ts`
+  for the 2026-08-18 order), and a settlement consumes that allowance, so the
+  next order needs a fresh one. Those approval transactions were not re-read for
+  this refresh, so no gas figure is claimed for them, and the line above compares
+  settlement fee against swap gas with the approval excluded on both sides.
 - Every order declares a CIP-75 volume partner fee of 5 bps to the Ophis
   partner-fee recipient `0x858f0F5eE954846D47155F5203c04aF1819eCeF8`, visible in
   each order's `appData` and in the attached receipt.
@@ -159,11 +192,17 @@ Seven days later, re-read for this refresh:
 
 - The aUSDT position minted at 2.399999999999999999 and reads
   2.400979956867106525 at block 118027877. That is 0.000979956867106526 USDT
-  accrued over 6.898 days, 216.05 bps annualized on the position.
-- At the same block, Venus quotes 239.02 bps and Aave 239.04 bps on USDT. The
-  edge is 0.03 bps, far inside the 50 bps hysteresis the agent requires on two
-  consecutive checks, so it has correctly not moved. Zero rotations here is the
-  policy working, not the agent being idle.
+  accrued over 6.8981 days (2026-08-18T18:25:14Z to the block's 15:58:34Z),
+  216.05 bps annualized on the position.
+- At the same block, Venus quotes 239.02 bps and Aave 239.04 bps on USDT, both
+  rounded to two decimals from the per-block rates the agent reads. The edge in
+  Aave's favour is 0.03 bps (`venueRates.USDT.edgeAaveMinusVenusBps` in the
+  attached pull), taken from the two rates before they were rounded, which is why
+  subtracting the printed figures gives 0.02 instead: those two figures bound the
+  unrounded edge to between 0.01 and 0.03 bps. Anywhere in that range it is far
+  inside the 50 bps hysteresis the agent requires on two consecutive checks, so
+  it has correctly not moved. Zero rotations here is the policy working, not the
+  agent being idle.
 
 **Agent, on a user's funds through the router (executed 2026-08-21).** The part
 that did not exist when this report was first written. A depositor's smart
@@ -178,14 +217,16 @@ agent can move that position between Venus, Aave, and idle and nowhere else.
   `0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb`: 2026-08-21T00:02:40Z, block
   117132749, action `toVenus`, 3 USDT, tx
   [`0xe00c6c1f`](https://bscscan.com/tx/0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb).
-  Cost 509,470 gas at 0.05 gwei, 0.0000254735 BNB, about $0.017. A rotation is
+  Cost 509,470 gas at 0.05 gwei, 0.0000254735 BNB, about $0.0172. A rotation is
   not a swap, so it has no executed rate of its own: that dollar figure uses
   676.6936 USDT per WBNB, the rate our own fill executed at later the same day
   (the 08-21 Ranger row above). The gas came out of the account's own allowance
   under the session's native-gas cap.
 - That position reads 113.44 vUSDT at block 118027877, which is
-  3.000859683081289 USDT of underlying at the market's exchange rate:
-  0.000859683 USDT accrued in 4.664 days, 224.27 bps annualized.
+  3.00085968308128929 USDT of underlying at the market's exchange rate, by
+  integer math on the raw balance (`managed.venusPositionNow` in the attached
+  pull): 0.00085968308128929 USDT accrued over 4.6638 days
+  (2026-08-21T00:02:40Z to the block's 15:58:34Z), 224.27 bps annualized.
 - Scanning every block of both live routers from their deploy blocks to
   118026258 returns that one event and no other; the USDC router has none. The
   superseded first router `0x841CF14Dfc0A315115EC5C9714c918210447b260` carries
@@ -198,7 +239,7 @@ hours with no human involvement, against a manual comparison that costs
 attention every time it is repeated and is stale immediately. Cost: one
 approval and one supply on entry, then nothing until an edge clears 50 bps
 twice, so the fee floor stays below the yield it is chasing. On the managed
-side one rotation cost $0.017 of gas to move a position between venues.
+side one rotation cost $0.0172 of gas to move a position between venues.
 Quality: the choice is a logged on-chain read with both rates, the block cadence
 it derived, and the transaction it produced, and the custody model means the
 agent cannot send the money anywhere except back to its owner.
@@ -209,10 +250,11 @@ agent cannot send the money anywhere except back to its owner.
 babysitting a health factor overnight, so no manual response time is claimed as
 a measurement. The assumption used is that a human asleep responds in hours,
 not seconds. The penalty is not an assumption: Aave V3 on BSC publishes a
-`liquidationBonus` of 11000 for WBNB collateral, meaning a liquidator takes 110%
-of the debt repaid, a 10% haircut on the seized collateral (read from
-`Pool.getConfiguration` at block 118028579; the same read gives 10500, a 5%
-bonus, on USDT collateral, and a 7500 liquidation threshold on WBNB).
+`liquidationBonus` of 11000 for WBNB collateral, meaning a liquidator seizes
+collateral worth 110% of the debt it repays: a 10% premium on the debt repaid,
+which is 9.09% of the value seized (read from `Pool.getConfiguration` at block
+118028579; the same read gives 10500, a 5% premium, on USDT collateral, and a
+7500 liquidation threshold on WBNB).
 
 **Agent execution (executed 2026-08-18 on BSC mainnet,
 `evidence/task3-drill.jsonl`).** The Guardian (token 269704) polls every 60 s
@@ -220,7 +262,8 @@ and repays from a capped budget when the health factor drops below 1.3.
 
 - The drill borrowed 0.65 extra USDT against the agent's own position (tx
   `0x87024c3c961d8bc0495f9c95b7c45cfd1010f36ad9fe16b37a1e8e560a3c2f49`), taking
-  the health factor from 2.2635 to 1.2490 at 18:38:12.901Z.
+  the health factor from 2.2634 on the tick before it (18:37:12.834Z) to 1.2490
+  at 18:38:12.901Z.
 - The agent detected it on its next tick, planned a repay of
   0.318059646689966885 USDT at 18:38:13.069Z (`cappedByBudget: false`), and the
   repay landed at 18:38:14.618Z (tx
@@ -243,11 +286,12 @@ Seven days later, re-read for this refresh:
 
 **Verdict.** Time: 1.717 s from detection to an on-chain repay, bounded above
 by the 60 s poll, against an assumed human response measured in hours.
-Cost: one approval and one repay of $0.32, against a 10% haircut on seized
-collateral if a liquidation had triggered instead. Quality: a timestamped
-journal of every health-factor reading, the repair plan with its budget check,
-and the two transaction hashes, plus a position that is still standing a week
-later with the arithmetic to show nothing else touched it.
+Cost: one approval and one repay of $0.32, against the 10% premium a liquidator
+would have taken on whatever debt it repaid, 9.09% of the collateral seized, had
+a liquidation triggered instead. Quality: a timestamped journal of every
+health-factor reading, the repair plan with its budget check, and the two
+transaction hashes, plus a position that is still standing a week later with the
+arithmetic to show nothing else touched it.
 
 ## What broke during the week, and what it cost
 
@@ -265,18 +309,20 @@ section is part of the submission rather than an appendix.
 - **Ranger stuck, 2026-08-22 to 2026-08-24.** It removed liquidity mid
   rebalance, never re-minted, and kept range-checking the emptied position. All
   three of its position NFTs read `liquidity 0` at diagnosis. The orderbook
-  shows the gap directly: no fill between 2026-08-21T08:42Z and
-  2026-08-24T15:41Z.
+  shows the gap directly: no Ranger fill between 2026-08-21T08:42Z and
+  2026-08-24T15:41Z. The Grid did fill on 08-22 inside that window; the Ranger
+  did not.
 - **Both recovered by one deploy on 2026-08-24 at 15:41Z.** The Ranger's
-  inventory-prep order filled at 15:41:24Z and it minted position **#7248592**,
-  which reads `liquidity = 2451189888573570005` at block 118027877 against the
-  three older positions still at 0, and sits in range (pool tick -65511 inside
-  its -66170 to -65180 band, which is 677.00 to 747.45 USDT per WBNB against a
-  spot of 699.78). The Grid filled at 15:45:23Z with `desiredClipUsd: 2,
-  effectiveClipUsd: 1.9963839118921194` in the runner journal as quoted in the
-  plan's operations log, selling the whole balance it could afford instead of
-  refusing a fixed clip, and it has filled again since (2026-08-25 at
-  +124.44 bps).
+  inventory-prep order was submitted at 15:41:24Z and settled at 15:41:35Z, and
+  it minted position **#7248592**, which reads
+  `liquidity = 2451189888573570005` at block 118027877 against the three older
+  positions still at 0, and sits in range (pool tick -65511 inside its -66170 to
+  -65180 band, which is 677.00 to 747.45 USDT per WBNB against a spot of
+  699.78). The Grid submitted at 15:45:23Z and settled at 15:45:36Z, with
+  `desiredClipUsd: 2, effectiveClipUsd: 1.9963839118921194` in the runner journal
+  as quoted in the plan's operations log, selling the whole balance it could
+  afford instead of refusing a fixed clip, and it has filled again since
+  (2026-08-25 at +124.44 bps).
 - **The capital ceiling is the live constraint, not the code.** At block
   118027877 the Grid wallet holds 0.008520134207854582 WBNB and 79 wei of USDT.
   That WBNB balance is exactly its 0.004 WBNB funding leg minus the 0.00326503 it
@@ -297,6 +343,8 @@ Everything cited above is in this repository under `docs/evidence/`:
   identities; the baseline swap's gas; Aave's reserve parameters.
 - `task1-baseline.json`: the manual AMM swap.
 - `task1-receipt.json`: the Ophis settlement receipt for the 2026-08-18 order.
+  Its `surplusVsQuote` field is measured against the signed limit rather than
+  against the quote (owner review note 7).
 - `2026-08-18-yield-decision-tick.jsonl`: the Harvester tick holding both venue
   rates, the derived block cadence, and the decision.
 - `task2-log.jsonl`: the approval and supply that tick produced.
@@ -349,3 +397,11 @@ Open items, all of them things this refresh could not settle from here:
 6. **Manual baselines for Tasks 2 and 3 were never executed.** Their comparison
    rests on the stated assumptions, which is why no minutes or dollars are
    quoted for the human side of either.
+7. **The receipt's field name.** `evidence/task1-receipt.json` reports the
+   +48.61 bps under the key `surplusVsQuote`, but the `buyAmount` it divides by
+   is the signed limit, which is the quote with the 50 bps slippage tolerance
+   already taken out. The field measures surplus over the signed limit, so it is
+   not comparable with the vs-quote column in this report, and both baselines are
+   printed wherever that fill appears. The receipt is left exactly as the tool
+   wrote it; the field name is worth raising with Ophis rather than editing the
+   artifact here.
