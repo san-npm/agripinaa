@@ -1,4 +1,5 @@
 import { agentByTokenId } from "@agripinaa/shared/agents";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -12,11 +13,31 @@ import {
   agentConsumesSession,
   endpointIsLive,
 } from "@/lib/activatable";
+import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
 import { CHAIN_ID, getAgent } from "@/lib/data";
 
-export default function ActivatePage(
+/** See `registeredAgentParams`: this is what lets the 404 below set the status. */
+export function generateStaticParams() {
+  return registeredAgentParams();
+}
+
+/**
+ * This page shipped under the root title, and it 404d from inside its own
+ * Suspense boundary, so an unknown id answered 200. `resolveAgentRoute` does
+ * both: it commits the status before anything streams, and it hands back the
+ * agent this title is built from.
+ */
+export async function generateMetadata(
+  props: PageProps<"/agent/[chainId]/[tokenId]/activate">,
+): Promise<Metadata> {
+  const agent = await resolveAgentRoute(props.params);
+  return { title: agent ? `Activate ${agent.name} · Agripinaa` : "Activate an agent · Agripinaa" };
+}
+
+export default async function ActivatePage(
   props: PageProps<"/agent/[chainId]/[tokenId]/activate">,
 ) {
+  await resolveAgentRoute(props.params);
   return (
     <Suspense fallback={<p className="text-muted-2">Loading…</p>}>
       <ActivateContent params={props.params} />

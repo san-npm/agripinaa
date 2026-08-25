@@ -411,3 +411,40 @@ test('a first-party agent is not resolved through the endpoint store', async () 
   assert.equal(live, false);
   assert.deepEqual(state.calls, [], 'and it costs no read either');
 });
+
+test('the profile reads the reason a refused endpoint carries, not just the verdict', async () => {
+  // The record has always carried a status and a reason "for an owner
+  // debugging their endpoint"; until endpointStatus existed nothing read them,
+  // so an endpoint that answered 404 looked exactly like one never probed.
+  const { endpointStatus } = await loadActivatable();
+  const refused = JSON.stringify({
+    url: ENDPOINT,
+    live: false,
+    checkedAt: new Date(Date.now() - HOUR).toISOString(),
+    status: 404,
+    reason: 'status',
+  });
+  const store = new Map([['agripinaa:liveness:56:297380', refused]]);
+  const state = newState();
+
+  const status = await withFetch(stubbed(state, store), () =>
+    endpointStatus(claimedAgent('297380')),
+  );
+  assert.equal(status.live, false);
+  assert.equal(status.url, ENDPOINT);
+  assert.equal(status.record?.status, 404);
+  assert.equal(status.record?.reason, 'status');
+  assert.equal(probeCalls(state).length, 0, 'a page render never probes');
+
+  const { endpointProbeLabel } = await import('../src/lib/endpoint-probe');
+  assert.equal(endpointProbeLabel(status.record, status.url), 'not live: answered 404');
+});
+
+test('an agent with nothing probed reports no record rather than a verdict', async () => {
+  const { endpointStatus } = await loadActivatable();
+  const state = newState();
+  const status = await withFetch(stubbed(state, new Map()), () =>
+    endpointStatus(claimedAgent('297380')),
+  );
+  assert.deepEqual(status, { url: ENDPOINT, record: null, live: false });
+});

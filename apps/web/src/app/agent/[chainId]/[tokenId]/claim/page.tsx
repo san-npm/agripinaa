@@ -1,12 +1,21 @@
 import { agentByTokenId } from "@agripinaa/shared/agents";
+import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { ClaimForm } from "@/components/ClaimForm";
 import { ArrowIcon } from "@/components/icons";
-import { getClaim, liveClaimChain } from "@/lib/claims";
+import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
+import { getClaim, liveClaimChain, liveClaimKv } from "@/lib/claims";
 import { CHAIN_ID, getAgent } from "@/lib/data";
+import { clientKey, takeChainRead } from "@/lib/throttle";
+
+/** See `registeredAgentParams`: this is what lets the 404 below set the status. */
+export function generateStaticParams() {
+  return registeredAgentParams();
+}
 
 /**
  * Where an indexed agent's on-chain owner says what their agent does.
@@ -22,9 +31,21 @@ import { CHAIN_ID, getAgent } from "@/lib/data";
  * view from spending an RPC call per visitor. None of it is trusted by the
  * server: POST /api/claim reads `ownerOf` itself before it stores anything.
  */
-export default function ClaimPage(
+export async function generateMetadata(
+  props: PageProps<"/agent/[chainId]/[tokenId]/claim">,
+): Promise<Metadata> {
+  const agent = await resolveAgentRoute(props.params);
+  if (agent && agentByTokenId(agent.tokenId)) notFound();
+  return { title: agent ? `Claim ${agent.name} · Agripinaa` : "Claim an agent · Agripinaa" };
+}
+
+export default async function ClaimPage(
   props: PageProps<"/agent/[chainId]/[tokenId]/claim">,
 ) {
+  // Before the shell streams, so an unknown id and one of our own agents both
+  // answer 404 rather than 200 with a not-found body.
+  const agent = await resolveAgentRoute(props.params);
+  if (agent && agentByTokenId(agent.tokenId)) notFound();
   return (
     <Suspense fallback={<p className="text-muted-2">Loading…</p>}>
       <ClaimContent params={props.params} />
@@ -44,10 +65,17 @@ async function ClaimContent({
   if (!agent) notFound();
   if (agentByTokenId(agent.tokenId)) notFound();
 
-  // A node that did not answer has told us nothing about the token, so the
-  // indexer's owner stands in and the form says where the address came from.
-  const ownerRead = await liveClaimChain.ownerOf(agent.tokenId);
-  const chainOwner = ownerRead.ok ? ownerRead.value : null;
+  // This is the cheaper of the two entry points into the site's shared RPC
+  // budget (a GET, no signature, one read per visit), so the same counter the
+  // claim POST checks runs in front of it. Past the minute's budget the reads
+  // are skipped rather than the page refused.
+  const spend = await takeChainRead({ client: clientKey(await headers()), kv: liveClaimKv });
+
+  // A node that did not answer, and a read that was not made, both leave us
+  // knowing nothing about the token: the indexer's owner stands in either way
+  // and the form says where the address on it came from.
+  const ownerRead = spend ? await liveClaimChain.ownerOf(agent.tokenId) : null;
+  const chainOwner = ownerRead?.ok ? ownerRead.value : null;
   const codeRead = chainOwner ? await liveClaimChain.hasBytecode(chainOwner) : null;
   const existing = await getClaim(CHAIN_ID, agent.tokenId, {
     currentOwner: chainOwner,

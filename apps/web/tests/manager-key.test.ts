@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { agentBySlug } from '@agripinaa/shared/agents';
 import { keccak256, stringToHex, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
@@ -80,12 +81,39 @@ test('malformed fields are refused before any pin check', () => {
   }
 });
 
-test('an agent with no pin yet is accepted with a logged warning', async () => {
+test('an agent that is not registered on chain is accepted with a logged warning', async () => {
+  // The Steward is configured and not yet minted (tokenId null), so no visitor
+  // can reach an activate page for it and nothing can be granted to the key it
+  // reports. That is the only slug the warn-and-accept path is left open for.
   const stub = jsonFetch(200, { agent: 'yield-b', publicKey: stranger.publicKey, address: stranger.address });
   const { result, warnings } = await capturingWarn(() => withFetch(stub, () => fetchManagerKey('yield-b', 'USDT')));
+  assert.equal(agentBySlug('yield-b')?.tokenId, null, 'the fixture is the unregistered case');
   assert.equal(result.address, stranger.address);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0]!, /yield-b/);
+});
+
+test('a registered agent with no pin for the token is refused, not warned about', async () => {
+  // The fail-open this closes: an agent a visitor CAN reach an activate page
+  // for, reporting whatever key it likes, becoming the grantee of a live
+  // mandate because the registry happened to hold no pin for it. A registered
+  // agent has to be pinned before anything it reports can be granted to.
+  for (const [agent, token] of [
+    ['grid', 'USDT'],
+    ['yield', 'USDX'],
+  ] as const) {
+    assert.notEqual(agentBySlug(agent)?.tokenId, null, `${agent} is registered`);
+    assert.throws(
+      () => validateManagerKey(agent, token, { publicKey: stranger.publicKey, address: stranger.address }),
+      /manager key rejected: .* is registered on chain with no pinned/,
+      `${agent}/${token}`,
+    );
+  }
+  const stub = jsonFetch(200, { agent: 'grid', publicKey: stranger.publicKey, address: stranger.address });
+  const { warnings } = await capturingWarn(() =>
+    withFetch(stub, () => assert.rejects(() => fetchManagerKey('grid', 'USDT'), /no pinned/)),
+  );
+  assert.deepEqual(warnings, [], 'a refusal is not a warning');
 });
 
 test('a runner error keeps its message and status', async () => {

@@ -4,6 +4,12 @@ import type { AgentSummary } from '@agripinaa/agent-index';
 import { BlockedUrlError, safeFetchBytes } from '@agripinaa/shared/ssrf';
 
 import { normalizeAgentId } from './claim-message';
+import {
+  probeCountsAsLive,
+  readEndpointProbe,
+  type EndpointProbe,
+  type ProbeReason,
+} from './endpoint-probe';
 import { kvGet, kvMGet, kvSet } from './kv';
 
 /**
@@ -20,8 +26,13 @@ import { kvGet, kvMGet, kvSet } from './kv';
  * instead of lingering as a badge for an endpoint that went away.
  */
 
-/** How long a stored probe result counts for. Past this it is not evidence. */
-export const LIVENESS_TTL_MS = 24 * 60 * 60 * 1_000;
+/**
+ * The record shape, its freshness window, and the wording every reader uses are
+ * in `endpoint-probe.ts`, which carries no `server-only` marker so the claim
+ * form can render the result this module's probe just produced. They are
+ * re-exported here because this is where the rest of the site reads them from.
+ */
+export { LIVENESS_TTL_MS } from './endpoint-probe';
 
 /**
  * Cap on one probe, measured on the wall clock from the call to the answer.
@@ -52,25 +63,17 @@ export function livenessKey(chainId: number, tokenId: string): string {
 }
 
 /** Why a probe did not count as an answer. Absent when the endpoint answered. */
-export type LivenessReason = 'blocked' | 'timeout' | 'unreachable' | 'status';
+export type LivenessReason = ProbeReason;
 
-export interface ProbeResult {
-  live: boolean;
-  /** ISO 8601 instant the probe ran, which is what the window is measured from. */
-  checkedAt: string;
-  /** The status the endpoint answered with, when it answered at all. */
-  status?: number;
-  reason?: LivenessReason;
-}
+/** One probe's answer, before the url it is about is attached to it. */
+export type ProbeResult = Omit<EndpointProbe, 'url'>;
 
-export interface LivenessRecord extends ProbeResult {
-  /**
-   * The url that was probed. Stored so a record cannot outlive the endpoint it
-   * is about: an owner who re-claims with a different endpoint gets no badge
-   * from the answer the old one gave.
-   */
-  url: string;
-}
+/**
+ * A stored answer, url included. The url is what stops a record outliving the
+ * endpoint it is about: an owner who re-claims with a different endpoint gets
+ * no badge from the answer the old one gave.
+ */
+export type LivenessRecord = EndpointProbe;
 
 export interface ProbeOptions {
   /** Clock, injectable so a test can pin `checkedAt` and the freshness window. */
@@ -193,14 +196,7 @@ export async function recordLiveness(
 function parseRecord(raw: string | null): LivenessRecord | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<LivenessRecord>;
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (typeof parsed.url !== 'string' || typeof parsed.live !== 'boolean') return null;
-    if (typeof parsed.checkedAt !== 'string') return null;
-    const record: LivenessRecord = { url: parsed.url, live: parsed.live, checkedAt: parsed.checkedAt };
-    if (typeof parsed.status === 'number') record.status = parsed.status;
-    if (typeof parsed.reason === 'string') record.reason = parsed.reason as LivenessReason;
-    return record;
+    return readEndpointProbe(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -235,10 +231,7 @@ export function countsAsLive(
   url: string,
   now: number = Date.now(),
 ): boolean {
-  if (!record || !record.live) return false;
-  if (record.url.trim() !== url.trim()) return false;
-  const checkedAt = Date.parse(record.checkedAt);
-  return Number.isFinite(checkedAt) && now - checkedAt < LIVENESS_TTL_MS;
+  return probeCountsAsLive(record, url, now);
 }
 
 /**
