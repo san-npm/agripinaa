@@ -8,7 +8,9 @@
     "test": "tsx --test tests/*.test.ts",
     "start": "tsx src/runner.ts",
     "register": "tsx src/register.ts",
-    "fund": "tsx src/fund.ts"
+    "fund": "tsx src/fund.ts",
+    "harvest": "tsx src/harvest-proofs.ts",
+    "attest": "tsx src/attest.ts"
   },
   "dependencies": {
     "@agripinaa/exec-metrics": "workspace:*",

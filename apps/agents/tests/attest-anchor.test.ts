@@ -1,0 +1,65 @@
+/**
+ * The anchor is what a ReputationRegistry attestation binds itself to, through
+ * its feedbackHash. Getting the precedence wrong means attesting to the wrong
+ * execution, which is unfixable once signed, so pin the order here.
+ */
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, test } from 'node:test';
+
+import { agentBySlug } from '@agripinaa/shared';
+
+import { anchorFor } from '../src/attest';
+
+const registered = agentBySlug('lp-range')!;
+const unregistered = agentBySlug('grid-b')!;
+
+const scratch: string[] = [];
+after(() => {
+  for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
+});
+
+function emptyDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'agripinaa-harvest-'));
+  scratch.push(dir);
+  return dir;
+}
+
+function logDir(slug: string, lines: Record<string, unknown>[]): string {
+  const dir = emptyDir();
+  writeFileSync(join(dir, `${slug}.log.jsonl`), lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
+  return dir;
+}
+
+test('an explicit ref beats the registry proof and the log', () => {
+  const dir = logDir('lp-range', [
+    { agent: 'lp-range', event: 'range-check', at: '2026-08-24T10:00:00.000Z', tokenId: '7248592' },
+  ]);
+  const anchor = anchorFor(registered, ['--ref', '7311111', '--label', 'pancake-v3-position'], dir);
+  assert.deepEqual(anchor, { label: 'pancake-v3-position', ref: '7311111', source: 'flag' });
+});
+
+test('the registry proof is the anchor when no ref is passed', () => {
+  const dir = logDir('lp-range', [
+    { agent: 'lp-range', event: 'range-check', at: '2026-08-24T10:00:00.000Z', tokenId: '7248592' },
+  ]);
+  const anchor = anchorFor(registered, [], dir);
+  assert.equal(anchor!.source, 'registry');
+  assert.equal(anchor!.ref, registered.proofs[0]!.ref);
+});
+
+test('an agent with no pinned proof falls back to its newest logged execution', () => {
+  const dir = logDir('grid-b', [
+    { agent: 'grid-b', event: 'repay', at: '2026-08-24T10:00:00.000Z', txHash: '0x' + 'a'.repeat(64) },
+    { agent: 'grid-b', event: 'supply', at: '2026-08-24T12:00:00.000Z', txHash: '0x' + 'b'.repeat(64) },
+  ]);
+  assert.deepEqual(unregistered.proofs, []);
+  const anchor = anchorFor(unregistered, [], dir);
+  assert.deepEqual(anchor, { label: 'supply', ref: '0x' + 'b'.repeat(64), source: 'log' });
+});
+
+test('no proof anywhere yields no anchor, so nothing can be attested blind', () => {
+  assert.equal(anchorFor(unregistered, [], emptyDir()), null);
+});
