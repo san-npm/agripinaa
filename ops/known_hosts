@@ -1,0 +1,6 @@
+# Host keys of the Aleph Cloud VM the deploy scripts ssh into (46.247.131.210, port 28092).
+# Public data. Captured with: ssh-keyscan -p 28092 46.247.131.210
+# Re-capture (and review the diff) only when the VM is rebuilt; a changed key on the same host is otherwise a reason to stop.
+[46.247.131.210]:28092 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBLsZp4zN83LTV4vbxyedjwzGfUu9SAEnZWgnyExzQW6Fosnle8e0TzkFWx6t+MWwKDNloXwQE8YaDKrClx4o0tE=
+[46.247.131.210]:28092 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPPXo17HnZqUDLgzmSqqQXGDqZrIZdR51PYL1hfJmEGz
+[46.247.131.210]:28092 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC1hNdBKjRUNrLp9i8ph3LS0HJxAlRXbujj4L0lfILejla90ZDOMndQI3OWFlAZsns37kt/dhoDMeLayJFiZ2lbKVjlYg3uehEV2hnKia8OLI4268NbnkREdX4sEtkog/F4IoIOGi2FSFJyEzTfRwwHngY+8jdWNy+WPCd5W4oejsbJ8mTrZ9mabQ8Dz8Q8h8TS9z0SL0bB4lVg9TSjKQjGaW8dWQ4rT1UNqgyIEA0NerKB5UXHBPuBhz/8MJ+ZfBdk+PUajwyxPv4GbVWPVHCq6kyY6bO0z9gzPCNgfdoqUOhjCJTS5FULJab7HM4F4YzoMT2FwiX0JTyqmlY+3Z0MZOlyAoozncgSsezu+rartxXvbDew4sexOkOgD9YaZ8F43ohzjgXNqds3zJy8SNQKpLu2mz2ZympGQDCYCXbflFnRO5B3cYOfXvxTvqpvguuC7RZG/Iwh2jkjcHBiz0Hq8Ar/jWu7IxAzXiysH8lENjoZGlaZmZQJOv0boTNWpzk=

@@ -33,9 +33,12 @@ A quick tunnel takes a new hostname on every cold start. The VM reports it:
 
 `deploy-aleph.sh` installs it as `ExecStartPost` on the `agripinaa-tunnel` unit
 and also runs it at the end of a deploy, so in normal operation nobody runs it
-by hand. It posts to `POST /api/ops/runner-url`, which checks the bearer token,
-requires https and a public host, resolves the hostname and rejects anything
-landing on a private address, then writes the value to KV.
+by hand. It takes the last hostname logged since the unit's most recent start
+(the journal still carries the previous, dead one after a restart), waits for
+`GET <url>/healthz` to answer, and only then posts to `POST /api/ops/runner-url`,
+which checks the bearer token, requires https and a public host, resolves the
+hostname and rejects anything landing on a private address, then writes the
+value to KV. A candidate that never answers is refused with exit 1.
 
 ### Env vars this needs
 
@@ -57,8 +60,10 @@ On the VM, create `ops/ops.env` (gitignored, and untracked files survive the
 `git reset --hard` in the deploy script):
 
 ```bash
-ssh <host> 'umask 077 && echo "OPS_TOKEN=<the same value as on Vercel>" > ~/agripinaa/ops/ops.env'
+ssh <host> 'umask 077 && echo "OPS_TOKEN=<the same value as on Vercel>" > ~/agripinaa/ops/ops.env && chmod 600 ~/agripinaa/ops/ops.env'
 ```
+
+The deploy script refuses to source it at any mode other than 600.
 
 Check it end to end with `./ops/report-runner-url.sh --dry-run` on the VM (which
 posts nothing), then without the flag. A 401 means the two tokens differ, a 503
@@ -93,6 +98,9 @@ commit BEFORE the VM starts (running both = double trading).
 
 1. Create a Debian/Ubuntu instance at console.aleph.cloud (2 vCPU / 2-4 GB
    is plenty) with the deploy public key from ~/.ssh/agripinaa-aleph.pub.
+   Pin its host keys before the first deploy, since that connection ships the
+   wallet keys: `ssh-keyscan -p <port> <ip> >> ops/known_hosts`, review, commit.
+   The deploy script checks them strictly and refuses an unknown or changed key.
 2. On the Mac: `./ops/stop-agents.sh && git add apps/agents/data && git commit -m "state hand-off" && git push`
 3. `./ops/deploy-aleph.sh <user@host>`   # provisions, syncs secrets, systemd
 4. Nothing: the deploy reports the tunnel URL itself once `ops/ops.env` exists
