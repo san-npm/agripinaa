@@ -24,6 +24,8 @@ contract MockERC20 {
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+    address public underlyingAddress;
+    address public poolAddress;
 
     constructor(string memory n) {
         name = n;
@@ -65,6 +67,19 @@ contract MockERC20 {
         balanceOf[from] -= a;
         totalSupply -= a;
     }
+
+    function setDependencies(address underlying_, address pool_) external {
+        underlyingAddress = underlying_;
+        poolAddress = pool_;
+    }
+
+    function UNDERLYING_ASSET_ADDRESS() external view returns (address) {
+        return underlyingAddress;
+    }
+
+    function POOL() external view returns (address) {
+        return poolAddress;
+    }
 }
 
 /// Aave-like pool: supply mints aTokens 1:1 to onBehalfOf; withdraw burns the
@@ -91,6 +106,10 @@ contract MockAavePool {
         usdt.transfer(to, amt);
         return amt;
     }
+
+    function getUserAccountData(address) external pure returns (uint256, uint256, uint256, uint256, uint256, uint256) {
+        return (0, 0, 0, 0, 0, type(uint256).max);
+    }
 }
 
 /// Venus-like vToken (Compound-v2 fork): mint/redeem return an error code (0 ok),
@@ -112,6 +131,22 @@ contract MockVToken is MockERC20 {
         require(balanceOf[msg.sender] >= redeemTokens, "vBalance");
         burnFrom(msg.sender, redeemTokens);
         usdt.transfer(msg.sender, redeemTokens);
+        return 0;
+    }
+
+    function underlying() external view returns (address) {
+        return address(usdt);
+    }
+
+    function comptroller() external view returns (address) {
+        return address(this);
+    }
+
+    function getAssetsIn(address) external pure returns (address[] memory markets) {
+        return markets;
+    }
+
+    function borrowBalanceStored(address) external pure returns (uint256) {
         return 0;
     }
 }
@@ -156,6 +191,7 @@ contract RouterFuzz {
         aToken = new MockERC20("aUSDT");
         vToken = new MockVToken(usdt);
         aave = new MockAavePool(usdt, aToken);
+        aToken.setDependencies(address(usdt), address(aave));
         router = new AgripinaaYieldRouter(address(usdt), address(aToken), address(aave), address(vToken));
         for (uint256 i = 0; i < 3; i++) {
             actors[i] = new Actor(router, address(usdt), address(aToken), address(vToken));
@@ -213,8 +249,8 @@ contract RouterFuzz {
 
     /// The router never custodies more than what was donated to it.
     function echidna_router_holds_only_donations() external view returns (bool) {
-        uint256 held = usdt.balanceOf(address(router)) + aToken.balanceOf(address(router))
-            + vToken.balanceOf(address(router));
+        uint256 held =
+            usdt.balanceOf(address(router)) + aToken.balanceOf(address(router)) + vToken.balanceOf(address(router));
         return held <= donated;
     }
 }

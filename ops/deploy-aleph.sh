@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Deploy the agent runner to a Debian/Ubuntu Aleph Cloud instance.
-# Usage: ./ops/deploy-aleph.sh <user@host> [ssh-key-path]
-# Idempotent: re-running updates code, resyncs secrets, restarts services.
+# Usage: DEPLOY_COMMIT=<40-char-sha> ./ops/deploy-aleph.sh <user@host> [ssh-key-path]
+# Idempotent: re-running deploys one immutable commit, resyncs secrets, and
+# restarts services. DEPLOY_COMMIT defaults to the local checkout's HEAD.
 #
 # The VM's host keys are pinned in ops/known_hosts and checked strictly on
 # every ssh and rsync below, since this connection ships the wallet keys. The
@@ -25,6 +26,18 @@ case "$HOST" in *$'\n'*|*$'\r'*) echo "refusing HOST spanning more than one line
 echo "$HOST" | grep -qE '^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$' || { echo "HOST has invalid characters"; exit 1; }
 [ -f "$KEY" ] || { echo "key file not found: $KEY"; exit 1; }
 OPS_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$OPS_DIR/.." && pwd)"
+if [ -z "${DEPLOY_COMMIT:-}" ]; then
+  [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] || {
+    echo "working tree is dirty; commit the deployment or set DEPLOY_COMMIT explicitly";
+    exit 1;
+  }
+  DEPLOY_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+fi
+echo "$DEPLOY_COMMIT" | grep -qE '^[0-9a-f]{40}$' || {
+  echo "DEPLOY_COMMIT must be a full 40-character lowercase git commit";
+  exit 1;
+}
 KNOWN_HOSTS="$OPS_DIR/known_hosts"
 [ -f "$KNOWN_HOSTS" ] || { echo "host key file not found: $KNOWN_HOSTS"; exit 1; }
 SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN_HOSTS")
@@ -32,20 +45,26 @@ S() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 RUSER=$(S whoami)
 RHOME=$(S 'echo $HOME')
 
-echo "== provisioning node/pnpm/cloudflared (idempotent)…"
-S 'node --version 2>/dev/null | grep -q "^v22" || {
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - &&
-  sudo apt-get install -y nodejs git rsync
-}'
-S 'command -v pnpm >/dev/null 2>&1 || sudo npm install -g pnpm@10'
-S 'command -v cloudflared >/dev/null 2>&1 || {
-  curl -fsSL -o /tmp/cf.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb &&
-  sudo dpkg -i /tmp/cf.deb
-}'
+echo "== verifying pinned deployment prerequisites…"
+# Provision the image out-of-band from trusted, pinned packages. A deploy that
+# transports wallet keys must never curl mutable installers and execute them as
+# root. Fail closed if the host does not already match the required runtime.
+S 'command -v git >/dev/null && command -v rsync >/dev/null && command -v cloudflared >/dev/null' || {
+  echo "FATAL: install pinned git, rsync, and cloudflared packages on the VM first";
+  exit 1;
+}
+S 'node --version 2>/dev/null | grep -qE "^v22\\."' || {
+  echo "FATAL: Node.js 22.x is required on the VM";
+  exit 1;
+}
+S 'test "$(pnpm --version 2>/dev/null)" = "10.33.3"' || {
+  echo "FATAL: pnpm 10.33.3 is required on the VM";
+  exit 1;
+}
 
-echo "== syncing repo (git) and secrets (rsync)…"
+echo "== deploying commit $DEPLOY_COMMIT and syncing secrets…"
 S 'test -d ~/agripinaa/.git || git clone https://github.com/san-npm/agripinaa.git ~/agripinaa'
-S 'cd ~/agripinaa && git fetch -q && git reset -q --hard origin/main && pnpm install --frozen-lockfile'
+S "cd ~/agripinaa && git fetch -q origin && git cat-file -e '$DEPLOY_COMMIT^{commit}' && git checkout --detach -q '$DEPLOY_COMMIT' && test \"\$(git rev-parse HEAD)\" = '$DEPLOY_COMMIT' && pnpm install --frozen-lockfile"
 # -a preserves the local 600 modes (macOS rsync lacks modern --chmod syntax).
 # rsync splits -e on spaces and honours quotes, so the key and host-key paths
 # are quoted for it, not for this shell.

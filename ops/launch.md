@@ -59,8 +59,8 @@ Database -> Upstash Redis. Connecting it to the project injects
 `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically; redeploy so the
 running deployment picks them up.
 
-On the VM, create `ops/ops.env` (gitignored, and untracked files survive the
-`git reset --hard` in the deploy script):
+On the VM, create `ops/ops.env` (gitignored; the deploy checks out code without
+deleting untracked operator files):
 
 ```bash
 ssh <host> 'umask 077 && echo "OPS_TOKEN=<the same value as on Vercel>" > ~/agripinaa/ops/ops.env && chmod 600 ~/agripinaa/ops/ops.env'
@@ -107,8 +107,11 @@ position tokenId, breakers), and the Mac must stop BEFORE the VM starts
 
 That state lives in `apps/agents/data`, which is gitignored, so it never
 travels through git. It travels by copy, and it survives a redeploy on its own:
-`deploy-aleph.sh` updates the checkout with `git reset --hard origin/main`,
-which leaves untracked files alone.
+`deploy-aleph.sh` checks out the local repository's exact `HEAD` commit in
+detached mode (or the full SHA in `DEPLOY_COMMIT`), which leaves untracked files
+alone and prevents a deploy from silently switching branches. With no explicit
+SHA, a dirty local tree is refused so uncommitted fixes cannot be silently
+omitted. The commit must already exist on the GitHub remote.
 
 1. Create a Debian/Ubuntu instance at console.aleph.cloud (2 vCPU / 2-4 GB
    is plenty) with the deploy public key from ~/.ssh/agripinaa-aleph.pub.
@@ -129,8 +132,10 @@ which leaves untracked files alone.
    The deploy script clones only when `~/agripinaa/.git` is missing, so it
    adopts this checkout rather than replacing it. On a fresh start with nothing
    to migrate, skip the whole step.
-4. `./ops/deploy-aleph.sh <user@host>`   # provisions, syncs secrets, systemd
-5. Nothing: the deploy reports the tunnel URL itself once `ops/ops.env` exists
+4. Provision pinned Node.js 22, pnpm 10.33.3, git, rsync, and cloudflared
+   packages on the VM from trusted repositories or a prebuilt image.
+5. `./ops/deploy-aleph.sh <user@host>`   # verifies tools, syncs secrets, systemd
+6. Nothing: the deploy reports the tunnel URL itself once `ops/ops.env` exists
    on the VM. Confirm from the line it prints, or re-run the reporter there.
 
 Re-running deploy-aleph.sh updates code and restarts services, and leaves the

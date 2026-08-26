@@ -44,6 +44,20 @@ test('buildReceipt without a trade has null settlement and surplus fields', () =
   assert.equal(receipt.surplusVsQuote, null);
 });
 
+test('buildReceipt rejects forged attribution and a trade from another order', () => {
+  const order = loadOrderFixture();
+  const trade = loadTradesFixture()[0];
+  assert.ok(trade);
+  assert.throws(
+    () => buildReceipt({ order: { ...order, fullAppData: '{"appCode":"ophis"}' }, trade: null, chainId: 56 }),
+    /not an authentic Ophis order/,
+  );
+  assert.throws(
+    () => buildReceipt({ order, trade: { ...trade, orderUid: `0x${'0'.repeat(112)}` }, chainId: 56 }),
+    /does not match/,
+  );
+});
+
 test('extractPartnerFees keeps every entry of an array-shaped partnerFee', () => {
   const fullAppData = JSON.stringify({
     appCode: 'ophis',

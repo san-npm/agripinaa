@@ -131,7 +131,7 @@ The harness has a known blind spot, and it is the one that matters below: its
 mocks have no collateral flags, no debt, no oracle, no health factor and no
 liquidation. It can prove nothing about an account that borrows.
 
-## Ten fork tests against live BSC venues
+## Thirteen fork tests against live BSC venues
 
 `contracts/test/AgripinaaYieldRouter.t.sol` forks BSC mainnet (`forge test
 --fork-url bsc`, or plain `forge test` using the `[rpc_endpoints]` alias in
@@ -150,6 +150,9 @@ vToken, not mocks:
 | `test_strayVusdtIsNotHandedToUser` | The vToken hand-back returns only this call's mint |
 | `test_usdc_rotationRoundTripReturnsPrincipal` | Same bytecode, USDC venues, round trip holds |
 | `test_usdc_attackerCannotTouchAnotherUsersFunds` | Same bytecode, USDC venues, isolation holds |
+| `test_aaveDebtBlocksCollateralRemoval` | Any Aave debt blocks removal of the account's aToken collateral |
+| `test_venusDebtBlocksCollateralRemoval` | Debt in an entered Venus market blocks vToken removal |
+| `test_constructorRejectsInvalidOrMismatchedDependencies` | Zero/non-contract dependencies and receipt tokens for another underlying are rejected |
 
 ## Session scoping is fail-closed
 
@@ -223,11 +226,11 @@ lenses)" and its "Router audit" paragraph
 The L-1 delta-accounting fix was checked rather than assumed. Claim by claim,
 with where each one can be checked from this repo and where it cannot:
 
-- **Both deployments' runtime bytecode matched the compiled source.** Re-run
-  that comparison with `cast code` against a local `forge build` artifact, using
-  the two addresses in the table at the top of this document. The audit's own
-  comparison output is not committed.
-- **The ten fork tests passed.** Each is named under "Ten fork tests against
+- **Both deployments' runtime bytecode matched the source as it existed on
+  2026-08-24.** The source now includes debt and dependency guards, so the live
+  immutable deployments are intentionally expected to differ until replacement
+  routers are deployed and the shared address registry is updated.
+- **The thirteen fork tests passed.** Each is named under "Thirteen fork tests against
   live BSC venues" above, in
   [`contracts/test/AgripinaaYieldRouter.t.sol`](../contracts/test/AgripinaaYieldRouter.t.sol),
   and `forge test --fork-url bsc` runs them against the live venues.
@@ -243,10 +246,10 @@ with where each one can be checked from this repo and where it cannot:
   script and no output from it are committed here, so this figure is reported
   rather than reproducible from this repo.
 
-## The open Medium, with its precondition
+## The Medium is fixed in source; deployment remains
 
-One Medium finding (confidence 90) stands open, with a working proof of
-concept. Stated in full, precondition included:
+The 2026-08-25 audit found one Medium issue (confidence 90), with a working
+proof of concept. Stated in full, precondition included:
 
 > `_unwindAllToUsdt` can strip a receipt token that secures live venue debt for
 > an account that also borrowed in the same venue, and no managed account
@@ -281,17 +284,20 @@ Three things follow, and none of them are softened here:
    collateral flags, no oracle and no liquidation, which is exactly why the
    blind spot is written down above rather than left to be discovered.
 
-The cheap mitigation is refusing activation for an account that carries venue
-debt. The structural fix is a guarded redeploy, and it is the owner's call: the
-routers are immutable, so a redeploy means new addresses, fresh approvals, and
-migrating the live mandate.
+The source now implements the structural fix: it refuses an Aave unwind when
+`getUserAccountData` reports debt and refuses a Venus unwind when any entered
+market reports a borrow. Constructor checks also bind each receipt token to the
+configured underlying and Aave pool. The fork suite proves the new rejection
+paths. The routers are immutable, so managed mode must remain disabled for the
+old addresses until guarded replacements are deployed, registered, approved,
+and the live mandate is migrated.
 
 ## Reproduce it
 
 ```bash
 cd contracts
 git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
-forge test --fork-url bsc                                   # the ten fork tests
+forge test --fork-url bsc                                   # the thirteen fork tests
 echidna test/fuzz/RouterFuzz.sol --contract RouterFuzz --config echidna.yaml
 medusa fuzz
 

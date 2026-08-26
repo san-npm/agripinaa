@@ -1,10 +1,10 @@
 import 'server-only';
 
-import { isAddress, keccak256, toBytes } from 'viem';
+import { isAddress } from 'viem';
 import {
   buildReceipt,
   CowOrderbookClient,
-  isOphisOrder,
+  isAuthenticOphisOrder,
   summarizeSurplus,
   surplusBps,
   type CowOrder,
@@ -65,7 +65,7 @@ export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
   const orders = await cow.getAccountOrders(owner as `0x${string}`, {
     limit: EXEC_ORDER_WINDOW,
   });
-  const ophisOrders = orders.filter((o) => isOphisOrder(o));
+  const ophisOrders = orders.filter((o) => isAuthenticOphisOrder(o));
   const summary = summarizeSurplus(ophisOrders);
   return {
     owner,
@@ -187,17 +187,9 @@ export async function getReceipt(uid: string): Promise<ReceiptPayload | null> {
   } catch {
     return null;
   }
-  // Only mint an Ophis-branded receipt for an actually-Ophis order, and only
-  // when the full appData JSON hashes to the signed appData field. This binds
-  // the receipt to what the order owner signed, so a hostile order feed
-  // cannot attach appCode:"ophis" to an unrelated order.
-  if (!isOphisOrder(order)) return null;
-  if (order.fullAppData) {
-    const boundHash = keccak256(toBytes(order.fullAppData));
-    if (order.appData && boundHash.toLowerCase() !== order.appData.toLowerCase()) {
-      return null;
-    }
-  }
+  // Authenticity checking binds the full JSON and every signed field to the
+  // same invariant protects receipts, summaries, leaderboards and proof feeds.
+  if (!isAuthenticOphisOrder(order)) return null;
   const trades = await cow.getTrades({ orderUid: uid }).catch(() => []);
   // A trade for a different order must not be stapled onto this receipt.
   const trade = trades.find((t) => t.orderUid === uid) ?? null;

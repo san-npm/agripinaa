@@ -35,7 +35,10 @@ export interface ManagedExecutor {
   /** The router deployment (token + venues) this account is managed through. */
   deployment: RouterDeployment;
   /** Fire one router action from the user's account; resolves to the tx result. */
-  execute(action: RouterAction): Promise<{ txHash?: Hex; status: string }>;
+  execute(action: RouterAction): Promise<{
+    txHash?: Hex;
+    status: 'PENDING' | 'CONFIRMED' | 'FAILED';
+  }>;
 }
 
 /**

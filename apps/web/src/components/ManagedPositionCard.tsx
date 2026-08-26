@@ -101,25 +101,28 @@ export function ManagedPositionCard({
 
   useEffect(() => {
     let cancelled = false;
-    void refreshPosition();
-    (async () => {
-      if (!meta.publicKey || meta.account === 'unknown') {
-        setValidity('unknown');
-        return;
-      }
-      try {
-        const valid = await isSessionKeyValid({
-          chainId: meta.chainId,
-          account: meta.account as `0x${string}`,
-          sessionPublicKey: meta.publicKey as `0x${string}`,
-        });
-        if (!cancelled) setValidity(valid ? 'valid' : 'invalid');
-      } catch {
-        if (!cancelled) setValidity('unknown');
-      }
-    })();
+    const timer = window.setTimeout(() => {
+      void refreshPosition();
+      void (async () => {
+        if (!meta.publicKey || meta.account === 'unknown') {
+          if (!cancelled) setValidity('unknown');
+          return;
+        }
+        try {
+          const valid = await isSessionKeyValid({
+            chainId: meta.chainId,
+            account: meta.account as `0x${string}`,
+            sessionPublicKey: meta.publicKey as `0x${string}`,
+          });
+          if (!cancelled) setValidity(valid ? 'valid' : 'invalid');
+        } catch {
+          if (!cancelled) setValidity('unknown');
+        }
+      })();
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [meta, refreshPosition]);
 
@@ -215,7 +218,7 @@ export function ManagedPositionCard({
       }
       const amount = nativeWei - WITHDRAW_GAS_RESERVE_WEI;
       if (amount <= 0n) throw new Error('Not enough BNB to withdraw after keeping a gas reserve.');
-      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount, token);
+      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount);
       await refreshPosition();
       toast({ title: 'BNB withdrawn', detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
     } catch (e) {

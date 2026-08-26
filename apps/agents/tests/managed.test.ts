@@ -161,7 +161,7 @@ interface FakeOpts {
   initialState?: Record<string, unknown>;
 }
 
-function fakeCtx(opts: FakeOpts): { ctx: AgentContext; logs: Record<string, unknown>[] } {
+function fakeCtx(opts: FakeOpts): { ctx: AgentContext; logs: Record<string, unknown>[]; store: Map<string, unknown> } {
   const store = new Map<string, unknown>(Object.entries(opts.initialState ?? {}));
   const logs: Record<string, unknown>[] = [];
   const publicClient = {
@@ -205,10 +205,10 @@ function fakeCtx(opts: FakeOpts): { ctx: AgentContext; logs: Record<string, unkn
       allowAction: () => opts.allowAction ?? true,
     },
   } as unknown as AgentContext;
-  return { ctx, logs };
+  return { ctx, logs, store };
 }
 
-function fakeExecutor(): ManagedExecutor & { calls: string[] } {
+function fakeExecutor(status: 'PENDING' | 'CONFIRMED' | 'FAILED' = 'CONFIRMED'): ManagedExecutor & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
@@ -217,7 +217,7 @@ function fakeExecutor(): ManagedExecutor & { calls: string[] } {
     deployment: YIELD_ROUTER_BSC,
     async execute(action) {
       calls.push(action);
-      return { txHash: '0xdead', status: 'CONFIRMED' };
+      return { txHash: '0xdead', status };
     },
   };
 }
@@ -239,6 +239,24 @@ test('idle + funded, aave better -> executes toAave', async () => {
   const ex = fakeExecutor();
   await managedYieldTick(ctx, ex);
   assert.deepEqual(ex.calls, ['toAave']);
+});
+
+test('failed or pending entry does not claim the target venue', async () => {
+  for (const status of ['FAILED', 'PENDING'] as const) {
+    const { ctx, store, logs } = fakeCtx({
+      ...AAVE_WINS,
+      walletUsdtWei: 100n * 10n ** 18n,
+      venusUnderlyingWei: 0n,
+      aaveATokenWei: 0n,
+    });
+    await managedYieldTick(ctx, fakeExecutor(status));
+    assert.equal(store.get(`managed:${ACCOUNT.toLowerCase()}:USDT:venue`), undefined);
+    assert.equal(
+      store.get(`managed:${ACCOUNT.toLowerCase()}:USDT:pendingTarget`),
+      status === 'PENDING' ? 'aave' : undefined,
+    );
+    assert.equal(logs.at(-1)?.['decision'], status === 'FAILED' ? 'enter-failed' : 'enter-pending');
+  }
 });
 
 test('idle but only dust -> no execute (unfunded)', async () => {
@@ -296,4 +314,55 @@ test('rotate is gated by the per-account breaker', async () => {
   const ex = fakeExecutor();
   await managedYieldTick(ctx, ex);
   assert.deepEqual(ex.calls, []);
+});
+
+test('failed rotation restores cooldown and confirmation streak', async () => {
+  const oldRotate = Date.now() - 86_400_000;
+  const key = `managed:${ACCOUNT.toLowerCase()}:USDT:`;
+  const { ctx, store, logs } = fakeCtx({
+    ...AAVE_WINS,
+    walletUsdtWei: 0n,
+    venusUnderlyingWei: 100n * 10n ** 18n,
+    aaveATokenWei: 0n,
+    initialState: {
+      [`${key}betterStreak`]: 1,
+      [`${key}lastRotateAt`]: oldRotate,
+    },
+  });
+  await managedYieldTick(ctx, fakeExecutor('FAILED'));
+  assert.equal(store.get(`${key}venue`), 'venus');
+  assert.equal(store.get(`${key}lastRotateAt`), oldRotate);
+  assert.equal(store.get(`${key}betterStreak`), 1);
+  assert.equal(logs.at(-1)?.['decision'], 'rotate-failed');
+});
+
+test('pending rotation keeps the cooldown but does not claim success', async () => {
+  const key = `managed:${ACCOUNT.toLowerCase()}:USDT:`;
+  const { ctx, store, logs } = fakeCtx({
+    ...AAVE_WINS,
+    walletUsdtWei: 0n,
+    venusUnderlyingWei: 100n * 10n ** 18n,
+    aaveATokenWei: 0n,
+    initialState: { [`${key}betterStreak`]: 1 },
+  });
+  await managedYieldTick(ctx, fakeExecutor('PENDING'));
+  assert.equal(store.get(`${key}venue`), 'venus');
+  assert.equal(typeof store.get(`${key}lastRotateAt`), 'number');
+  assert.equal(store.get(`${key}pendingTarget`), 'aave');
+  assert.equal(logs.at(-1)?.['decision'], 'rotate-pending');
+});
+
+test('an unresolved pending rotation blocks every later write', async () => {
+  const key = `managed:${ACCOUNT.toLowerCase()}:USDT:`;
+  const { ctx, logs } = fakeCtx({
+    ...AAVE_WINS,
+    walletUsdtWei: 0n,
+    venusUnderlyingWei: 100n * 10n ** 18n,
+    aaveATokenWei: 0n,
+    initialState: { [`${key}pendingTarget`]: 'aave' },
+  });
+  const ex = fakeExecutor();
+  await managedYieldTick(ctx, ex);
+  assert.deepEqual(ex.calls, []);
+  assert.equal(logs.at(-1)?.['decision'], 'pending-awaiting-chain');
 });

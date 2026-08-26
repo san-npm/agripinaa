@@ -4,6 +4,7 @@ import { erc20Abi, parseAbi, parseEventLogs, zeroAddress, type Log } from 'viem'
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
 
 import { ChassisOphisWallet } from '../ophis-wallet';
+import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
 import { valueGapUsd } from '../value-split';
 
@@ -267,6 +268,13 @@ const POOL_ABI = parseAbi([
 const LP_MIN_BPS = BigInt(9000); // accept >= 90% of desired per token
 const TWAP_WINDOW_SECONDS = 60;
 const TWAP_MAX_TICK_DEVIATION = 100; // ~1% price; a sandwich must exceed this
+
+export function exitMinimums(quoted: readonly [bigint, bigint]): readonly [bigint, bigint] {
+  return [
+    (quoted[0] * LP_MIN_BPS) / BigInt(10000),
+    (quoted[1] * LP_MIN_BPS) / BigInt(10000),
+  ];
+}
 
 /**
  * Reject action when the pool's spot tick has been pushed away from its
@@ -712,7 +720,12 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
     });
     const liquidity = position[7];
     if (liquidity > BigInt(0)) {
-      const decreaseHash = await ctx.walletClient.writeContract({
+      const deadline = txDeadline();
+      // Quote the exact burn against the current guarded state, then make the
+      // transaction enforce 90% of both simulated outputs. A spot/TWAP check
+      // alone can be sandwiched after the RPC read; these minima make that
+      // manipulation revert on-chain instead of changing the token mix.
+      const { result: quotedExit } = await ctx.publicClient.simulateContract({
         address: POSITION_MANAGER,
         abi: NPM_ABI,
         functionName: 'decreaseLiquidity',
@@ -722,7 +735,23 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
             liquidity,
             amount0Min: BigInt(0),
             amount1Min: BigInt(0),
-            deadline: txDeadline(),
+            deadline,
+          },
+        ],
+        account: ctx.account,
+      });
+      const [amount0Min, amount1Min] = exitMinimums(quotedExit);
+      const decreaseHash = await ctx.walletClient.writeContract({
+        address: POSITION_MANAGER,
+        abi: NPM_ABI,
+        functionName: 'decreaseLiquidity',
+        args: [
+          {
+            tokenId,
+            liquidity,
+            amount0Min,
+            amount1Min,
+            deadline,
           },
         ],
         account: ctx.account,
@@ -842,6 +871,11 @@ async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<vo
       buyToken: buyToken.address,
       sellAmount,
       slippageBps: 100,
+      minimumBuyAmount: independentMinimumBuyAmount({
+        sellAmount,
+        buyUnitsPerSellUnit: leg.sell === 'WBNB' ? price : 1 / price,
+        buyDecimals: buyToken.decimals,
+      }),
     },
     {},
   );

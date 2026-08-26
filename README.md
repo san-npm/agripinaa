@@ -85,7 +85,7 @@ documented in [`ops/launch.md`](ops/launch.md). Never commit an `.env` file.
 
 The agents need funded wallets (`wallets/`, gitignored) and are started with
 `./ops/start-agents.sh`; `ops/launch.md` covers the VM deploy. The router
-contracts live in `contracts/` and run with `forge test --fork-url bsc` (10 fork
+contracts live in `contracts/` and run with `forge test --fork-url bsc` (13 fork
 tests) plus the Echidna and Medusa harness described in the security doc.
 
 ## Monorepo
@@ -105,10 +105,10 @@ ops/             Start, stop, deploy, and runner-URL reporting for the agent VM
 docs/            Architecture, router security, the TermiX report and its evidence
 ```
 
-616 tests across the six workspaces, all passing on 2026-08-25 (`pnpm test` at
-the root: shared 29, agent-index 7, exec-metrics 25, session-kit 37, web 175,
-agents 343). Every protocol address the agents use was probed on-chain before
-use, with the probe recorded in a comment next to it.
+The repository-wide TypeScript suite runs from `pnpm test`; the exact count is
+reported by the runner so this README does not go stale as hackathon coverage
+grows. Every protocol address the agents use was probed on-chain before use,
+with the probe recorded in a comment next to it.
 [`docs/architecture.md`](docs/architecture.md) has the diagram and what runs
 where.
 

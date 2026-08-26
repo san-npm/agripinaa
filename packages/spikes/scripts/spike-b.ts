@@ -19,11 +19,12 @@ import {
   createClient,
   signerFromPrivateKey,
 } from '@altananetwork/sdk';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadWallet } from '../src/wallet-store';
+import { saveSessionFile } from '@agripinaa/session-kit/persist';
 
 const WALLETS_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -58,7 +59,7 @@ async function main() {
       // Fail-closed: explicit allowlist, never omitted (omitting = unrestricted).
       calls: [{ to: ALLOWED_TARGET }],
       // 5 units at 18 decimals per day, in smallest units.
-      spend: [{ limit: 5n * 10n ** 18n, period: 'day' }],
+      spend: [{ limit: 5n * 10n ** 18n, period: 'day', token: ALLOWED_TARGET }],
     },
     expiry: Math.floor(Date.now() / 1000) + 60 * 60,
   });
@@ -69,7 +70,7 @@ async function main() {
   const raw = JSON.stringify(session, (_k, v) =>
     typeof v === 'bigint' ? `bigint:${v.toString()}` : v,
   );
-  await writeFile(sessionFile, raw, 'utf8');
+  await saveSessionFile(sessionFile, session);
   const reloaded = await readFile(sessionFile, 'utf8');
   if (reloaded !== raw) throw new Error('persist round-trip NOT byte-exact');
   console.log(`   round-trip byte-exact (${raw.length} bytes) → ${sessionFile}`);

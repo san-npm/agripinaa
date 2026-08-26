@@ -3,9 +3,9 @@
 import { MANAGED_TOKENS, routerFor } from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { createPublicClient, erc20Abi, http } from 'viem';
-import { bsc, bscTestnet } from 'viem/chains';
 
 import { altanaClient, SUPPORTED_CHAINS } from '@/lib/altana';
+import { bsc, bscTestnet } from '@/lib/bsc-chain';
 import {
   approveRouter,
   buildManagedScope,

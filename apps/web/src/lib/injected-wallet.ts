@@ -1,7 +1,8 @@
 'use client';
 
 import { createWalletClient, custom, type Hex, type WalletClient } from 'viem';
-import { bsc } from 'viem/chains';
+
+import { bsc } from './bsc-chain';
 
 /**
  * The one place the claim flow talks to a browser wallet.

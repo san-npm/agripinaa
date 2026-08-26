@@ -25,7 +25,7 @@ function rotationLog(over: Partial<{
     args: {
       account: over.account ?? ACCOUNT,
       action: over.action ?? ROUTER_ACTIONS.toAave.selector,
-      usdtAmount: over.amount ?? BigInt(0),
+      usdtAmount: over.amount ?? 10n ** 18n,
     },
     transactionHash: over.tx ?? '0xdeadbeef',
     blockNumber: over.block ?? BigInt(1),
@@ -80,6 +80,11 @@ test('rows come back newest first and carry the timestamp of their block', () =>
   );
 });
 
+test('zero-value permissionless events are not treated as router activity', () => {
+  assert.deepEqual(decodeRotationRows([rotationLog({ amount: 0n })], new Map()), []);
+  assert.equal(decodeRotationRows([rotationLog({ amount: 1n })], new Map()).length, 1);
+});
+
 test('amounts are grouped and rounded to cents without a locale', () => {
   assert.equal(formatStableAmount(BigInt(0)), '0.00');
   assert.equal(formatStableAmount(BigInt('1000000000000000000')), '1.00');
@@ -102,35 +107,35 @@ test('every router deployment states the block and the day it went live', () => 
 test('the under-management note only claims a full account set when the scan reached the deployment', () => {
   const deployBlock = '117050416';
   const complete = underManagementNote({ accounts: 1, scannedFrom: deployBlock, deployBlock });
-  assert.match(complete, /the 1 account this router has rotated/);
+  assert.match(complete, /1 account that used this permissionless router/);
 
   // Once the floor rises above the deployment block the count is a floor: the
   // note has to name the floor and stop asserting how many accounts exist.
   const partial = underManagementNote({ accounts: 3, scannedFrom: '117200000', deployBlock });
   assert.ok(!partial.includes('this router has rotated,'), partial);
   assert.match(partial, /117,200,000/);
-  assert.match(partial, /is not counted, so this is a floor/);
-  assert.match(partial, /3 accounts that have rotated/);
+  assert.match(partial, /router activity, not proof of a managed mandate/);
+  assert.match(partial, /3 accounts/);
 
   const partialOne = underManagementNote({ accounts: 1, scannedFrom: '117200000', deployBlock });
-  assert.match(partialOne, /1 account that has rotated/);
+  assert.match(partialOne, /1 account/);
 });
 
 test('an empty account set is only called empty when the scan reached the deployment', () => {
   const deployBlock = '117231310';
   assert.match(
     underManagementNote({ accounts: 0, scannedFrom: deployBlock, deployBlock }),
-    /has rotated no account yet/,
+    /no nonzero rotation yet/,
   );
 
   const partial = underManagementNote({ accounts: 0, scannedFrom: '117900000', deployBlock });
-  assert.ok(!partial.includes('has rotated no account yet'), partial);
+  assert.ok(!partial.includes('no nonzero rotation yet'), partial);
   assert.match(partial, /117,900,000/);
 
   // No scan means no floor to quote, and the panel hides the note anyway.
   assert.match(
     underManagementNote({ accounts: 0, scannedFrom: null, deployBlock }),
-    /has rotated no account yet/,
+    /no nonzero rotation yet/,
   );
 });
 

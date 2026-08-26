@@ -1,8 +1,11 @@
 import {
   appendFileSync,
   chmodSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   writeFileSync,
@@ -12,17 +15,12 @@ import { fileURLToPath } from 'node:url';
 
 import { ReputationClient } from '@agripinaa/exec-metrics';
 import { BSC_MAINNET } from '@agripinaa/shared';
-import {
-  createPublicClient,
-  createWalletClient,
-  fallback,
-  http,
-  type Account,
-} from 'viem';
+import { type Account } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { bsc } from 'viem/chains';
 
 import type { AgentContext, AgentState, Breakers } from './types';
+import { createGuardedWalletClient } from './guarded-wallet-client';
+import { createQuorumPublicClient } from './quorum-client';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** Runtime state for every agent: state files, JSONL logs, the managed registry, the run lock. */
@@ -60,7 +58,19 @@ export function writeStateFile(file: string, contents: string): void {
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, contents, { mode: DATA_FILE_MODE });
   chmodSync(tmp, DATA_FILE_MODE);
+  const fileDescriptor = openSync(tmp, 'r');
+  try {
+    fsyncSync(fileDescriptor);
+  } finally {
+    closeSync(fileDescriptor);
+  }
   renameSync(tmp, file);
+  const directoryDescriptor = openSync(dirname(file), 'r');
+  try {
+    fsyncSync(directoryDescriptor);
+  } finally {
+    closeSync(directoryDescriptor);
+  }
 }
 
 /** Log files this process has already tightened; one chmod per file, not per line. */
@@ -137,15 +147,14 @@ export function loadAgentAccount(name: string): Account {
 
 /**
  * Build the runtime context for one agent: BSC clients, JSONL logger,
- * durable state, and breakers. Enrollment with the rebate indexer is
- * asserted BEFORE the agent may trade (the indexer is owner-scoped and
- * never backfills orders from before enrollment).
+ * durable state, and breakers. Rebate enrollment is launched after the
+ * context is usable, so an optional external indexer cannot delay safety
+ * agents at boot.
  */
 export async function buildContext(name: string): Promise<AgentContext> {
   const account = loadAgentAccount(name);
-  const transport = fallback(BSC_MAINNET.rpcUrls.map((u) => http(u)));
-  const publicClient = createPublicClient({ chain: bsc, transport });
-  const walletClient = createWalletClient({ account, chain: bsc, transport });
+  const publicClient = createQuorumPublicClient();
+  const walletClient = createGuardedWalletClient(account, publicClient);
 
   ensureDataDir();
   const logPath = join(DATA_DIR, `${name}.log.jsonl`);
@@ -198,17 +207,25 @@ export async function buildContext(name: string): Promise<AgentContext> {
   // successful enrollment forfeit rebate/XP indexing only; retried each boot
   // until it lands.
   const reputation = new ReputationClient();
-  const enrollment = await reputation.enrollAndGetTier(account.address);
-  if (enrollment.ok) {
-    log({ event: 'enrolled', wallet: account.address });
-  } else {
+  void reputation.enrollAndGetTier(account.address).then((enrollment) => {
+    if (enrollment.ok) {
+      log({ event: 'enrolled', wallet: account.address });
+    } else {
+      log({
+        event: 'enrollment-unavailable',
+        wallet: account.address,
+        error: enrollment.error,
+        consequence: 'rebate/XP indexing deferred; execution metrics unaffected',
+      });
+    }
+  }).catch((error: unknown) => {
     log({
       event: 'enrollment-unavailable',
       wallet: account.address,
-      error: enrollment.error,
+      error: error instanceof Error ? error.message : String(error),
       consequence: 'rebate/XP indexing deferred; execution metrics unaffected',
     });
-  }
+  });
 
   return {
     name,

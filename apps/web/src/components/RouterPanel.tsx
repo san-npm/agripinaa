@@ -95,7 +95,7 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
           {funds.managed ? (
             <>
               <Stat
-                label="Under management"
+                label="Router-visible holdings"
                 value={funds.managed.total}
                 unit={router.symbol}
                 note={underManagementNote({
@@ -108,7 +108,7 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
                 label="Working in a venue"
                 value={funds.managed.deployed}
                 unit={router.symbol}
-                note={`aToken and Venus balances. The remaining ${funds.managed.idle} sits idle and earns nothing until the agent moves it.`}
+                note={`aToken and Venus balances for the bounded activity set. The remaining ${funds.managed.idle} sits idle.`}
               />
             </>
           ) : null}
@@ -127,7 +127,7 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
       ) : (
         <p className="mt-4 rounded-lg border border-border bg-surface-2 p-3 text-xs leading-relaxed text-muted">
           Balances unavailable: the total under management is summed over the
-          accounts in this router&apos;s Rotated event log, and that scan did not come
+          bounded nonzero accounts in this router&apos;s Rotated event log, and that scan did not come
           back, checked {stampTime(funds.asOf)}. The addresses above and the security
           notes below come from the repository and the deployed bytecode, so they do
           not depend on it.

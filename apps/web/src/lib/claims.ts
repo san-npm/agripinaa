@@ -11,7 +11,8 @@ import {
   http,
   type Hex,
 } from 'viem';
-import { bsc } from 'viem/chains';
+
+import { bsc } from './bsc-chain';
 
 import {
   CLAIM_REPLAY_WINDOW_MS,

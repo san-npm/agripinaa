@@ -9,7 +9,7 @@ import {
 } from '@agripinaa/shared';
 import {
   CowOrderbookClient,
-  isOphisOrder,
+  isAuthenticOphisOrder,
   surplusBps,
 } from '@agripinaa/exec-metrics';
 import { safeFetchJson } from '@agripinaa/shared/ssrf';
@@ -104,7 +104,7 @@ async function getOnchainTradeBackfill(): Promise<ProofEvent[]> {
       ]);
       const tradeByOrder = new Map(trades.map((trade) => [trade.orderUid, trade]));
       return orders
-        .filter((order) => order.status === 'fulfilled' && ORDER_UID.test(order.uid) && isOphisOrder(order))
+        .filter((order) => order.status === 'fulfilled' && ORDER_UID.test(order.uid) && isAuthenticOphisOrder(order))
         .map((order): ProofEvent => {
           const trade = tradeByOrder.get(order.uid);
           const txHash = trade && TX_HASH.test(trade.txHash)
