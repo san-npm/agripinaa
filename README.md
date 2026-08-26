@@ -61,10 +61,11 @@ take no arguments at all: `AgripinaaYieldRouter`. Every recipient inside it is
 hardcoded to the calling account, so a stolen key can move the user's funds
 between the user's own positions or back to the user, and cannot name a third
 party. The corrected source also leaves Aave or Venus receipt tokens untouched
-while that venue reports any supported debt ledger. The immutable deployed
-routers predate the complete Venus VAI check, so new management is deliberately
-paused until version 3 is deployed and verified. The threat model, fuzz
-invariants, finding, and migration state are in
+while that venue reports any supported debt ledger. The active immutable
+routers are the verified version-3 deployments: they also cover Venus's
+separate VAI debt ledger, and their runtime hashes are pinned and checked live
+before activation or execution. Superseded routers remain recovery-only. The
+threat model, fuzz invariants, finding, and deployment state are in
 [`docs/security-router.md`](docs/security-router.md).
 
 ## Quickstart

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { TOKENS_BSC, YIELD_ROUTER_BSC, YIELD_ROUTER_BSC_USDC } from '@agripinaa/shared';
+import {
+  RETIRED_YIELD_ROUTER_V2_BSC,
+  RETIRED_YIELD_ROUTER_V2_BSC_USDC,
+  TOKENS_BSC,
+  YIELD_ROUTER_BSC,
+} from '@agripinaa/shared';
 import { padHex, toEventSelector } from 'viem';
 
 import { managedYieldTick } from '../src/agents/yield';
@@ -165,15 +170,15 @@ test('managedExecutor refuses a debt-incomplete router even when its manager key
     session: {
       walletAddress: ACCOUNT,
       publicKey: granted.publicKey,
-      permissions: { calls: [{ signature: 'toVenus()', to: YIELD_ROUTER_BSC.address }] },
+      permissions: { calls: [{ signature: 'toVenus()', to: RETIRED_YIELD_ROUTER_V2_BSC.address }] },
       expiry: 1893456000,
     },
     registeredAt: '2026-08-20T00:00:00.000Z',
   };
   assert.equal(recoveryDeploymentForEntry(entry as never)?.symbol, 'USDT');
   assert.equal(deploymentForEntry(entry as never), undefined);
-  // The currently deployed v2 router does not cover the Venus VAI debt
-  // ledger. No session targeting it may reach the relay, including a session
+  // The retired v2 router does not cover the Venus VAI debt ledger. No session
+  // targeting it may reach the relay, including a session
   // whose manager key is otherwise valid.
   assert.throws(
     () => managedExecutor({ client: {} as never, managerKey: grantedPk, entry: entry as never }),
@@ -201,7 +206,7 @@ test('token-driven selection also refuses the debt-incomplete USDC deployment', 
     session: {
       walletAddress: ACCOUNT,
       publicKey: master.publicKey, // granted to the WRONG (USDT/master) key
-      permissions: { calls: [{ signature: 'toVenus()', to: YIELD_ROUTER_BSC_USDC.address }] },
+      permissions: { calls: [{ signature: 'toVenus()', to: RETIRED_YIELD_ROUTER_V2_BSC_USDC.address }] },
       expiry: 1893456000,
     },
     registeredAt: '2026-08-20T00:00:00.000Z',

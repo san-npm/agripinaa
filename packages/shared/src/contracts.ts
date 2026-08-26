@@ -101,22 +101,24 @@ export async function isDebtCompleteRouterRuntimeQuorum(
 }
 
 /**
- * Guarded BNB Chain mainnet (56) deployment. It includes delta accounting,
- * debt-aware unwind guards, and constructor binding checks. It supersedes the
- * 2026-08-20 build at 0xD18375cA…E3eb.
+ * Debt-complete BNB Chain mainnet (56) deployment. It includes delta
+ * accounting, Aave aggregate-debt checks, Venus market + VAI debt checks, and
+ * constructor binding checks. The runtime hash was independently read through
+ * two RPC providers before this deployment was admitted to the manifest.
  */
 export const YIELD_ROUTER_BSC: RouterDeployment = {
   chainId: 56,
   symbol: 'USDT',
-  address: '0xE69503b265E4320f139A0F7b1A6f1D00fCBd3C02',
+  address: '0x67c0005C2a9709a28DA42cEC9b11b8a7201B4C22',
   usdt: '0x55d398326f99059fF775485246999027B3197955',
   aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
-  // Created by tx 0xb8d59e133e9cae6499701a25254eb08fa310dda26500c0d4ef8b8d6efd4bf731.
-  deployBlock: BigInt(118145573),
+  // Created by tx 0xd6501a3deeaf406a50b58bd44383c8d51e9e00ea5f3565a25d15ba6d6fbcd0f8.
+  deployBlock: BigInt(118230700),
   deployedOn: '2026-08-26',
-  debtGuardVersion: 2,
+  debtGuardVersion: 3,
+  runtimeCodeHash: '0xc20d8eb8623f79a688daa29414adc64dddd48634a68f46169cd871105cdd1f16',
 };
 
 /**
@@ -127,22 +129,23 @@ export const YIELD_ROUTER_BSC: RouterDeployment = {
 export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   chainId: 56,
   symbol: 'USDC',
-  address: '0x0DD7B7446D449a8968F0FBf1f9a23bd9f2686167',
+  address: '0x4A2E2817736D8497EeB4296dd5e51ECAeA427f72',
   usdt: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
   aUsdt: '0x00901a076785e0906d1028c7d6372d247bec7d61',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
-  // Created by tx 0x79c95b920bc310df5d563dacaab5c94d15648beaed2ad54c618aebd634789fd7.
-  deployBlock: BigInt(118145739),
+  // Created by tx 0x1bb52e4a17ba05292a4fa208ecc7b13efc01a30ecec8363404d421ed9413f0e7.
+  deployBlock: BigInt(118230776),
   deployedOn: '2026-08-26',
-  debtGuardVersion: 2,
+  debtGuardVersion: 3,
+  runtimeCodeHash: '0x07a4f5743bffe23fd40cae068261a1d34b69e9362563c7a97ed5b0a4cb66fe1c',
 };
 
 /** Every router eligible for a NEW managed-yield activation. */
 export const YIELD_ROUTERS_BSC: RouterDeployment[] = [YIELD_ROUTER_BSC, YIELD_ROUTER_BSC_USDC];
 
 /**
- * Superseded delta-accounting routers. They are intentionally excluded from
+ * Superseded routers. They are intentionally excluded from
  * YIELD_ROUTERS_BSC, routerFor(), and routerByAddress(): no new session and no
  * runner registration may target them after the guarded-router migration.
  *
@@ -176,7 +179,43 @@ export const RETIRED_YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   debtGuardVersion: 0,
 };
 
+/**
+ * Version-2 debt-aware deployments. These cover Aave aggregate debt and
+ * ordinary Venus market debt but predate the Venus VAI-ledger guard. Existing
+ * account approvals may still point here, so they stay recoverable by owners
+ * while remaining ineligible for agent execution.
+ */
+export const RETIRED_YIELD_ROUTER_V2_BSC: RouterDeployment = {
+  chainId: 56,
+  symbol: 'USDT',
+  address: '0xE69503b265E4320f139A0F7b1A6f1D00fCBd3C02',
+  usdt: '0x55d398326f99059fF775485246999027B3197955',
+  aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
+  aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
+  vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
+  // Created by tx 0xb8d59e133e9cae6499701a25254eb08fa310dda26500c0d4ef8b8d6efd4bf731.
+  deployBlock: BigInt(118145573),
+  deployedOn: '2026-08-26',
+  debtGuardVersion: 2,
+};
+
+export const RETIRED_YIELD_ROUTER_V2_BSC_USDC: RouterDeployment = {
+  chainId: 56,
+  symbol: 'USDC',
+  address: '0x0DD7B7446D449a8968F0FBf1f9a23bd9f2686167',
+  usdt: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+  aUsdt: '0x00901a076785e0906d1028c7d6372d247bec7d61',
+  aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
+  vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
+  // Created by tx 0x79c95b920bc310df5d563dacaab5c94d15648beaed2ad54c618aebd634789fd7.
+  deployBlock: BigInt(118145739),
+  deployedOn: '2026-08-26',
+  debtGuardVersion: 2,
+};
+
 export const RETIRED_YIELD_ROUTERS_BSC: RouterDeployment[] = [
+  RETIRED_YIELD_ROUTER_V2_BSC,
+  RETIRED_YIELD_ROUTER_V2_BSC_USDC,
   RETIRED_YIELD_ROUTER_BSC,
   RETIRED_YIELD_ROUTER_BSC_USDC,
 ];

@@ -146,9 +146,9 @@ is its manifest, which is why a registered agent's manifest bytes in
 chain, so trust surfaces are reputation-based and the UI says so.
 
 **The two router deployments.** `AgripinaaYieldRouter` has immutable USDT and
-USDC version-2 deployments (`packages/shared/src/contracts.ts`). They are
-recovery-only because their Venus guard omits VAI debt; activation and runner
-execution require a pending version-3 replacement. Source in
+USDC version-3 deployments (`packages/shared/src/contracts.ts`). Their pinned
+runtime hashes and live version getters are checked before activation or runner
+execution; older version-2 and version-1 addresses remain recovery-only. Source in
 `contracts/src/AgripinaaYieldRouter.sol`, threat model and migration evidence in
 [security-router.md](./security-router.md), contract custody and bounded recent
 permissionless activity on `/funds`.
