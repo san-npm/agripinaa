@@ -26,15 +26,29 @@ export function selectQuorumValue<T>(values: readonly T[], required = 2): T {
 
 /**
  * Gas price is an estimate, not chain state: honest providers routinely return
- * different recommendations. Use the numeric median so one outlier cannot set
- * the fee, and use the higher value when only two backends answer so writes do
- * not stall merely because the lower estimate is stale.
+ * different recommendations. With three answers, use the numeric median so
+ * one outlier cannot set the fee. With only two, accept the conservative
+ * estimate only when both answers are within a bounded spread; otherwise no
+ * independent estimate exists and the write fails closed.
  */
 export function selectGasPrice(values: readonly bigint[]): bigint {
   if (values.length < 2) {
     throw new Error('RPC quorum unavailable: fewer than two gas-price estimates');
   }
   const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (sorted.some((value) => value <= 0n)) {
+    throw new Error('RPC quorum mismatch: invalid gas-price estimate');
+  }
+  if (sorted.length === 2) {
+    const low = sorted[0]!;
+    const high = sorted[1]!;
+    // A two-provider result has no majority. Permit ordinary estimator drift,
+    // but bound either backend's influence to 20% of the other estimate.
+    if (high * 10_000n > low * 12_000n) {
+      throw new Error('RPC quorum mismatch: gas-price estimates exceed 20% spread');
+    }
+    return high;
+  }
   return sorted[Math.floor(sorted.length / 2)]!;
 }
 

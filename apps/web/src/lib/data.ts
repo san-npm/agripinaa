@@ -279,6 +279,21 @@ export async function listAgents(
   limit = 24,
   cursor?: string,
 ): Promise<Page<AgentSummary>> {
+  return listAgentWindow(category, limit, cursor, true);
+}
+
+/**
+ * Page one upstream window. The public API asks for claimed-only category
+ * entries; the directory walk already resolves those itself with its own page
+ * budget, so it opts out to avoid resolving and paging the same injection
+ * twice.
+ */
+async function listAgentWindow(
+  category: Category | undefined,
+  limit: number,
+  cursor: string | undefined,
+  includeClaimedCategory: boolean,
+): Promise<Page<AgentSummary>> {
   const position = decodeRegistryWindowCursor(cursor);
   // The public 8004scan API always reads 100 upstream registrations at a time.
   // Read that complete window here too, then encode any remaining local offset
@@ -287,8 +302,22 @@ export async function listAgents(
   const raw = await readRegistryWindow(category, position.upstreamCursor);
   const claims = claimsByTokenId(await storedClaims());
   const ranked = rankAndDedupe(raw.items).map((a) => withClaim(a, claims));
-  const windowId = registryWindowId(ranked);
-  const page = pageRegistryWindow(ranked, limit, cursor, raw.nextCursor, windowId);
+  // The upstream category filter cannot see a category supplied by an owner
+  // claim. Resolve those records into the first API window, and keep them in
+  // every local slice of that window. Later upstream windows annotate only, so
+  // the claimed records cannot repeat as the caller advances.
+  const claimed =
+    includeClaimedCategory && category && position.upstreamCursor === undefined
+      ? await claimedInCategory(
+          category,
+          claims,
+          tokenIdSet(ranked),
+          claimedHubSlots(limit),
+        )
+      : [];
+  const listing = mergeRegistryWindow(ranked, claimed);
+  const windowId = registryWindowId(listing);
+  const page = pageRegistryWindow(listing, limit, cursor, raw.nextCursor, windowId);
   return { ...raw, nextCursor: page.nextCursor, items: await withLiveness(page.items) };
 }
 
@@ -302,9 +331,29 @@ export class RegistryCursorExpiredError extends Error {
   }
 }
 
+/** A local offset cannot have been issued for the window it names. */
+export class RegistryCursorInvalidError extends Error {
+  constructor() {
+    super('invalid registry cursor');
+    this.name = 'RegistryCursorInvalidError';
+  }
+}
+
+/**
+ * A raw read has at most 100 entries and the API may prepend at most one third
+ * of its largest page in claimed-only entries. Every emitted local offset is
+ * strictly below this bound (and is checked against the actual window later).
+ */
+const MAX_REGISTRY_WINDOW_ITEMS =
+  INDEX_WINDOW_SIZE + Math.min(CLAIMED_PER_HUB_LIMIT, claimedHubSlots(INDEX_WINDOW_SIZE));
+
 /** Whether a public listing cursor is one this module can decode safely. */
 export function validRegistryCursor(cursor: string): boolean {
-  return /^\d{1,9}$/.test(cursor) || REGISTRY_WINDOW_CURSOR.test(cursor);
+  if (/^\d{1,9}$/.test(cursor)) return true;
+  const match = REGISTRY_WINDOW_CURSOR.exec(cursor);
+  if (!match) return false;
+  const offset = Number(match[2]);
+  return offset > 0 && offset < MAX_REGISTRY_WINDOW_ITEMS;
 }
 
 function decodeRegistryWindowCursor(cursor?: string): {
@@ -353,6 +402,9 @@ export function pageRegistryWindow<T>(
   const position = decodeRegistryWindowCursor(cursor);
   if (position.windowId && position.windowId !== windowId) {
     throw new RegistryCursorExpiredError();
+  }
+  if (position.windowId && (position.offset <= 0 || position.offset >= items.length)) {
+    throw new RegistryCursorInvalidError();
   }
   return {
     items: items.slice(position.offset, position.offset + limit),
@@ -499,7 +551,7 @@ export async function listRegistryPage(
   const claims = category ? claimsByTokenId(await storedClaims()) : null;
 
   for (let read = 0; read < MAX_INDEX_READS; read++) {
-    const batch = await listAgents(category, INDEX_WINDOW_SIZE, at);
+    const batch = await listAgentWindow(category, INDEX_WINDOW_SIZE, at, false);
     listingSource = batch.source;
     const indexed = batch.items.filter(
       (a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId)),

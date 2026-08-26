@@ -9,6 +9,7 @@ import {
   DIRECTORY_WALK_DEPTH,
   MAX_DIRECTORY_PAGES,
   RegistryCursorExpiredError,
+  RegistryCursorInvalidError,
   directoryPage,
   directoryPageIndex,
   mergeRegistryWindow,
@@ -123,6 +124,8 @@ test('registry cursors can retain a position inside a complete upstream window',
   assert.equal(validRegistryCursor('w:0:24:short'), false);
   assert.equal(validRegistryCursor('w:nope:24:0123456789abcdef'), false);
   assert.equal(validRegistryCursor('w:1:9999:0123456789abcdef'), false);
+  assert.equal(validRegistryCursor('w:1:999:0123456789abcdef'), false);
+  assert.equal(validRegistryCursor('w:1:0:0123456789abcdef'), false);
 });
 
 test('a small API limit walks an entire raw window before advancing upstream', () => {
@@ -147,6 +150,14 @@ test('a changed upstream window expires its local cursor instead of skipping car
   assert.throws(
     () => pageRegistryWindow(raw.slice(1), 24, first.nextCursor ?? undefined, '2', 'fedcba9876543210'),
     RegistryCursorExpiredError,
+  );
+});
+
+test('a forged local offset cannot skip the unread remainder of its window', () => {
+  const raw = classified(50);
+  assert.throws(
+    () => pageRegistryWindow(raw, 24, 'w:0:96:0123456789abcdef', '2', '0123456789abcdef'),
+    RegistryCursorInvalidError,
   );
 });
 

@@ -119,17 +119,17 @@ test('a parallel flood reserves exactly the global budget, not one shared overwr
   );
 });
 
-test('without a store no unreserved chain read is allowed', async () => {
+test('without a store an unavailable reservation is distinct from a spent budget', async () => {
   const kv = memoryKv({ available: false });
   for (let i = 0; i < CHAIN_READ_LIMIT_PER_CLIENT + 5; i++) {
-    assert.equal(await take(kv), false);
+    assert.equal(await take(kv), null);
   }
   assert.equal(kv.reads, 0, 'an unconfigured store is never asked');
 });
 
 test('a configured store that cannot reserve a slot fails closed', async () => {
   const kv = memoryKv({ throwing: true });
-  assert.equal(await take(kv), false);
+  assert.equal(await take(kv), null);
 });
 
 test('a stored bucket that is not a counter is read as an empty one', async () => {
