@@ -201,9 +201,10 @@ validity live from the KeyStore registry and revokes with one confirmation.
 
 ## Freshness
 
-Nothing on Vercel runs on a schedule. There is no cron route and no
-`vercel.json` declaring one, on purpose: a scheduled job would be one more thing
-to keep alive during judging. Freshness comes from three mechanisms instead.
+Vercel calls `/api/cron/refresh` once daily, the maximum frequency available on
+the Hobby plan. The route is authenticated by `CRON_SECRET` (or the operator
+token), re-probes claimed endpoints, and warms the category caches. Freshness
+also comes from three mechanisms between scheduled runs.
 
 **The cache window.** Every function that backs a listing opens with
 `'use cache'` and a `cacheLife` window (six of them in
@@ -220,9 +221,9 @@ rather than an empty page.
 instant it was taken. Readers apply the window themselves: past
 `LIVENESS_TTL_MS` (24 hours, `apps/web/src/lib/liveness.ts`) a record stops
 counting as evidence, and `endpointIsLive` in `apps/web/src/lib/activatable.ts`
-answers false. A re-probe on a schedule is the shape both files are written for,
-and until one runs the decay is the whole answer: an endpoint that went away
-loses its badge on its own, which is the safe direction to fail in.
+answers false. The daily refresh normally replaces that evidence before it
+expires; if the job fails, decay is still the answer, so an endpoint that went
+away loses its badge on its own—the safe direction to fail in.
 
 ## Repository layout
 
