@@ -516,28 +516,21 @@ export function excludeInjectedRegistryEntries(
 
 /**
  * Replace an earlier injection when a raw later source window proves that
- * token has a different owner. The parallel ordinal captured by
- * `listRegistryPage` keeps its displayed position stable after reranking;
- * replacing its contents removes the stale claim. The later representative is
- * then removed by `excludeInjectedRegistryEntries`.
+ * token has a different owner. Keep that exact fresh token rather than
+ * borrowing a ranked sibling: several transferred tokens can share one ranked
+ * representative, while every previously issued slot still needs a distinct
+ * non-stale identity.
  */
 export function reconcileInjectedRegistryEntries(
   injected: readonly AgentSummary[],
   laterRaw: readonly AgentSummary[],
-  laterRanked: readonly AgentSummary[] = laterRaw,
 ): AgentSummary[] {
   const laterByTokenId = new Map(
     laterRaw.map((a) => [normalizeAgentId(a.tokenId), a]),
   );
   return injected.map((a) => {
     const found = laterByTokenId.get(normalizeAgentId(a.tokenId));
-    if (!found || registryOwner(found) === registryOwner(a)) return a;
-    // Ranking may collapse the transferred token into another registration
-    // with the same name and new owner. Put that chosen representative in the
-    // stable injection slot while using the raw token as ownership evidence.
-    return laterRanked.find((candidate) =>
-      registryOwnedName(candidate) === registryOwnedName(found)
-    ) ?? found;
+    return !found || registryOwner(found) === registryOwner(a) ? a : found;
   });
 }
 
@@ -550,6 +543,20 @@ export interface DirectoryOrdinalSlot {
 
 function registryIdentity(agent: AgentSummary): string {
   return JSON.stringify([normalizeAgentId(agent.tokenId), registryOwner(agent)]);
+}
+
+/**
+ * The directory ranks all reads together, so retain a different-token sibling
+ * for that global pass and remove only the exact token already injected. The
+ * public window API uses `excludeInjectedRegistryEntries` instead because its
+ * independently paged windows cannot dedupe across requests.
+ */
+export function excludeExactInjectedRegistryEntries(
+  raw: readonly AgentSummary[],
+  injected: readonly AgentSummary[],
+): AgentSummary[] {
+  const identities = new Set(injected.map(registryIdentity));
+  return raw.filter((agent) => !identities.has(registryIdentity(agent)));
 }
 
 function sameDirectoryDedupeGroup(
@@ -624,6 +631,7 @@ function preserveDirectoryOrdinals(
   const ordered = [...slots].sort((a, b) => a.ordinal - b.ordinal);
   const selected: Array<AgentSummary | undefined> = new Array(ordered.length);
   const used = new Set<number>();
+  const assignedIdentities = new Set<string>();
 
   // Reserve exact identities across every slot first. Without this pass, an
   // equivalent representative can steal the slot belonging to its own token,
@@ -632,11 +640,13 @@ function preserveDirectoryOrdinals(
     const index = listing.findIndex(
       (candidate, at) =>
         !used.has(at) &&
+        !assignedIdentities.has(registryIdentity(candidate)) &&
         registryIdentity(candidate) === registryIdentity(slot.agent),
     );
     if (index < 0) return;
     used.add(index);
     selected[slotIndex] = listing[index];
+    assignedIdentities.add(registryIdentity(listing[index]!));
   });
 
   // A later, stronger token can legitimately become the representative of the
@@ -646,16 +656,34 @@ function preserveDirectoryOrdinals(
     if (selected[slotIndex]) return;
     const index = listing.findIndex(
       (candidate, at) =>
-        !used.has(at) && sameDirectoryDedupeGroup(candidate, slot.agent),
+        !used.has(at) &&
+        !assignedIdentities.has(registryIdentity(candidate)) &&
+        sameDirectoryDedupeGroup(candidate, slot.agent),
     );
     if (index < 0) return;
     used.add(index);
     selected[slotIndex] = listing[index];
+    assignedIdentities.add(registryIdentity(listing[index]!));
   });
 
-  const remaining = listing.filter((_, index) => !used.has(index));
+  // Do not let an inconsistent source retain a second copy of an identity that
+  // a slot already claimed (or two copies among the unpositioned remainder).
+  const presentIdentities = new Set(assignedIdentities);
+  const remaining = listing.filter((candidate, index) => {
+    if (used.has(index)) return false;
+    const identity = registryIdentity(candidate);
+    if (presentIdentities.has(identity)) return false;
+    presentIdentities.add(identity);
+    return true;
+  });
   for (const [slotIndex, slot] of ordered.entries()) {
-    const agent = selected[slotIndex] ?? slot.agent;
+    let agent = selected[slotIndex];
+    if (!agent) {
+      const identity = registryIdentity(slot.agent);
+      if (presentIdentities.has(identity)) continue;
+      agent = slot.agent;
+      presentIdentities.add(identity);
+    }
     const ordinal = Math.max(0, Math.min(slot.ordinal, remaining.length));
     remaining.splice(ordinal, 0, agent);
   }
@@ -811,8 +839,8 @@ export async function listRegistryPage(
     // Resolve records absent from the active first category window only once,
     // then prepend them in addition to that complete window. A later window
     // may catch up to a native-category record the detail endpoint resolved
-    // earlier; filtering the same-owner identity below keeps that card
-    // singular, while a changed owner remains as fresher transfer evidence.
+    // earlier; the combined ranking below keeps that card singular, while a
+    // changed owner remains as fresher transfer evidence.
     if (read === 0 && category && claims && rawWindow) {
       injected = await withLiveness(
         await claimedInCategory(
@@ -826,7 +854,7 @@ export async function listRegistryPage(
     if (read > 0 && rawWindow && claims) {
       const rawWithClaims = rawWindow.items.map((a) => withClaim(a, claims));
       injected = await withLiveness(
-        reconcileInjectedRegistryEntries(injected, rawWithClaims, indexed),
+        reconcileInjectedRegistryEntries(injected, rawWithClaims),
       );
     }
     sourceReads.push(indexed);
@@ -838,12 +866,13 @@ export async function listRegistryPage(
     }
     // Rebuild from the reconciled set. If this window revealed a transfer, the
     // first window now carries the fresh source record and the ordinal slot
-    // below restores its previously served position after reranking. The
-    // matching later representative is suppressed so the card remains singular.
+    // below restores its previously served position after reranking. An exact
+    // later repeat is suppressed; a different-token sibling stays available
+    // for the combined rank pass to choose once for the original slot.
     const reads = sourceReads.map((items, index) =>
       index === 0
         ? mergeRegistryWindow(items, injected)
-        : excludeInjectedRegistryEntries(items, injected),
+        : excludeExactInjectedRegistryEntries(items, injected),
     );
     const ordinalSlots = reconciledDirectoryOrdinalSlots(
       firstListing,
