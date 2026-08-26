@@ -5,6 +5,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 import {
   CHAIN_READS_SPENT,
+  CHAIN_READ_THROTTLE_UNAVAILABLE,
   CLAIM_INDEX_KEY,
   buildClaimMessage,
   claimIsStale,
@@ -90,7 +91,9 @@ interface TestKv extends ClaimKv {
   store: Map<string, string>;
 }
 
-function memoryKv(opts: { available?: boolean; writes?: boolean } = {}): TestKv {
+function memoryKv(
+  opts: { available?: boolean; writes?: boolean; reservation?: boolean | null } = {},
+): TestKv {
   const store = new Map<string, string>();
   return {
     store,
@@ -103,6 +106,7 @@ function memoryKv(opts: { available?: boolean; writes?: boolean } = {}): TestKv 
     },
     mget: async (keys) => keys.map((key) => store.get(key) ?? null),
     reserveCounterPair: async (input) => {
+      if (opts.reservation !== undefined) return opts.reservation;
       const count = (key: string): number => {
         try {
           const parsed = JSON.parse(store.get(key) ?? '') as { w?: unknown; n?: unknown };
@@ -329,6 +333,21 @@ test('an unconfigured kv answers 503 before any chain read', async () => {
   });
   assert.deepEqual(decision, { ok: false, status: 503, message: 'kv not configured' });
   assert.equal(chain.reads.ownerOf, 0);
+});
+
+test('a failed throttle reservation answers 503 rather than a false 429', async () => {
+  const chain = chainOwnedBy(account.address);
+  const decision = await decide({
+    body: await signedBody(),
+    chain,
+    kv: memoryKv({ reservation: null }),
+  });
+  assert.deepEqual(decision, {
+    ok: false,
+    status: 503,
+    message: CHAIN_READ_THROTTLE_UNAVAILABLE,
+  });
+  assert.equal(chain.reads.ownerOf, 0, 'an indeterminate reservation still fails closed');
 });
 
 test('a claim that cannot be written answers 503 rather than reporting success', async () => {

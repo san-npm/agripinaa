@@ -309,6 +309,10 @@ const CHAIN_UNAVAILABLE = 'the chain is not answering right now, please try agai
 export const CHAIN_READS_SPENT =
   'too many claim requests right now, please try again in a minute';
 
+/** A reservation outage is not evidence that the caller exhausted a budget. */
+export const CHAIN_READ_THROTTLE_UNAVAILABLE =
+  'the claim service is not answering right now, please try again';
+
 /**
  * Run a chain read so that a thrown error is the same answer as a read that
  * reported itself unavailable. `liveClaimChain` already catches its own errors;
@@ -406,9 +410,14 @@ export async function decideClaim(input: {
   // ones a stranger can aim at the shared RPC budget, so the counter runs here,
   // in front of them: the per-owner limit further down cannot do this job, it
   // is only reached once a signature has recovered to the owner.
-  if (!(await takeChainRead({ client: input.client ?? UNATTRIBUTED_CLIENT, kv }))) {
+  const chainReadSlot = await takeChainRead({
+    client: input.client ?? UNATTRIBUTED_CLIENT,
+    kv,
+  });
+  if (chainReadSlot === false) {
     return reject(429, CHAIN_READS_SPENT);
   }
+  if (chainReadSlot === null) return reject(503, CHAIN_READ_THROTTLE_UNAVAILABLE);
 
   // A node that did not answer is not evidence about the token, so it answers
   // 503 and the caller is told to try again rather than 400 and told not to.

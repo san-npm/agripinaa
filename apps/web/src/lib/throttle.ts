@@ -81,9 +81,10 @@ export function clientKey(headers: { get(name: string): string | null }): string
 }
 
 /**
- * Take one slot for a chain read. True means the caller may make it; false
- * means a window's budget is spent and the caller is refused before anything
- * reaches an RPC node. The reservation happens before true is returned.
+ * Take one slot for a chain read. True means the caller may make it, false
+ * means a window's budget was authoritatively spent, and null means no safe
+ * decision could be obtained from KV. The reservation happens before true is
+ * returned, and both refusal states fail closed before an RPC call.
  */
 export async function takeChainRead(input: {
   /** Bucket name for the caller, from `clientKey`. */
@@ -91,9 +92,9 @@ export async function takeChainRead(input: {
   kv: ThrottleKv;
   /** Clock, injectable so a test can step across a window boundary. */
   now?: () => number;
-}): Promise<boolean> {
+}): Promise<boolean | null> {
   const { kv } = input;
-  if (!kv.available()) return false;
+  if (!kv.available()) return null;
 
   const window = Math.floor((input.now?.() ?? Date.now()) / CHAIN_READ_WINDOW_MS);
   const key = chainReadKey(input.client);
@@ -109,8 +110,8 @@ export async function takeChainRead(input: {
       // could still be the one an adjacent request is evaluating.
       ttlMs: CHAIN_READ_WINDOW_MS * 2,
     });
-    return reserved === true;
+    return reserved;
   } catch {
-    return false;
+    return null;
   }
 }
