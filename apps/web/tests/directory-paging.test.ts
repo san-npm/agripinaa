@@ -13,6 +13,7 @@ import {
   RegistryCursorInvalidError,
   directoryPage,
   directoryPageIndex,
+  excludeExactInjectedRegistryEntries,
   excludeInjectedRegistryEntries,
   mergeRegistryWindow,
   pageRegistryWindow,
@@ -177,11 +178,89 @@ test('transfer reconciliation uses raw evidence hidden behind a ranked represent
   const injection = reconcileInjectedRegistryEntries(
     [stale],
     [transferred, representative],
-    ranked,
   );
-  const later = excludeInjectedRegistryEntries(ranked, injection);
-  assert.deepEqual(injection, [representative]);
-  assert.deepEqual(later, [], 'the representative cannot duplicate the refreshed slot');
+  const later = excludeExactInjectedRegistryEntries(ranked, injection);
+  const slots = reconciledDirectoryOrdinalSlots([stale], [stale], injection);
+  const listing = directoryPage([injection, later], 0, slots).items;
+  assert.deepEqual(injection, [transferred]);
+  assert.deepEqual(later, [representative]);
+  assert.deepEqual(
+    listing,
+    [representative],
+    'the global rank still selects the stronger sibling for the original slot',
+  );
+});
+
+test('two transfers collapsed into one representative retain distinct fresh identities', () => {
+  const sharedOwner = '0x3333333333333333333333333333333333333333';
+  const initial = [
+    {
+      ...classified(1, 1_001)[0]!,
+      name: 'Converging agent',
+      claimed: true,
+      claimedFields: ['description'] as const,
+    },
+    {
+      ...classified(1, 1_002)[0]!,
+      name: 'Converging agent',
+      owner: '0x2222222222222222222222222222222222222222',
+      claimed: true,
+      claimedFields: ['description'] as const,
+    },
+  ] satisfies AgentSummary[];
+  const transferred = initial.map((entry) => ({
+    ...entry,
+    owner: sharedOwner,
+    claimed: false,
+    claimedFields: [],
+  })) satisfies AgentSummary[];
+  const ranked = rankAndDedupe(transferred);
+  assert.equal(ranked.length, 1, 'the later ranked window has one representative');
+
+  const reconciled = reconcileInjectedRegistryEntries(
+    initial,
+    transferred,
+  );
+  assert.equal(new Set(reconciled.map((a) => a.tokenId)).size, 2);
+  assert.equal(new Set(reconciled.map((a) => a.owner)).size, 1);
+  assert.equal(reconciled.every((a) => a.claimed === false), true);
+
+  const raw = classified(100);
+  const before = mergeRegistryWindow(raw, initial);
+  const firstListing = Array.from(
+    { length: Math.ceil(before.length / DIRECTORY_PAGE_SIZE) },
+    (_, page) => directoryPage([before], page).items,
+  ).flat();
+  const slots = reconciledDirectoryOrdinalSlots(
+    firstListing,
+    initial,
+    reconciled,
+  );
+  const after = mergeRegistryWindow(raw, reconciled);
+  const reconciledListing = Array.from(
+    { length: Math.ceil(firstListing.length / DIRECTORY_PAGE_SIZE) },
+    (_, page) => directoryPage([after], page, slots).items,
+  ).flat();
+
+  assert.equal(reconciledListing.length, firstListing.length);
+  assert.equal(
+    new Set(reconciledListing.map((a) => a.tokenId)).size,
+    reconciledListing.length,
+    'ordinal restoration cannot clone the shared representative',
+  );
+  assert.deepEqual(
+    reconciledListing.map((a) => a.tokenId),
+    firstListing.map((a) => a.tokenId),
+  );
+});
+
+test('duplicate ordinal reservations cannot restore one registry identity twice', () => {
+  const one = classified(1, 1_001)[0]!;
+  const page = directoryPage([[one]], 0, [
+    { agent: one, ordinal: 0 },
+    { agent: one, ordinal: 1 },
+  ]);
+  assert.deepEqual(page.items.map((a) => a.tokenId), [one.tokenId]);
 });
 
 test('replacing a stale injection preserves the previously served page boundary', () => {
