@@ -189,21 +189,21 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
   },
   /*
    * Configured, not yet on-chain: no wallet, no token id, no registration, no
-   * attestation, no proofs. Task 17 fills those in after the owner signs off on
-   * the display name (which is PROVISIONAL below: register.ts mints it into a
-   * permanent tokenURI) and releases the funding.
+   * attestation, no proofs. The owner approved the display name below before
+   * registration because register.ts mints it into a permanent tokenURI. Task
+   * 17 fills in the remaining identity fields after funding is released.
    */
   'grid-b': {
     slug: 'grid-b',
     tokenId: null,
-    name: 'Agripinaa Grid B',
+    name: 'Agripinaa BTC Grid',
     category: 'grid',
     wallet: null,
     walletFile: 'agent-grid-b.json',
     managed: false,
     backfillOphisTrades: true,
     manifest: {
-      name: 'Agripinaa Grid B',
+      name: 'Agripinaa BTC Grid',
       description:
         'Mean-reversion grid trader on the BTCB/USDT pair, running a wider and slower ladder than Agripinaa Grid: five levels each side at 2.5 percent spacing, $1.50 clips, 8 trades a day at most, and 45 minutes between fills. Every swap executes through Ophis batch auctions (MEV-protected, a receipt for every fill). Halts itself on a trend breakout and on an inventory drawdown.',
       category: 'grid',
