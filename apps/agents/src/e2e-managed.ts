@@ -18,7 +18,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BSC_MAINNET, ROUTER_ACTIONS, YIELD_ROUTER_BSC } from '@agripinaa/shared';
+import {
+  BSC_MAINNET,
+  isDebtCompleteRouter,
+  isDebtCompleteRouterRuntime,
+  ROUTER_ACTIONS,
+  YIELD_ROUTER_BSC,
+} from '@agripinaa/shared';
 import { signerFromPrivateKey } from '@altananetwork/sdk';
 import {
   createPublicClient,
@@ -84,9 +90,20 @@ async function readPosition(client: ReturnType<typeof createPublicClient>, accou
 }
 
 async function main() {
+  // This script mutates a live mainnet account. Refuse before creating a client,
+  // approving tokens, or granting authority when the manifest is still on v2.
+  if (!isDebtCompleteRouter(R)) {
+    throw new Error('E2E disabled until the debt-complete YieldRouter is deployed');
+  }
   const client = createAltanaClient();
   const ctx = minimalCtx();
   const pub = ctx.publicClient as ReturnType<typeof createPublicClient>;
+  if (!await isDebtCompleteRouterRuntime({
+    getCode: ({ address }) => pub.getCode({ address }),
+    readContract: (args) => pub.readContract(args),
+  }, R)) {
+    throw new Error('E2E disabled because the live router does not match the audited runtime manifest');
+  }
 
   const userPk = loadKey('spike-b');
   const adminSigner = signerFromPrivateKey(userPk);

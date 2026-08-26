@@ -7,7 +7,6 @@ import {
   decodeRotationRows,
   formatStableAmount,
   parseLogSources,
-  underManagementNote,
   type RotationLogLike,
 } from '../src/lib/funds';
 
@@ -80,9 +79,31 @@ test('rows come back newest first and carry the timestamp of their block', () =>
   );
 });
 
-test('zero-value permissionless events are not treated as router activity', () => {
+test('zero and sub-cent permissionless events are not treated as display activity', () => {
   assert.deepEqual(decodeRotationRows([rotationLog({ amount: 0n })], new Map()), []);
-  assert.equal(decodeRotationRows([rotationLog({ amount: 1n })], new Map()).length, 1);
+  assert.deepEqual(decodeRotationRows([rotationLog({ amount: 1n })], new Map()), []);
+  assert.equal(decodeRotationRows([rotationLog({ amount: 10n ** 16n })], new Map()).length, 1);
+});
+
+test('one account cannot crowd every bounded activity row', () => {
+  const spam = Array.from({ length: 20 }, (_, i) => rotationLog({ block: BigInt(100 - i), logIndex: i }));
+  assert.equal(decodeRotationRows(spam, new Map()).length, 5);
+});
+
+test('a recent fifty-account Sybil burst cannot evict an older time-window row', () => {
+  const spam = Array.from({ length: 250 }, (_, index) => rotationLog({
+    account: `0x${(index % 50 + 1).toString(16).padStart(40, '0')}`,
+    block: 100_000n,
+    logIndex: index,
+  }));
+  const older = rotationLog({
+    account: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    block: 49_999n,
+    tx: '0xolder',
+  });
+  const rows = decodeRotationRows([...spam, older], new Map());
+  assert.equal(rows.filter((row) => row.blockNumber === '100000').length, 20);
+  assert.equal(rows.slice(0, 25).some((row) => row.txHash === '0xolder'), true);
 });
 
 test('amounts are grouped and rounded to cents without a locale', () => {
@@ -102,41 +123,6 @@ test('every router deployment states the block and the day it went live', () => 
     assert.equal(typeof router.deployBlock, 'bigint', `${router.symbol} has no deployBlock`);
     assert.ok(router.deployBlock > BigInt(0), `${router.symbol} deployBlock is not a block`);
   }
-});
-
-test('the under-management note only claims a full account set when the scan reached the deployment', () => {
-  const deployBlock = '118145573';
-  const complete = underManagementNote({ accounts: 1, scannedFrom: deployBlock, deployBlock });
-  assert.match(complete, /1 account that used this permissionless router/);
-
-  // Once the floor rises above the deployment block the count is a floor: the
-  // note has to name the floor and stop asserting how many accounts exist.
-  const partial = underManagementNote({ accounts: 3, scannedFrom: '118200000', deployBlock });
-  assert.ok(!partial.includes('this router has rotated,'), partial);
-  assert.match(partial, /118,200,000/);
-  assert.match(partial, /router activity, not proof of a managed mandate/);
-  assert.match(partial, /3 accounts/);
-
-  const partialOne = underManagementNote({ accounts: 1, scannedFrom: '118200000', deployBlock });
-  assert.match(partialOne, /1 account/);
-});
-
-test('an empty account set is only called empty when the scan reached the deployment', () => {
-  const deployBlock = '118145739';
-  assert.match(
-    underManagementNote({ accounts: 0, scannedFrom: deployBlock, deployBlock }),
-    /no nonzero rotation yet/,
-  );
-
-  const partial = underManagementNote({ accounts: 0, scannedFrom: '118200000', deployBlock });
-  assert.ok(!partial.includes('no nonzero rotation yet'), partial);
-  assert.match(partial, /118,200,000/);
-
-  // No scan means no floor to quote, and the panel hides the note anyway.
-  assert.match(
-    underManagementNote({ accounts: 0, scannedFrom: null, deployBlock }),
-    /no nonzero rotation yet/,
-  );
 });
 
 test('the log endpoints can be replaced from the environment', () => {

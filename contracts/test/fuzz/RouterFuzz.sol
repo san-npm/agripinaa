@@ -87,6 +87,7 @@ contract MockERC20 {
 contract MockAavePool {
     MockERC20 public usdt;
     MockERC20 public aToken;
+    mapping(address => uint256) public debtBase;
 
     constructor(MockERC20 _usdt, MockERC20 _aToken) {
         usdt = _usdt;
@@ -107,8 +108,16 @@ contract MockAavePool {
         return amt;
     }
 
-    function getUserAccountData(address) external pure returns (uint256, uint256, uint256, uint256, uint256, uint256) {
-        return (0, 0, 0, 0, 0, type(uint256).max);
+    function setDebt(address account, uint256 amount) external {
+        debtBase[account] = amount;
+    }
+
+    function getUserAccountData(address account)
+        external
+        view
+        returns (uint256, uint256, uint256, uint256, uint256, uint256)
+    {
+        return (0, debtBase[account], 0, 0, 0, type(uint256).max);
     }
 }
 
@@ -116,9 +125,13 @@ contract MockAavePool {
 /// mint credits the caller. 1:1 exchange rate.
 contract MockVToken is MockERC20 {
     MockERC20 public usdt;
+    mapping(address => uint256) public marketDebt;
+    mapping(address => uint256) public vaiDebt;
+    address public activeComptroller;
 
     constructor(MockERC20 _usdt) MockERC20("vUSDT") {
         usdt = _usdt;
+        activeComptroller = address(this);
     }
 
     function mint(uint256 mintAmount) external returns (uint256) {
@@ -139,15 +152,27 @@ contract MockVToken is MockERC20 {
     }
 
     function comptroller() external view returns (address) {
-        return address(this);
+        return activeComptroller;
     }
 
-    function getAssetsIn(address) external pure returns (address[] memory markets) {
-        return markets;
+    function setDebt(address account, uint256 ordinaryDebt, uint256 syntheticDebt) external {
+        marketDebt[account] = ordinaryDebt;
+        vaiDebt[account] = syntheticDebt;
     }
 
-    function borrowBalanceStored(address) external pure returns (uint256) {
-        return 0;
+    function getAssetsIn(address account) external view returns (address[] memory markets) {
+        if (marketDebt[account] != 0) {
+            markets = new address[](1);
+            markets[0] = address(this);
+        }
+    }
+
+    function borrowBalanceStored(address account) external view returns (uint256) {
+        return marketDebt[account];
+    }
+
+    function mintedVAIs(address account) external view returns (uint256) {
+        return vaiDebt[account];
     }
 }
 
@@ -221,6 +246,44 @@ contract RouterFuzz {
 
     function goIdle(uint8 who) external {
         _actor(who).toIdle();
+    }
+
+    /// Exercise the receipt-donation boundary while Aave reports debt. The
+    /// donated receipt must remain untouched and the unrelated idle leg must
+    /// still complete instead of reverting the entire router action.
+    function encumberedAaveReceiptCannotBlockIdle(uint8 who, uint96 amt) external {
+        Actor act = _actor(who);
+        uint256 idleGift = (uint256(amt) % 1_000e18) + 1;
+        usdt.mintTo(address(act), idleGift);
+        aToken.mintTo(address(act), 1);
+        deposited[address(act)] += idleGift + 1;
+        aave.setDebt(address(act), 1);
+        uint256 idleBefore = usdt.balanceOf(address(act));
+        uint256 protectedBefore = aToken.balanceOf(address(act));
+        (bool ok,) = address(act).call(abi.encodeCall(Actor.toIdle, ()));
+        assert(ok);
+        // Another debt-free venue may also unwind, so idle can increase. The
+        // debt-guard invariant is that no idle value is lost and this exact
+        // encumbered receipt leg does not move.
+        assert(usdt.balanceOf(address(act)) >= idleBefore);
+        assert(aToken.balanceOf(address(act)) == protectedBefore);
+    }
+
+    /// Synthetic VAI debt is a separate Comptroller ledger. It must protect
+    /// the Venus receipt while allowing unrelated idle stablecoin to move.
+    function vaiDebtCannotBlockIdle(uint8 who, uint96 amt) external {
+        Actor act = _actor(who);
+        uint256 idleGift = (uint256(amt) % 1_000e18) + 1;
+        usdt.mintTo(address(act), idleGift);
+        vToken.mintTo(address(act), 1);
+        deposited[address(act)] += idleGift + 1;
+        vToken.setDebt(address(act), 0, 1);
+        uint256 idleBefore = usdt.balanceOf(address(act));
+        uint256 protectedBefore = vToken.balanceOf(address(act));
+        (bool ok,) = address(act).call(abi.encodeCall(Actor.toIdle, ()));
+        assert(ok);
+        assert(usdt.balanceOf(address(act)) >= idleBefore);
+        assert(vToken.balanceOf(address(act)) == protectedBefore);
     }
 
     /// Out-of-band donation of USDT straight into the router (the L-1 setup).

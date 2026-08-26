@@ -1,28 +1,57 @@
 import { serializeSession } from '@agripinaa/session-kit/codec';
-import { buildSessionScope, describeScope } from '@agripinaa/session-kit/scope';
+import { BSC_MAINNET, BSC_TESTNET } from '@agripinaa/shared/chains';
 import {
+  buildSessionScope,
+  describeScope,
+  MANAGED_NATIVE_CAP,
+  MANAGED_STABLE_CAP,
+} from '@agripinaa/session-kit/scope';
+import {
+  isDebtCompleteRouter,
+  isDebtCompleteRouterRuntime,
+  isDebtCompleteRouterRuntimeQuorum,
   ROUTER_ACTIONS,
   routerFor,
-  YIELD_ROUTERS_BSC,
 } from '@agripinaa/shared/contracts';
 import { fromBaseUnits } from '@agripinaa/shared/tokens';
 import {
   createPublicClient,
   encodeFunctionData,
   erc20Abi,
-  fallback,
   http,
-  isAddress,
   maxUint256,
   parseAbi,
   parseAbiItem,
-  zeroAddress,
   type Hex,
 } from 'viem';
 
 import { altanaClient } from './altana';
 import { bsc, bscTestnet } from './bsc-chain';
+import {
+  ACCOUNT_HISTORY_CONCURRENCY,
+  classifyManagedVenue,
+  destinationCodeQuorumProblem,
+  destinationProblem,
+  MAX_ACCOUNT_HISTORY_ROWS,
+  planRotationHistoryRanges,
+  type ManagedPolicyDisplay,
+  type ManagedVenue,
+} from './managed-pure';
 import { managedUnwindCall, resolveManagedRouterDeployment } from './managed-router';
+
+export {
+  destinationCodeProblem,
+  destinationCodeQuorumProblem,
+  destinationProblem,
+  classifyManagedVenue,
+  managedPolicyDisplay,
+  MAX_ACCOUNT_HISTORY_CHUNKS,
+  MAX_ACCOUNT_HISTORY_ROWS,
+  planRotationHistoryRanges,
+  shouldOfferManagedHandoffRetry,
+  type ManagedVenue,
+  type ManagedPolicyDisplay,
+} from './managed-pure';
 
 const ROUTER_SIGNATURES = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
 
@@ -44,29 +73,6 @@ function assertConfirmed<T extends ExecResult>(result: T, action: string): T {
   throw new Error(`${action} did not go through (reverted on-chain). No funds were moved.`);
 }
 
-/**
- * Reject destinations that would lose funds or make no sense: not an address,
- * the zero address (a native send there is an irrecoverable burn), a known
- * contract (router/tokens), or the account itself. Returns a user-facing
- * message, or null if the destination is a safe external wallet.
- */
-export function destinationProblem(to: string, account: string, chainId: number): string | null {
-  if (!isAddress(to)) return 'Enter a valid destination address.';
-  const lc = to.toLowerCase();
-  if (lc === zeroAddress) return 'That is the zero address; funds sent there are burned.';
-  if (lc === account.toLowerCase()) return 'That is this same account; enter an external wallet.';
-  // Reject EVERY known managed contract on this chain (all routers + their
-  // underlying/aToken/vToken + the Aave pool), not just the selected token's,
-  // so a USDC withdrawal can't be mis-sent to a USDT contract (or vice versa).
-  for (const r of YIELD_ROUTERS_BSC) {
-    if (r.chainId !== chainId) continue;
-    if ([r.address, r.usdt, r.aUsdt, r.vUsdt, r.aavePool].some((a) => a.toLowerCase() === lc)) {
-      return 'That is a contract address, not a wallet.';
-    }
-  }
-  return null;
-}
-
 // The manager key is fetched and validated in its own module (pin check,
 // shape check, point-to-address binding); re-exported so callers are unchanged.
 export { fetchManagerKey, type ManagerKeyInfo } from './manager-key';
@@ -86,20 +92,36 @@ export function verifyOnlyStub(address: Hex, publicKey: Hex) {
   };
 }
 
+function routerApprovalCalls(router: NonNullable<ReturnType<typeof routerFor>>) {
+  return [router.usdt, router.aUsdt, router.vUsdt].map((token) => ({
+    to: token,
+    data: encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [router.address, maxUint256],
+    }),
+  }));
+}
+
 /** A session scoped to ONLY the router's three actions + a USDT and gas cap. */
-export function buildManagedScope(opts: { chainId: number; capUsdt: string; hours: number; token?: string }) {
+export function buildManagedScope(opts: { chainId: number; hours: number; token?: string }) {
   const symbol = (opts.token ?? 'USDT') as 'USDT' | 'USDC';
   const router = routerFor(opts.chainId, symbol);
-  if (!router) throw new Error(`no YieldRouter deployed on chain ${opts.chainId}`);
+  if (!isDebtCompleteRouter(router)) {
+    throw new Error(`no debt-complete YieldRouter deployed for ${symbol} on chain ${opts.chainId}`);
+  }
   return buildSessionScope({
     callScopes: [{ to: router.address, signatures: ROUTER_SIGNATURES }],
     // Meter the cap on the token actually being managed, not always USDT.
-    spendCap: { token: symbol, amount: opts.capUsdt, period: 'day' },
+    // Canonical, server-verifiable permissions. The router itself is
+    // drain-proof and moves the account's full balance; a caller-supplied cap
+    // made the stored session ambiguous and allowed forged registry records.
+    spendCap: { token: symbol, amount: MANAGED_STABLE_CAP, period: 'day' },
     // The account pays its own gas in BNB; without this the relay rejects
     // execute. Kept tight: the agent rotates at most a few times a day (each
     // rotation is one cheap BSC tx), so a small daily allowance is plenty while
     // bounding how much BNB a compromised manager key could burn on no-op calls.
-    nativeGasCap: { amount: '0.005', period: 'day' },
+    nativeGasCap: { amount: MANAGED_NATIVE_CAP, period: 'day' },
     expiresInSeconds: opts.hours * 3600,
   });
 }
@@ -111,6 +133,21 @@ type WalletLike = Parameters<ReturnType<typeof altanaClient>['grantSession']>[0]
   address: string;
 };
 
+async function assertRouterRuntime(chainId: number, router: NonNullable<ReturnType<typeof routerFor>>) {
+  const urls = chainId === 97 ? BSC_TESTNET.rpcUrls : BSC_MAINNET.rpcUrls;
+  const clients = urls.map((url) => {
+    const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http(url) });
+    return {
+      getCode: ({ address }: { address: Hex }) => client.getCode({ address }),
+      readContract: (args: Parameters<typeof client.readContract>[0]) => client.readContract(args),
+    };
+  });
+  const attested = chainId === 56
+    ? await isDebtCompleteRouterRuntimeQuorum(clients as never, router, 2)
+    : await isDebtCompleteRouterRuntime(clients[0]!, router);
+  if (!attested) throw new Error('YieldRouter runtime does not match the audited deployment manifest.');
+}
+
 /**
  * One batched admin tx that approves the router to move the account's USDT,
  * aToken, and vToken. The router only ever moves these back to the account, so
@@ -118,15 +155,11 @@ type WalletLike = Parameters<ReturnType<typeof altanaClient>['grantSession']>[0]
  */
 export async function approveRouter(wallet: WalletLike, chainId: number, token = 'USDT') {
   const router = routerFor(chainId, token);
-  if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
-  const calls = [router.usdt, router.aUsdt, router.vUsdt].map((token) => ({
-    to: token,
-    data: encodeFunctionData({
-      abi: erc20Abi,
-      functionName: 'approve',
-      args: [router.address, maxUint256],
-    }),
-  }));
+  if (!isDebtCompleteRouter(router)) {
+    throw new Error(`no debt-complete YieldRouter deployed for ${token} on chain ${chainId}`);
+  }
+  await assertRouterRuntime(chainId, router);
+  const calls = routerApprovalCalls(router);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
@@ -136,18 +169,27 @@ export async function approveRouter(wallet: WalletLike, chainId: number, token =
   return assertConfirmed(r, 'Router approval');
 }
 
-/** User-initiated unwind: pull everything back to plain stablecoin in the account. */
+/**
+ * User-initiated unwind through the current debt-complete router. Fresh owner
+ * approvals and the unwind share one atomic smart-account execution, so a
+ * saved retired router is never called and a partial approval cannot be
+ * mistaken for recovery.
+ */
 export async function withdrawToIdle(
   wallet: WalletLike,
   chainId: number,
   token = 'USDT',
-  recoveryRouterAddress?: string,
 ) {
+  const router = routerFor(chainId, token);
+  if (!isDebtCompleteRouter(router)) {
+    throw new Error(`Safe ${token} position recovery is unavailable until the debt-complete router is deployed.`);
+  }
+  await assertRouterRuntime(chainId, router);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
     chainId,
-    calls: [managedUnwindCall(chainId, token, recoveryRouterAddress)],
+    calls: [...routerApprovalCalls(router), managedUnwindCall(chainId, token)],
   });
   return assertConfirmed(r, 'Unwind');
 }
@@ -159,6 +201,27 @@ export async function withdrawToIdle(
  * the user retries, so no funds are ever at risk.
  */
 export const WITHDRAW_GAS_RESERVE_WEI = 500_000_000_000_000n; // 0.0005 BNB
+
+async function assertSafeWithdrawalDestination(wallet: WalletLike, chainId: number, to: Hex) {
+  const staticProblem = destinationProblem(to, wallet.address, chainId);
+  if (staticProblem) throw new Error(staticProblem);
+  let liveProblem: string | null;
+  try {
+    const urls = chainId === 97 ? BSC_TESTNET.rpcUrls : BSC_MAINNET.rpcUrls;
+    const settled = await Promise.allSettled(urls.map(async (url) => {
+      const client = createPublicClient({
+        chain: chainId === 97 ? bscTestnet : bsc,
+        transport: http(url),
+      });
+      return client.getCode({ address: to });
+    }));
+    const codes = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+    liveProblem = destinationCodeQuorumProblem(codes, chainId === 56 ? 2 : 1);
+  } catch {
+    throw new Error('Could not verify that the destination is an external wallet. Retry when the chain RPC is available.');
+  }
+  if (liveProblem) throw new Error(liveProblem);
+}
 
 /**
  * Move an exact amount of an ERC-20 (here: USDT) out of the account to an
@@ -173,9 +236,8 @@ export async function sendTokenOut(
   amountWei: bigint,
   symbol = 'USDT',
 ) {
-  const problem = destinationProblem(to, wallet.address, chainId);
-  if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
+  await assertSafeWithdrawalDestination(wallet, chainId, to);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
@@ -187,9 +249,8 @@ export async function sendTokenOut(
 
 /** Move native BNB out of the account to an external address (passkey action). */
 export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint) {
-  const problem = destinationProblem(to, wallet.address, chainId);
-  if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
+  await assertSafeWithdrawalDestination(wallet, chainId, to);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
@@ -222,8 +283,6 @@ const vTokenReadAbi = parseAbi([
   'function balanceOfUnderlying(address owner) view returns (uint256)',
 ]);
 
-export type ManagedVenue = 'idle' | 'venus' | 'aave';
-
 export interface ManagedPosition {
   idleUsdt: string;
   venusUsdt: string;
@@ -254,17 +313,7 @@ export async function readManagedPosition(
     client.getBalance({ address: account }),
   ]);
   const total = idle + aUsdt + venusUnderlying;
-  const venue: ManagedVenue = venusUnderlying > aUsdt && venusUnderlying > idle
-    ? 'venus'
-    : aUsdt > idle
-      ? 'aave'
-      : idle > 0n
-        ? 'idle'
-        : venusUnderlying > 0n
-          ? 'venus'
-          : aUsdt > 0n
-            ? 'aave'
-            : 'idle';
+  const venue = classifyManagedVenue(idle, aUsdt, venusUnderlying);
   return {
     idleUsdt: fromBaseUnits(idle, 18),
     venusUsdt: fromBaseUnits(venusUnderlying, 18),
@@ -327,8 +376,13 @@ export async function readVenueApys(
 const ROTATED_EVENT = parseAbiItem(
   'event Rotated(address indexed account, bytes4 indexed action, uint256 usdtAmount)',
 );
-// Public dataseed/publicnode archive-gate historical getLogs; drpc + 1rpc serve them.
-const ROTATION_LOG_RPCS = ['https://bsc.drpc.org', 'https://1rpc.io/bnb'];
+const ROTATION_LOG_SOURCES = [
+  { url: 'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3', span: 50_000n },
+  { url: 'https://bsc.drpc.org', span: 9_000n },
+  { url: 'https://1rpc.io/bnb', span: 9_000n },
+] as const;
+const ACCOUNT_HISTORY_DEADLINE_MS = 15_000;
+const MAX_HISTORY_RPC_RESPONSE_BYTES = 2 * 1024 * 1024;
 const ROTATION_ACTION_LABEL: Record<string, string> = {
   [ROUTER_ACTIONS.toAave.selector]: 'Moved into Aave',
   [ROUTER_ACTIONS.toVenus.selector]: 'Moved into Venus',
@@ -340,71 +394,148 @@ export interface RotationEvent {
   amountUsdt: string;
   txHash: Hex;
   blockNumber: bigint;
+  logIndex: number;
   timestamp: number | null;
 }
 
+export interface RotationHistory {
+  events: RotationEvent[];
+  scannedFrom: bigint | null;
+  scannedTo: bigint | null;
+  complete: boolean;
+}
+
 /**
- * The agent's on-chain moves for an account, read straight from the router's
- * Rotated events (no runner/indexer). Scans deployBlock→latest in ≤10k-block
- * chunks (free RPCs cap the range) filtered by the account topic, then dates
- * the few matches from their block timestamps.
+ * Permissionless account/router activity, read straight from Rotated events.
+ * The scan is newest-first with hard request, row, concurrency and time caps;
+ * one failed chunk rejects that source rather than silently fabricating an
+ * empty interval. `complete` tells the card whether deployment was reached.
  */
 export async function readRotationHistory(
   account: Hex,
   chainId: number,
   token = 'USDT',
   recoveryRouterAddress?: string,
-): Promise<RotationEvent[]> {
+): Promise<RotationHistory> {
   const router = resolveManagedRouterDeployment(chainId, token, recoveryRouterAddress);
-  if (!router) return [];
-  const client = createPublicClient({
-    chain: chainId === 97 ? bscTestnet : bsc,
-    transport: fallback(ROTATION_LOG_RPCS.map((u) => http(u))),
-  });
-  const latest = await client.getBlockNumber();
-  const CHUNK = BigInt(9000);
-  const ranges: { from: bigint; to: bigint }[] = [];
-  for (let b = router.deployBlock; b <= latest; b += CHUNK + BigInt(1)) {
-    ranges.push({ from: b, to: b + CHUNK > latest ? latest : b + CHUNK });
+  if (!router) return { events: [], scannedFrom: null, scannedTo: null, complete: true };
+  const deadline = Date.now() + ACCOUNT_HISTORY_DEADLINE_MS;
+  let scan: {
+    logs: Awaited<ReturnType<ReturnType<typeof createPublicClient>['getLogs']>>;
+    scannedFrom: bigint;
+    latest: bigint;
+    complete: boolean;
+    client: ReturnType<typeof createPublicClient>;
+    cancelDeadline: () => void;
+  } | null = null;
+  let lastError: unknown = new Error('no account-history source available');
+  for (const source of ROTATION_LOG_SOURCES) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const controller = new AbortController();
+    const deadlineTimer = setTimeout(() => controller.abort(), remaining);
+    try {
+      const client = createPublicClient({
+        chain: chainId === 97 ? bscTestnet : bsc,
+        transport: http(source.url, {
+          retryCount: 0,
+          timeout: Math.min(5_000, remaining),
+          maxResponseBodySize: MAX_HISTORY_RPC_RESPONSE_BYTES,
+          fetchOptions: { signal: controller.signal },
+        }),
+      });
+      const latest = await client.getBlockNumber();
+      if (Date.now() >= deadline) throw new Error('account history deadline exceeded');
+      const plan = planRotationHistoryRanges(router.deployBlock, latest, source.span);
+      const logs: Awaited<ReturnType<typeof client.getLogs>> = [];
+      let processed = 0;
+      for (let i = 0; i < plan.ranges.length; i += ACCOUNT_HISTORY_CONCURRENCY) {
+        if (Date.now() >= deadline) throw new Error('account history deadline exceeded');
+        const batchRanges = plan.ranges.slice(i, i + ACCOUNT_HISTORY_CONCURRENCY);
+        const chunks = await Promise.all(
+          batchRanges.map((range) => client.getLogs({
+            address: router.address,
+            event: ROTATED_EVENT,
+            args: { account },
+            fromBlock: range.from,
+            toBlock: range.to,
+          })),
+        );
+        for (const chunk of chunks) logs.push(...chunk);
+        processed += batchRanges.length;
+        if (logs.length >= MAX_ACCOUNT_HISTORY_ROWS) break;
+      }
+      const scannedFrom = plan.ranges[Math.max(0, processed - 1)]?.from ?? latest;
+      scan = {
+        logs,
+        scannedFrom,
+        latest,
+        complete: plan.complete && processed === plan.ranges.length,
+        client,
+        cancelDeadline: () => {
+          clearTimeout(deadlineTimer);
+          controller.abort();
+        },
+      };
+      break;
+    } catch (error) {
+      clearTimeout(deadlineTimer);
+      controller.abort();
+      lastError = error;
+    }
   }
-  const chunks = await Promise.all(
-    ranges.map((r) =>
-      client
-        .getLogs({ address: router.address, event: ROTATED_EVENT, args: { account }, fromBlock: r.from, toBlock: r.to })
-        .catch(() => []),
-    ),
-  );
-  const logs = chunks.flat();
+  if (!scan) throw lastError;
+  const logs = scan.logs
+    .sort((a, b) => {
+      const aBlock = a.blockNumber ?? 0n;
+      const bBlock = b.blockNumber ?? 0n;
+      if (aBlock !== bBlock) return bBlock > aBlock ? 1 : -1;
+      return Number((b.logIndex ?? 0) - (a.logIndex ?? 0));
+    })
+    .slice(0, MAX_ACCOUNT_HISTORY_ROWS);
   const blocks = [...new Set(logs.map((l) => l.blockNumber).filter((b): b is bigint => b != null))];
   const tsByBlock = new Map<bigint, number>();
-  await Promise.all(
-    blocks.map(async (bn) => {
+  for (let i = 0; i < blocks.length; i += ACCOUNT_HISTORY_CONCURRENCY) {
+    if (Date.now() >= deadline) break;
+    await Promise.all(blocks.slice(i, i + ACCOUNT_HISTORY_CONCURRENCY).map(async (bn) => {
       try {
-        const blk = await client.getBlock({ blockNumber: bn });
+        const blk = await scan.client.getBlock({ blockNumber: bn });
         tsByBlock.set(bn, Number(blk.timestamp) * 1000);
       } catch {
         /* leave undated */
       }
-    }),
-  );
-  return logs
-    .map((l) => ({
-      label: ROTATION_ACTION_LABEL[(l.args.action as string)?.toLowerCase()] ?? 'Rotation',
-      amountUsdt: fromBaseUnits((l.args.usdtAmount as bigint) ?? BigInt(0), 18),
-      txHash: l.transactionHash as Hex,
+    }));
+  }
+  const events = logs.flatMap((l) => {
+    if (!("args" in l) || !l.transactionHash) return [];
+    const args = l.args as { action?: string; usdtAmount?: bigint };
+    return [{
+      label: ROTATION_ACTION_LABEL[(args.action ?? '').toLowerCase()] ?? 'Rotation',
+      amountUsdt: fromBaseUnits(args.usdtAmount ?? BigInt(0), 18),
+      txHash: l.transactionHash,
       blockNumber: l.blockNumber ?? BigInt(0),
+      logIndex: l.logIndex ?? 0,
       timestamp: l.blockNumber != null ? (tsByBlock.get(l.blockNumber) ?? null) : null,
-    }))
-    .sort((a, b) => Number(b.blockNumber - a.blockNumber));
+    }];
+  });
+  scan.cancelDeadline();
+  return {
+    events,
+    scannedFrom: scan.scannedFrom,
+    scannedTo: scan.latest,
+    complete: scan.complete,
+  };
 }
 
-export const HYSTERESIS_BPS = 50;
-
 /** The agent's live rationale for where a managed position sits. */
-export function rotationRationale(venue: ManagedVenue, apys: VenueApys) {
+export function rotationRationale(
+  venue: Exclude<ManagedVenue, 'split'>,
+  apys: VenueApys,
+  policy: ManagedPolicyDisplay,
+) {
   const current = venue === 'venus' ? apys.venusApyBps : venue === 'aave' ? apys.aaveApyBps : null;
   const other = venue === 'venus' ? apys.aaveApyBps : venue === 'aave' ? apys.venusApyBps : null;
   const otherName = venue === 'venus' ? 'Aave' : 'Venus';
   const edgeBps = current != null && other != null ? other - current : Math.abs(apys.venusApyBps - apys.aaveApyBps);
-  return { currentApyBps: current, edgeBps, otherName, hysteresisBps: HYSTERESIS_BPS };
+  return { currentApyBps: current, edgeBps, otherName, ...policy };
 }

@@ -15,6 +15,9 @@
     "./ssrf-url": "./src/ssrf-url.ts",
     "./tokens": "./src/tokens.ts"
   },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts"

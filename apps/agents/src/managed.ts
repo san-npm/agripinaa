@@ -40,6 +40,23 @@ export interface ManagedAccount {
   registeredAt: string;
 }
 
+export interface ManagedHealth {
+  at: number;
+  result: 'ready' | 'error';
+  reason?: string;
+  /** Terminal writes stay unhealthy until a later write proves recovery. */
+  requiresExecutionRecovery?: boolean;
+}
+
+/** A five-minute runner cadence gets three missed sweeps before status is stale. */
+export const MANAGED_HEALTH_MAX_AGE_MS = 20 * 60 * 1000;
+/** Hard admission ceiling so a public registration endpoint cannot grow sweep work without bound. */
+export const MAX_MANAGED_ENTRIES_PER_AGENT = 300;
+
+export function managedHealthKey(account: Address, router: Address): string {
+  return `managed-health:${account.toLowerCase()}:${router.toLowerCase()}`;
+}
+
 function file(agent: string, dir: string): string {
   return join(dir, `${agent}.managed.json`);
 }
@@ -95,9 +112,16 @@ export function upsertManaged(
   entry: ManagedAccount,
   dir: string = DATA_DIR,
 ): ManagedAccount[] {
+  const current = loadManaged(agent, dir);
   const acct = entry.account.toLowerCase();
   const router = routerKey(entry);
-  const rest = loadManaged(agent, dir).filter(
+  const replacesExisting = current.some(
+    (candidate) => candidate.account.toLowerCase() === acct && routerKey(candidate) === router,
+  );
+  if (!replacesExisting && current.length >= MAX_MANAGED_ENTRIES_PER_AGENT) {
+    throw new Error(`managed registry is full (${MAX_MANAGED_ENTRIES_PER_AGENT} mandates)`);
+  }
+  const rest = current.filter(
     (e) => !(e.account.toLowerCase() === acct && routerKey(e) === router),
   );
   const next = [...rest, entry];
@@ -113,6 +137,21 @@ export function removeManaged(
 ): ManagedAccount[] {
   const key = account.toLowerCase();
   const next = loadManaged(agent, dir).filter((e) => e.account.toLowerCase() !== key);
+  save(agent, next, dir);
+  return next;
+}
+
+/** Remove one token/router mandate without deleting the account's other token. */
+export function removeManagedEntry(
+  agent: string,
+  entry: ManagedAccount,
+  dir: string = DATA_DIR,
+): ManagedAccount[] {
+  const account = entry.account.toLowerCase();
+  const router = routerKey(entry);
+  const next = loadManaged(agent, dir).filter(
+    (candidate) => !(candidate.account.toLowerCase() === account && routerKey(candidate) === router),
+  );
   save(agent, next, dir);
   return next;
 }

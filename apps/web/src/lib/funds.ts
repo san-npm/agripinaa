@@ -3,17 +3,15 @@ import 'server-only';
 import { BSC_MAINNET } from '@agripinaa/shared';
 import { ROUTER_ACTIONS, routerFor, type RouterDeployment } from '@agripinaa/shared/contracts';
 import { cacheLife } from 'next/cache';
-import { createPublicClient, erc20Abi, fallback, http, parseAbi, parseAbiItem, type Hex } from 'viem';
+import { createPublicClient, erc20Abi, fallback, http, parseAbi, parseAbiItem } from 'viem';
 
 import { bsc } from './bsc-chain';
 
 /**
- * Public, router-wide view of the managed-yield deployments: what the accounts
- * this router rotates are holding right now, and a bounded recent Rotated
- * event window it has
- * emitted. `lib/managed.ts` reads the same event for ONE connected account and
- * runs in the browser; this module is the server-side, no-wallet-needed twin,
- * so /funds can show the whole picture to a visitor who has connected nothing.
+ * Public, router-wide view of contract custody and a bounded recent Rotated
+ * event window. Events are permissionless execution telemetry, never a source
+ * of managed-account identity or AUM. `lib/managed.ts` reads the same event for
+ * one connected account; this is the server-side, no-wallet-needed twin.
  */
 
 /** Latest-state reads (balances). The public dataseeds answer these. */
@@ -82,12 +80,7 @@ export function parseLogSources(spec: string | undefined): LogSourceSpec[] {
 // than to no endpoint at all.
 const configuredSources = parseLogSources(process.env.BSC_LOG_RPC_URLS);
 
-const LOG_SOURCES = (configuredSources.length > 0 ? configuredSources : DEFAULT_LOG_SOURCES).map((source) => ({
-  maxSpan: source.maxSpan,
-  // One retry, so a rate-limited endpoint hands over to the next quickly
-  // instead of backing off three times on every chunk of the scan.
-  client: createPublicClient({ chain: bsc, transport: http(source.url, { retryCount: 1 }) }),
-}));
+const LOG_SOURCES = configuredSources.length > 0 ? configuredSources : DEFAULT_LOG_SOURCES;
 
 const ROTATED_EVENT = parseAbiItem(
   'event Rotated(address indexed account, bytes4 indexed action, uint256 usdtAmount)',
@@ -106,10 +99,15 @@ const MAX_CHUNKS = 120;
 const CHUNK_CONCURRENCY = 6;
 /** Wall clock budget for the whole scan, so a slow endpoint cannot hang a render. */
 const SCAN_DEADLINE_MS = 20_000;
+const MAX_LOG_RPC_RESPONSE_BYTES = 2 * 1024 * 1024;
 /** Hard caps keep permissionless router telemetry from becoming unbounded work. */
 export const MAX_ROTATION_ROWS = 250;
-export const MAX_POSITION_ACCOUNTS = 100;
-const POSITION_READ_CONCURRENCY = 8;
+export const MIN_DISPLAY_ROTATION_WEI = 10n ** 16n; // 0.01 token
+export const MAX_DISPLAY_ROWS_PER_ACCOUNT = 5;
+/** Stratify the sample so a burst of fresh Sybil callers cannot own every row. */
+export const DISPLAY_BLOCK_WINDOW = 50_000n;
+export const MAX_DISPLAY_ROWS_PER_BLOCK_WINDOW = 20;
+const PERIPHERAL_READ_CONCURRENCY = 8;
 
 /** The shape of a viem Rotated log this module reads, and nothing more. */
 export interface RotationLogLike {
@@ -134,15 +132,9 @@ export interface RotationRow {
 
 export interface RouterFunds {
   symbol: string;
-  /**
-   * Totals across every account this router has rotated: `deployed` is their
-   * aToken plus Venus balances, `idle` is the plain stablecoin sitting in the
-   * accounts, `total` is the sum. Null when the account set could not be read.
-   */
-  managed: { total: string; deployed: string; idle: string; accounts: number } | null;
   /** Stablecoin value the router contract itself holds. Expected to be 0.00. */
   custody: string | null;
-  /** Null when the log scan failed, empty when the router has never rotated. */
+  /** Unauthenticated permissionless calls; never proof of a managed mandate. */
   rotations: RotationRow[] | null;
   scannedFrom: string | null;
   scannedTo: string | null;
@@ -175,36 +167,6 @@ export function formatStableAmount(value: bigint, decimals = 18): string {
 }
 
 /**
- * The sentence printed under the "Under management" figure.
- *
- * The accounts in that figure are whoever appears in the Rotated log the scan
- * reached, and the scan floor is the deployment block only while the endpoint's
- * span still covers it. Once the floor rises above the deployment, an account
- * whose last rotation is older drops out of both the count and the total, so
- * the copy states the floor instead of asserting how many accounts this router
- * has rotated.
- */
-export function underManagementNote(input: {
-  accounts: number;
-  scannedFrom: string | null;
-  deployBlock: string;
-}): string {
-  // A null floor means no scan ran, and then this note is not rendered at all;
-  // treat it as complete rather than inventing a block number for the copy.
-  const coversDeployment = input.scannedFrom == null || input.scannedFrom === input.deployBlock;
-  const floor = `block ${groupDigits(input.scannedFrom ?? input.deployBlock)}, the oldest block this scan reaches`;
-  if (input.accounts === 0) {
-    return coversDeployment
-      ? 'This permissionless router has no nonzero rotation yet, so there is nothing to total.'
-      : `No nonzero rotation was found since ${floor}, so there is nothing to total. Anything before that block is not counted.`;
-  }
-  const accounts = `${input.accounts} account${input.accounts === 1 ? '' : 's'}`;
-  return coversDeployment
-    ? `Held right now by the ${accounts} that used this permissionless router, whether or not they registered a managed session.`
-    : `Held right now by up to ${accounts} with nonzero rotations since ${floor}. This is router activity, not proof of a managed mandate.`;
-}
-
-/**
  * Turn raw Rotated logs into display rows, newest first. Split out from the
  * scan so the decoding is testable without an RPC.
  */
@@ -212,15 +174,7 @@ export function decodeRotationRows(
   logs: RotationLogLike[],
   secondsByBlock: Map<bigint, number>,
 ): RotationRow[] {
-  return [...logs]
-    .filter((log) => (log.args.usdtAmount ?? BigInt(0)) > BigInt(0))
-    .sort((a, b) => {
-      const blockA = a.blockNumber ?? BigInt(0);
-      const blockB = b.blockNumber ?? BigInt(0);
-      if (blockA !== blockB) return blockB > blockA ? 1 : -1;
-      return (b.logIndex ?? 0) - (a.logIndex ?? 0);
-    })
-    .slice(0, MAX_ROTATION_ROWS)
+  return boundedDisplayLogs(logs)
     .map((log) => {
       const block = log.blockNumber ?? BigInt(0);
       const seconds = secondsByBlock.get(block);
@@ -236,20 +190,35 @@ export function decodeRotationRows(
     });
 }
 
-function boundedNonzeroLogs(logs: RotationLogLike[]): RotationLogLike[] {
+function boundedDisplayLogs(logs: RotationLogLike[]): RotationLogLike[] {
+  const perAccount = new Map<string, number>();
+  const perWindow = new Map<bigint, number>();
   return [...logs]
-    .filter((log) => (log.args.usdtAmount ?? BigInt(0)) > BigInt(0))
+    .filter((log) => (log.args.usdtAmount ?? 0n) >= MIN_DISPLAY_ROTATION_WEI)
     .sort((a, b) => {
       const blockA = a.blockNumber ?? BigInt(0);
       const blockB = b.blockNumber ?? BigInt(0);
       if (blockA !== blockB) return blockB > blockA ? 1 : -1;
       return (b.logIndex ?? 0) - (a.logIndex ?? 0);
     })
+    .filter((log) => {
+      const account = (log.args.account ?? '').toLowerCase();
+      const blockWindow = (log.blockNumber ?? 0n) / DISPLAY_BLOCK_WINDOW;
+      const accountSeen = perAccount.get(account) ?? 0;
+      const windowSeen = perWindow.get(blockWindow) ?? 0;
+      if (accountSeen >= MAX_DISPLAY_ROWS_PER_ACCOUNT || windowSeen >= MAX_DISPLAY_ROWS_PER_BLOCK_WINDOW) {
+        return false;
+      }
+      perAccount.set(account, accountSeen + 1);
+      perWindow.set(blockWindow, windowSeen + 1);
+      return true;
+    })
     .slice(0, MAX_ROTATION_ROWS);
 }
 
-/** Idle stablecoin plus venue balances an address holds, in stablecoin units. */
-async function readPosition(router: RouterDeployment, holder: Hex) {
+/** Stablecoin plus receipt balances currently stranded in the router itself. */
+async function readRouterCustody(router: RouterDeployment) {
+  const holder = router.address;
   const [idle, aTokens, venusUnderlying] = await Promise.all([
     stateClient.readContract({ address: router.usdt, abi: erc20Abi, functionName: 'balanceOf', args: [holder] }),
     stateClient.readContract({ address: router.aUsdt, abi: erc20Abi, functionName: 'balanceOf', args: [holder] }),
@@ -263,7 +232,7 @@ async function readPosition(router: RouterDeployment, holder: Hex) {
   return { idle, deployed: aTokens + venusUnderlying };
 }
 
-type LogSource = (typeof LOG_SOURCES)[number];
+type LogClient = ReturnType<typeof createPublicClient>;
 
 /**
  * Every Rotated event this router has emitted, with no account filter. Chunked
@@ -271,13 +240,30 @@ type LogSource = (typeof LOG_SOURCES)[number];
  * requests in flight, and it rejects rather than dropping a chunk: a page
  * claiming to list a router's history must not quietly list part of it.
  */
-async function scanOneSource(router: RouterDeployment, source: LogSource, deadline: number) {
-  const latest = await source.client.getBlockNumber();
-  const reach = source.maxSpan * BigInt(MAX_CHUNKS);
+async function scanOneSource(
+  router: RouterDeployment,
+  source: (typeof LOG_SOURCES)[number],
+  deadline: number,
+  signal: AbortSignal,
+) {
+  if (Date.now() >= deadline) throw new Error('rotation log scan ran out of time');
+  const client = createPublicClient({
+    chain: bsc,
+    transport: http(source.url, {
+      retryCount: 1,
+      timeout: Math.min(5_000, Math.max(1, deadline - Date.now())),
+      maxResponseBodySize: MAX_LOG_RPC_RESPONSE_BYTES,
+      fetchOptions: { signal },
+    }),
+  });
+  const latest = await client.getBlockNumber();
+  // Inclusive ranges: N chunks of span S cover exactly N*S blocks, whose
+  // distance between newest and oldest is N*S-1.
+  const reach = source.maxSpan * BigInt(MAX_CHUNKS) - BigInt(1);
   const floor = latest - reach > router.deployBlock ? latest - reach : router.deployBlock;
   const ranges: { from: bigint; to: bigint }[] = [];
-  // Newest first: once the bounded public table is full there is no reason to
-  // scan or decode older permissionless telemetry.
+  // Newest first: once the bounded, time-stratified public sample is full there
+  // is no reason to scan or decode older permissionless telemetry.
   for (let to = latest; to >= floor;) {
     const candidate = to - source.maxSpan + BigInt(1);
     const from = candidate > floor ? candidate : floor;
@@ -286,13 +272,12 @@ async function scanOneSource(router: RouterDeployment, source: LogSource, deadli
     to = from - BigInt(1);
   }
   const logs: RotationLogLike[] = [];
-  let nonzeroLogs = 0;
   let scannedFloor = latest;
   for (let i = 0; i < ranges.length; i += CHUNK_CONCURRENCY) {
     if (Date.now() > deadline) throw new Error('rotation log scan ran out of time');
     const batch = await Promise.all(
       ranges.slice(i, i + CHUNK_CONCURRENCY).map((range) =>
-        source.client.getLogs({
+        client.getLogs({
           address: router.address,
           event: ROTATED_EVENT,
           fromBlock: range.from,
@@ -303,38 +288,54 @@ async function scanOneSource(router: RouterDeployment, source: LogSource, deadli
     for (const chunk of batch) {
       const typed = chunk as unknown as RotationLogLike[];
       logs.push(...typed);
-      nonzeroLogs += typed.filter((log) => (log.args.usdtAmount ?? BigInt(0)) > BigInt(0)).length;
     }
+    // Keep only display-eligible sampled rows between batches. Per-account and
+    // per-block-window quotas bound Sybil bursts without calling this raw feed
+    // an exhaustive or authenticated history.
+    const bounded = boundedDisplayLogs(logs);
+    logs.splice(0, logs.length, ...bounded);
     scannedFloor = ranges[Math.min(i + CHUNK_CONCURRENCY, ranges.length) - 1]!.from;
-    if (nonzeroLogs >= MAX_ROTATION_ROWS) break;
+    if (logs.length >= MAX_ROTATION_ROWS) break;
   }
-  return { logs, floor: scannedFloor, latest, client: source.client };
+  return { logs, floor: scannedFloor, latest, client, deadline };
 }
 
 /** The first log source that answers a whole scan, widest block span first. */
 async function scanRotations(router: RouterDeployment) {
   const deadline = Date.now() + SCAN_DEADLINE_MS;
+  const controller = new AbortController();
+  const deadlineTimer = setTimeout(() => controller.abort(), SCAN_DEADLINE_MS);
   let lastError: unknown = new Error('no log source configured');
   for (const source of LOG_SOURCES) {
     try {
-      return await scanOneSource(router, source, deadline);
+      return {
+        ...await scanOneSource(router, source, deadline, controller.signal),
+        cancelDeadline: () => {
+          clearTimeout(deadlineTimer);
+          controller.abort();
+        },
+      };
     } catch (error) {
       lastError = error;
     }
   }
+  clearTimeout(deadlineTimer);
+  controller.abort();
   throw lastError;
 }
 
 /** Block timestamps for the handful of blocks that carry a rotation. */
 async function datesFor(
   logs: RotationLogLike[],
-  client: LogSource['client'],
+  client: LogClient,
+  deadline: number,
 ): Promise<Map<bigint, number>> {
   const blocks = [...new Set(logs.map((l) => l.blockNumber).filter((b): b is bigint => b != null))];
   const secondsByBlock = new Map<bigint, number>();
-  for (let i = 0; i < blocks.length; i += POSITION_READ_CONCURRENCY) {
+  for (let i = 0; i < blocks.length; i += PERIPHERAL_READ_CONCURRENCY) {
+    if (Date.now() >= deadline) break;
     await Promise.all(
-      blocks.slice(i, i + POSITION_READ_CONCURRENCY).map(async (blockNumber) => {
+      blocks.slice(i, i + PERIPHERAL_READ_CONCURRENCY).map(async (blockNumber) => {
         try {
           const block = await client.getBlock({ blockNumber });
           secondsByBlock.set(blockNumber, Number(block.timestamp));
@@ -358,7 +359,6 @@ export async function readRouterFunds(symbol: string): Promise<RouterFunds> {
   const asOf = new Date().toISOString();
   const empty: RouterFunds = {
     symbol,
-    managed: null,
     custody: null,
     rotations: null,
     scannedFrom: null,
@@ -368,7 +368,7 @@ export async function readRouterFunds(symbol: string): Promise<RouterFunds> {
   const router = routerFor(BSC_MAINNET.id, symbol);
   if (!router) return empty;
 
-  const custody = await readPosition(router, router.address)
+  const custody = await readRouterCustody(router)
     .then((p) => formatStableAmount(p.idle + p.deployed))
     .catch(() => null);
 
@@ -379,34 +379,12 @@ export async function readRouterFunds(symbol: string): Promise<RouterFunds> {
     return { ...empty, custody };
   }
 
-  const displayLogs = boundedNonzeroLogs(scan.logs);
-  const rotations = decodeRotationRows(displayLogs, await datesFor(displayLogs, scan.client));
-  const accounts = [...new Set(rotations.map((r) => r.account.toLowerCase()).filter(Boolean))]
-    .slice(0, MAX_POSITION_ACCOUNTS) as Hex[];
-  const managed = await (async () => {
-    const positions: Awaited<ReturnType<typeof readPosition>>[] = [];
-    for (let i = 0; i < accounts.length; i += POSITION_READ_CONCURRENCY) {
-      positions.push(...await Promise.all(
-        accounts.slice(i, i + POSITION_READ_CONCURRENCY).map((account) => readPosition(router, account)),
-      ));
-    }
-    return positions;
-  })()
-    .then((positions) => {
-      const idle = positions.reduce((sum, p) => sum + p.idle, BigInt(0));
-      const deployed = positions.reduce((sum, p) => sum + p.deployed, BigInt(0));
-      return {
-        total: formatStableAmount(idle + deployed),
-        deployed: formatStableAmount(deployed),
-        idle: formatStableAmount(idle),
-        accounts: accounts.length,
-      };
-    })
-    .catch(() => null);
+  const displayLogs = boundedDisplayLogs(scan.logs);
+  const rotations = decodeRotationRows(displayLogs, await datesFor(displayLogs, scan.client, scan.deadline));
+  scan.cancelDeadline();
 
   return {
     symbol,
-    managed,
     custody,
     rotations,
     scannedFrom: scan.floor.toString(),

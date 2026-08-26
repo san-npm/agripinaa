@@ -129,23 +129,59 @@ contract AgripinaaYieldRouterForkTest is Test {
         _assertRouterEmpty();
     }
 
-    function test_aaveDebtBlocksCollateralRemoval() public {
+    function test_idleOnlyToIdleIsNoOpAndEmitsNoRotated() public {
+        vm.recordLogs();
+        vm.prank(user);
+        router.toIdle();
+
+        assertEq(_bal(USDT, user), PRINCIPAL, "idle balance changed");
+        assertEq(vm.getRecordedLogs().length, 0, "idle no-op emitted activity");
+        _assertRouterEmpty();
+    }
+
+    function test_sameTargetOnlyCallsAreNoOps() public {
         vm.prank(user);
         router.toAave();
+        uint256 aaveBefore = _bal(AUSDT, user);
+        vm.recordLogs();
+        vm.prank(user);
+        router.toAave();
+        assertEq(_bal(AUSDT, user), aaveBefore, "same-target Aave call churned receipts");
+        assertEq(vm.getRecordedLogs().length, 0, "same-target Aave call emitted activity");
+
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        vm.recordLogs();
+        vm.prank(user);
+        router.toVenus();
+        assertEq(_bal(VUSDT, user), venusBefore, "same-target Venus call churned receipts");
+        assertEq(vm.getRecordedLogs().length, 0, "same-target Venus call emitted activity");
+    }
+
+    function test_aaveDebtLeavesCollateralUntouchedAndProcessesIdle() public {
+        vm.prank(user);
+        router.toAave();
+        uint256 aaveBefore = _bal(AUSDT, user);
+        deal(USDT, user, 25e18);
         vm.mockCall(
             AAVE,
             abi.encodeWithSelector(IAavePool.getUserAccountData.selector, user),
             abi.encode(uint256(1000), uint256(1), uint256(0), uint256(8000), uint256(7500), uint256(1.2e18))
         );
 
-        vm.expectRevert(abi.encodeWithSelector(AgripinaaYieldRouter.EncumberedAavePosition.selector, uint256(1)));
         vm.prank(user);
         router.toVenus();
+
+        assertEq(_bal(AUSDT, user), aaveBefore, "encumbered Aave collateral moved");
+        assertGt(_bal(VUSDT, user), 0, "safe idle balance was not processed");
     }
 
-    function test_venusDebtBlocksCollateralRemoval() public {
+    function test_venusDebtLeavesCollateralUntouchedAndProcessesIdle() public {
         vm.prank(user);
         router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        deal(USDT, user, 25e18);
         address comptroller = IVToken(VUSDT).comptroller();
         address[] memory markets = new address[](1);
         markets[0] = VUSDT;
@@ -154,11 +190,96 @@ contract AgripinaaYieldRouterForkTest is Test {
         );
         vm.mockCall(VUSDT, abi.encodeWithSelector(IVToken.borrowBalanceStored.selector, user), abi.encode(uint256(1)));
 
+        vm.prank(user);
+        router.toAave();
+
+        assertEq(_bal(VUSDT, user), venusBefore, "encumbered Venus collateral moved");
+        assertApproxEqAbs(_bal(AUSDT, user), 25e18, DUST, "safe idle balance was not processed");
+    }
+
+    function test_venusVaiDebtLeavesCollateralUntouchedAndProcessesIdle() public {
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        deal(USDT, user, 25e18);
+        address comptroller = IVToken(VUSDT).comptroller();
+        vm.mockCall(
+            comptroller,
+            abi.encodeWithSelector(IVenusComptroller.mintedVAIs.selector, user),
+            abi.encode(uint256(1390e18))
+        );
+
+        vm.prank(user);
+        router.toAave();
+
+        assertEq(_bal(VUSDT, user), venusBefore, "VAI-backed Venus collateral moved");
+        assertApproxEqAbs(_bal(AUSDT, user), 25e18, DUST, "safe idle balance was not processed");
+    }
+
+    function test_venusComptrollerMigrationFailsClosed() public {
+        vm.prank(user);
+        router.toVenus();
+        address expected = IVToken(VUSDT).comptroller();
+        address migrated = makeAddr("migrated comptroller");
+        vm.mockCall(VUSDT, abi.encodeWithSelector(IVToken.comptroller.selector), abi.encode(migrated));
+
         vm.expectRevert(
-            abi.encodeWithSelector(AgripinaaYieldRouter.EncumberedVenusPosition.selector, VUSDT, uint256(1))
+            abi.encodeWithSelector(AgripinaaYieldRouter.ComptrollerMismatch.selector, expected, migrated)
         );
         vm.prank(user);
         router.toAave();
+    }
+
+    function test_toVenusDoesNotInspectTargetVenusDebt() public {
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        deal(USDT, user, 25e18);
+        address comptroller = IVToken(VUSDT).comptroller();
+        vm.mockCallRevert(
+            comptroller,
+            abi.encodeWithSelector(IVenusComptroller.mintedVAIs.selector, user),
+            bytes("target debt must not be queried")
+        );
+
+        vm.prank(user);
+        router.toVenus();
+
+        assertGt(_bal(VUSDT, user), venusBefore, "idle USDT was not added to the target venue");
+        assertEq(_bal(USDT, user), 0, "idle USDT was not collected");
+    }
+
+    function test_donatedAaveReceiptCannotBlockIdleWithdrawal() public {
+        deal(USDT, attacker, 1e18);
+        vm.startPrank(attacker);
+        IERC20(USDT).approve(AAVE, type(uint256).max);
+        IAavePool(AAVE).supply(USDT, 1e18, attacker, 0);
+        IERC20(AUSDT).transfer(user, 1);
+        vm.stopPrank();
+        vm.mockCall(
+            AAVE,
+            abi.encodeWithSelector(IAavePool.getUserAccountData.selector, user),
+            abi.encode(uint256(0), uint256(1), uint256(0), uint256(0), uint256(0), uint256(0))
+        );
+
+        vm.prank(user);
+        router.toIdle();
+
+        assertEq(_bal(AUSDT, user), 1, "donated encumbered receipt moved");
+        assertEq(_bal(USDT, user), PRINCIPAL, "idle withdrawal was blocked by receipt dust");
+    }
+
+    function test_venusDustMintRevertsInsteadOfBurningUnderlying() public {
+        deal(USDT, attacker, 1);
+        vm.prank(attacker);
+        IERC20(USDT).approve(address(router), 1);
+
+        vm.expectRevert(AgripinaaYieldRouter.ZeroVenusMint.selector);
+        vm.prank(attacker);
+        router.toVenus();
+
+        assertEq(_bal(USDT, attacker), 1, "dust underlying was lost");
+        assertEq(_bal(VUSDT, attacker), 0, "unexpected vUSDT was minted");
     }
 
     function test_constructorRejectsInvalidOrMismatchedDependencies() public {

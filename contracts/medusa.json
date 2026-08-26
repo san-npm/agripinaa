@@ -20,7 +20,11 @@
       "testPrefixes": ["echidna_"]
     },
     "assertionTesting": {
-      "enabled": false
+      "enabled": true,
+      "testViewMethods": true,
+      "panicCodeConfig": {
+        "failOnAssertion": true
+      }
     }
   }
 }

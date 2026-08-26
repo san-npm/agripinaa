@@ -1,7 +1,7 @@
 import { bscScanAddress, bscScanTx } from '@agripinaa/shared';
 import type { RouterDeployment } from '@agripinaa/shared/contracts';
 
-import { groupDigits, readRouterFunds, underManagementNote, type RotationRow } from '@/lib/funds';
+import { groupDigits, readRouterFunds, type RotationRow } from '@/lib/funds';
 import { FreshnessStamp } from './FreshnessStamp';
 
 /** How many rotations the panel lists before it stops. */
@@ -57,8 +57,8 @@ function ExplorerLink({
 
 /**
  * One deployed router, in public: its address, when it went live, what the
- * accounts it manages are holding, and its most recent rotations (the list is
- * capped at MAX_ROWS, and the footer under it names the total the scan found).
+ * contract custody and its most recent permissionless calls (the list is
+ * capped at MAX_ROWS, and the footer under it names the bounded row count).
  * Server component, so a visitor sees all of it without connecting a wallet.
  */
 export async function RouterPanel({ router }: { router: RouterDeployment }) {
@@ -87,64 +87,45 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
           ? ''
           : fromDeployment
             ? ' The rotation scan below covers every block since.'
-            : ` The rotation history below is scanned from block ${groupDigits(scannedFrom)}, the oldest block this scan reaches.`}
+            : ` The activity sample below is scanned from block ${groupDigits(scannedFrom)}, the oldest block this scan reaches.`}
       </p>
 
-      {funds.managed || funds.custody != null ? (
-        <dl className={`mt-4 grid gap-3 ${funds.managed ? 'sm:grid-cols-3' : 'sm:max-w-xs'}`}>
-          {funds.managed ? (
-            <>
-              <Stat
-                label="Router-visible holdings"
-                value={funds.managed.total}
-                unit={router.symbol}
-                note={underManagementNote({
-                  accounts: funds.managed.accounts,
-                  scannedFrom: funds.scannedFrom,
-                  deployBlock,
-                })}
-              />
-              <Stat
-                label="Working in a venue"
-                value={funds.managed.deployed}
-                unit={router.symbol}
-                note={`aToken and Venus balances for the bounded activity set. The remaining ${funds.managed.idle} sits idle.`}
-              />
-            </>
-          ) : null}
-          {funds.custody != null ? (
-            <Stat
-              label="Inside the router"
-              value={funds.custody}
-              unit={router.symbol}
-              note="The router custodies nothing between calls: it pulls a position in, rotates it, and hands the result back within the same transaction."
-            />
-          ) : null}
+      {funds.custody != null ? (
+        <dl className="mt-4 grid gap-3 sm:max-w-xs">
+          <Stat
+            label="Inside the router"
+            value={funds.custody}
+            unit={router.symbol}
+            note="The router is designed to custody nothing between calls. Any nonzero value here is stranded or in-flight contract balance, not managed AUM."
+          />
         </dl>
       ) : null}
-      {funds.managed ? (
+      {funds.custody != null ? (
         <FreshnessStamp asOf={funds.asOf} source="BNB Smart Chain" />
       ) : (
         <p className="mt-4 rounded-lg border border-border bg-surface-2 p-3 text-xs leading-relaxed text-muted">
-          Balances unavailable: the total under management is summed over the
-          bounded nonzero accounts in this router&apos;s Rotated event log, and that scan did not come
-          back, checked {stampTime(funds.asOf)}. The addresses above and the security
-          notes below come from the repository and the deployed bytecode, so they do
-          not depend on it.
+          Router custody unavailable, checked {stampTime(funds.asOf)}. No user-balance
+          aggregate is inferred from permissionless event callers. The address and
+          security notes below do not depend on this RPC read.
         </p>
       )}
 
       <h3 className="mt-6 text-xs font-medium uppercase tracking-wider text-muted-2">
-        Rotation history
+        Recent permissionless router activity sample
       </h3>
+      <p className="mt-1 text-[11px] leading-relaxed text-muted-2">
+        A time-stratified sample of raw calls of at least 0.01 {router.symbol}, capped per account and
+        block window. It is not exhaustive and is not proof of a managed mandate or signer.{' '}
+        <ExplorerLink href={bscScanAddress(router.chainId, router.address)}>View the complete contract log</ExplorerLink>.
+      </p>
       {funds.rotations == null ? (
         <p className="mt-2 text-xs leading-relaxed text-muted-2">
           The Rotated event log could not be read, checked {stampTime(funds.asOf)}.
-          Nothing is listed rather than a partial history.
+          No activity sample is shown when the scan is unavailable.
         </p>
       ) : funds.rotations.length === 0 ? (
         <p className="mt-2 text-xs leading-relaxed text-muted-2">
-          No rotations yet. This router has emitted no Rotated event between block{' '}
+          No display-eligible activity found between block{' '}
           {groupDigits(scannedFrom)} and block {groupDigits(funds.scannedTo ?? scannedFrom)}.
         </p>
       ) : (
@@ -169,7 +150,8 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
       )}
       {funds.rotations && funds.rotations.length > MAX_ROWS ? (
         <p className="mt-2 text-[11px] text-muted-2">
-          Showing the {MAX_ROWS} most recent of {funds.rotations.length} rotations.
+          Showing {MAX_ROWS} rows from the bounded, time-stratified sample.
+          Events prove router execution only; they do not identify a managed mandate or agent signer.
         </p>
       ) : null}
     </section>

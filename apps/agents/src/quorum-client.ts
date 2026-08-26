@@ -34,6 +34,27 @@ async function fulfilled<T>(calls: readonly Promise<T>[]): Promise<T[]> {
   return values;
 }
 
+export function transactionReceiptFingerprint(receipt: {
+  transactionHash: unknown;
+  blockHash: unknown;
+  blockNumber?: unknown;
+  status: unknown;
+  logs?: readonly { address: unknown; topics: unknown; data: unknown; logIndex?: unknown }[];
+}) {
+  return {
+    transactionHash: receipt.transactionHash,
+    blockHash: receipt.blockHash,
+    blockNumber: receipt.blockNumber,
+    status: receipt.status,
+    logs: receipt.logs?.map((log) => ({
+      address: log.address,
+      topics: log.topics,
+      data: log.data,
+      logIndex: log.logIndex,
+    })) ?? [],
+  };
+}
+
 /**
  * Public client for unattended financial decisions. Every contract read and
  * simulation is pinned to one block and must match on two independent RPCs;
@@ -71,6 +92,14 @@ export function createQuorumPublicClient(
     return simulations.find((simulation) => canonical(simulation.result) === canonical(agreedResult))!;
   };
 
+  const getCode = async (...args: Parameters<typeof primary.getCode>) => {
+    const blockNumber = await commonBlock();
+    const values = await fulfilled(
+      clients.map((client) => client.getCode({ ...args[0], blockNumber } as never)),
+    );
+    return selectQuorumValue(values);
+  };
+
   const getBlock = async (...args: Parameters<typeof primary.getBlock>) => {
     const requested = args[0] ?? {};
     const blockNumber = requested.blockNumber ?? await commonBlock();
@@ -86,17 +115,23 @@ export function createQuorumPublicClient(
     const receipts = await fulfilled(
       clients.map((client) => client.waitForTransactionReceipt(args[0] as never)),
     );
-    const fingerprint = receipts.map((receipt) => ({
-      transactionHash: receipt.transactionHash,
-      blockHash: receipt.blockHash,
-      status: receipt.status,
-    }));
+    const fingerprint = receipts.map(transactionReceiptFingerprint);
     const agreed = selectQuorumValue(fingerprint);
     return receipts.find(
       (receipt) =>
-        receipt.transactionHash === agreed.transactionHash &&
-        receipt.blockHash === agreed.blockHash &&
-        receipt.status === agreed.status,
+        canonical(transactionReceiptFingerprint(receipt)) === canonical(agreed),
+    )!;
+  };
+
+  const getTransactionReceipt = async (
+    ...args: Parameters<typeof primary.getTransactionReceipt>
+  ) => {
+    const receipts = await fulfilled(
+      clients.map((client) => client.getTransactionReceipt(args[0])),
+    );
+    const agreed = selectQuorumValue(receipts.map(transactionReceiptFingerprint));
+    return receipts.find(
+      (receipt) => canonical(transactionReceiptFingerprint(receipt)) === canonical(agreed),
     )!;
   };
 
@@ -106,9 +141,11 @@ export function createQuorumPublicClient(
   const overrides = new Map<PropertyKey, unknown>([
     ['readContract', readContract],
     ['simulateContract', simulateContract],
+    ['getCode', getCode],
     ['getBlock', getBlock],
     ['getGasPrice', getGasPrice],
     ['waitForTransactionReceipt', waitForTransactionReceipt],
+    ['getTransactionReceipt', getTransactionReceipt],
   ]);
   return new Proxy(primary, {
     get(target, property) {

@@ -24,8 +24,6 @@ export default function DashboardPage() {
     return () => window.clearTimeout(timer);
   }, [refresh]);
 
-  const active = sessions?.filter((s) => !s.revokedAt).length ?? 0;
-
   return (
     <div className="max-w-3xl">
       <h1 className="font-display text-2xl font-semibold">My sessions</h1>
@@ -41,7 +39,7 @@ export default function DashboardPage() {
       ) : (
         <>
           <p className="mt-6 text-xs uppercase tracking-wide text-muted-2">
-            {active} active · {sessions.length} total
+            {sessions.length} saved session{sessions.length === 1 ? '' : 's'} · live status shown per card
           </p>
           <ul className="mt-3 space-y-3">
             {sessions.map((meta) =>

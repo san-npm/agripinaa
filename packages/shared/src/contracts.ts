@@ -1,3 +1,5 @@
+import { keccak256, type Hex } from 'viem';
+
 /**
  * On-chain contracts Agripinaa agents manage funds through.
  *
@@ -32,6 +34,70 @@ export interface RouterDeployment {
    * alongside the block so a page can print the date without an RPC round trip.
    */
   deployedOn: string;
+  /**
+   * Debt ledgers checked atomically before a source receipt may move.
+   * 0 = none, 2 = Aave aggregate + Venus vToken markets, 3 = also Venus VAI.
+   * Only version 3 is complete enough for automated execution.
+   */
+  debtGuardVersion: number;
+  /** keccak256 of deployed runtime bytecode; mandatory before v3 can activate. */
+  runtimeCodeHash?: Hex;
+}
+
+export const COMPLETE_DEBT_GUARD_VERSION = 3;
+
+export function isDebtCompleteRouter(router: RouterDeployment | undefined): router is RouterDeployment {
+  return router != null
+    && router.debtGuardVersion >= COMPLETE_DEBT_GUARD_VERSION
+    && /^0x[0-9a-fA-F]{64}$/.test(router.runtimeCodeHash ?? '');
+}
+
+const ROUTER_VERSION_ABI = [{
+  type: 'function',
+  name: 'DEBT_GUARD_VERSION',
+  stateMutability: 'view',
+  inputs: [],
+  outputs: [{ type: 'uint256' }],
+}] as const;
+
+/** Metadata is eligibility only; live bytecode and its version must also attest. */
+export async function isDebtCompleteRouterRuntime(
+  client: {
+    getCode(args: { address: Hex }): Promise<Hex | undefined>;
+    readContract(args: {
+      address: Hex;
+      abi: typeof ROUTER_VERSION_ABI;
+      functionName: 'DEBT_GUARD_VERSION';
+    }): Promise<unknown>;
+  },
+  router: RouterDeployment | undefined,
+): Promise<boolean> {
+  if (!isDebtCompleteRouter(router)) return false;
+  try {
+    const [code, version] = await Promise.all([
+      client.getCode({ address: router.address }),
+      client.readContract({ address: router.address, abi: ROUTER_VERSION_ABI, functionName: 'DEBT_GUARD_VERSION' }),
+    ]);
+    return code != null
+      && code !== '0x'
+      && keccak256(code).toLowerCase() === router.runtimeCodeHash!.toLowerCase()
+      && BigInt(version as bigint) >= BigInt(COMPLETE_DEBT_GUARD_VERSION);
+  } catch {
+    return false;
+  }
+}
+
+/** A single RPC may pause activation, but cannot authorize a router alone. */
+export async function isDebtCompleteRouterRuntimeQuorum(
+  clients: readonly Parameters<typeof isDebtCompleteRouterRuntime>[0][],
+  router: RouterDeployment | undefined,
+  required = 2,
+): Promise<boolean> {
+  if (clients.length < required || required < 1) return false;
+  const results = await Promise.allSettled(
+    clients.map((client) => isDebtCompleteRouterRuntime(client, router)),
+  );
+  return results.filter((result) => result.status === 'fulfilled' && result.value).length >= required;
 }
 
 /**
@@ -50,6 +116,7 @@ export const YIELD_ROUTER_BSC: RouterDeployment = {
   // Created by tx 0xb8d59e133e9cae6499701a25254eb08fa310dda26500c0d4ef8b8d6efd4bf731.
   deployBlock: BigInt(118145573),
   deployedOn: '2026-08-26',
+  debtGuardVersion: 2,
 };
 
 /**
@@ -68,6 +135,7 @@ export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   // Created by tx 0x79c95b920bc310df5d563dacaab5c94d15648beaed2ad54c618aebd634789fd7.
   deployBlock: BigInt(118145739),
   deployedOn: '2026-08-26',
+  debtGuardVersion: 2,
 };
 
 /** Every router eligible for a NEW managed-yield activation. */
@@ -92,6 +160,7 @@ export const RETIRED_YIELD_ROUTER_BSC: RouterDeployment = {
   vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
   deployBlock: BigInt(117050416),
   deployedOn: '2026-08-20',
+  debtGuardVersion: 0,
 };
 
 export const RETIRED_YIELD_ROUTER_BSC_USDC: RouterDeployment = {
@@ -104,12 +173,22 @@ export const RETIRED_YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
   deployBlock: BigInt(117231310),
   deployedOn: '2026-08-21',
+  debtGuardVersion: 0,
 };
 
 export const RETIRED_YIELD_ROUTERS_BSC: RouterDeployment[] = [
   RETIRED_YIELD_ROUTER_BSC,
   RETIRED_YIELD_ROUTER_BSC_USDC,
 ];
+
+/**
+ * Older deployments that are too unsafe even for automated owner recovery.
+ * They remain denylisted withdrawal destinations so no stablecoin can be sent
+ * into their immutable, unsweepable balances by mistake.
+ */
+export const DECOMMISSIONED_YIELD_ROUTER_ADDRESSES_BSC = [
+  '0x841CF14Dfc0A315115EC5C9714c918210447b260',
+] as const;
 
 /**
  * Managed stablecoins, in DISPLAY order. This array decides which token button
@@ -187,4 +266,24 @@ export function recoveryRouterFromAllowlist(
 export function isRetiredRouterAddress(address: string): boolean {
   const lc = address.toLowerCase();
   return RETIRED_YIELD_ROUTERS_BSC.some((router) => router.address.toLowerCase() === lc);
+}
+
+/**
+ * True for every managed-system contract that must never receive an owner's
+ * withdrawal: active/retired routers, all of their venue/token dependencies,
+ * and fully decommissioned historical router addresses.
+ */
+export function isManagedContractAddress(address: string, chainId: number): boolean {
+  const lc = address.toLowerCase();
+  const deployments = [...YIELD_ROUTERS_BSC, ...RETIRED_YIELD_ROUTERS_BSC];
+  if (
+    deployments.some(
+      (router) =>
+        router.chainId === chainId
+        && [router.address, router.usdt, router.aUsdt, router.vUsdt, router.aavePool]
+          .some((dependency) => dependency.toLowerCase() === lc),
+    )
+  ) return true;
+  return chainId === 56
+    && DECOMMISSIONED_YIELD_ROUTER_ADDRESSES_BSC.some((router) => router.toLowerCase() === lc);
 }

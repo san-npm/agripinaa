@@ -1,6 +1,6 @@
 'use client';
 
-import { MANAGED_TOKENS, routerFor } from '@agripinaa/shared/contracts';
+import { isDebtCompleteRouter, MANAGED_TOKENS, routerFor } from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { createPublicClient, erc20Abi, http } from 'viem';
 
@@ -11,12 +11,13 @@ import {
   buildManagedScope,
   describeScope,
   fetchManagerKey,
+  readManagedPosition,
   readVenueApys,
   registerManaged,
   verifyOnlyStub,
   type VenueApys,
 } from '@/lib/managed';
-import { storeSession } from '@/lib/session-store';
+import { markRegistered, storeSession } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
 import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
@@ -46,7 +47,6 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
   const [nativeBal, setNativeBal] = useState<bigint | null>(null);
   const [usdtBal, setUsdtBal] = useState<bigint | null>(null);
-  const [amount, setAmount] = useState<string>('10');
   const [hours, setHours] = useState<number>(168);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,8 +67,12 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const bestVenue = apys ? (apys.venusApyBps >= apys.aaveApyBps ? 'Venus' : 'Aave') : null;
 
   // Managed mode only works where the YieldRouter (and real Venus/Aave) exist.
-  const managedChains = SUPPORTED_CHAINS.filter((c) => routerFor(c.id));
-  const usdtAddress = routerFor(chainId, token)?.usdt;
+  const managedChains = SUPPORTED_CHAINS.filter((c) =>
+    MANAGED_TOKENS.some((symbol) => isDebtCompleteRouter(routerFor(c.id, symbol))),
+  );
+  const deployment = routerFor(chainId, token);
+  const automationReady = isDebtCompleteRouter(deployment);
+  const usdtAddress = deployment?.usdt;
 
   const publicClient = useCallback(
     () => createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() }),
@@ -76,6 +80,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   );
 
   async function connectPasskey(mode: 'create' | 'recover') {
+    if (!automationReady) {
+      setError('Managed activation is paused while the debt-complete router is deployed.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -125,6 +133,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
 
   async function activate() {
     if (!wallet) return;
+    if (!automationReady) {
+      setError('Managed activation is paused while the debt-complete router is deployed.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -136,9 +148,19 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       //    it via a verify-only stub (the agent key never enters the browser).
       setPhase('Granting the managed session (1 passkey tap)…');
       const manager = await fetchManagerKey(agent.managedAgent, token);
-      const capUsdt = String(Math.max(50, Math.ceil(Number(amount) * 10)));
-      const scope = buildManagedScope({ chainId, capUsdt, hours, token });
+      const scope = buildManagedScope({ chainId, hours, token });
       const client = altanaClient();
+      const summary = describeScope(scope);
+      const router = routerFor(chainId, token)!;
+      // Snapshot every managed leg before granting authority. Once grantSession
+      // returns, the very next operation is durable recovery storage—there is
+      // no network await that could leave a live key invisible to the owner.
+      const activationPosition = await readManagedPosition(
+        wallet.address as `0x${string}`,
+        chainId,
+        token,
+        router.address,
+      );
       const session = await client.grantSession({
         wallet,
         signer: wallet.signer,
@@ -147,6 +169,41 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         ...scope,
       });
 
+      // Persist the revoke/recovery bundle BEFORE the network handoff. If the
+      // POST fails or its response is lost, the live key remains visible and
+      // revocable from the dashboard instead of becoming orphaned authority.
+      let local: ReturnType<typeof storeSession>;
+      try {
+        local = storeSession({
+          session,
+          chainId,
+          agent: { chainId: agent.chainId, tokenId: agent.tokenId, name: agent.name, slug: agent.managedAgent },
+          scope: { allowlist: [router.address], capFormatted: summary.capFormatted, expiresAt: summary.expiresAt },
+          principalUsdt: activationPosition.totalUsdt,
+        });
+      } catch (storageError) {
+        // Never leave an invisible live key when browser storage is blocked or
+        // full. The compensating revoke uses the owner passkey and happens
+        // before the runner is told about the mandate.
+        let revoked: { status: string };
+        try {
+          revoked = await client.revokeSession({
+            wallet,
+            signer: wallet.signer,
+            chainId,
+            session: session as Parameters<typeof client.revokeSession>[0]['session'],
+          });
+        } catch (revokeError) {
+          throw new Error(
+            `CRITICAL: local recovery storage failed and automatic revocation also failed. Revoke the new key from the wallet interface immediately. ${revokeError instanceof Error ? revokeError.message : ''}`.trim(),
+          );
+        }
+        if (revoked.status !== 'CONFIRMED') {
+          throw new Error('Local recovery storage failed and the compensating session revocation did not confirm.');
+        }
+        throw new Error(`Local recovery storage failed; the new session was revoked. ${storageError instanceof Error ? storageError.message : ''}`.trim());
+      }
+
       // 3. Register the account so the agent starts managing it.
       setPhase('Handing the mandate to the agent…');
       await registerManaged(agent.managedAgent, {
@@ -154,17 +211,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         chainId,
         session,
       });
-
-      // Keep a local record so the dashboard can show + revoke it.
-      const summary = describeScope(scope);
-      const router = routerFor(chainId, token)!;
-      storeSession({
-        session,
-        chainId,
-        agent: { chainId: agent.chainId, tokenId: agent.tokenId, name: agent.name },
-        scope: { allowlist: [router.address], capFormatted: summary.capFormatted, expiresAt: summary.expiresAt },
-        principalUsdt: amount,
-      });
+      markRegistered(local.id);
       setStep('active');
       toast({ title: 'Funds under management', detail: `${agent.name} is now working your deposit`, kind: 'success' });
     } catch (e) {
@@ -179,7 +226,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
 
   const fmt = (v: bigint | null) => (v == null ? '…' : (Number(v) / 1e18).toFixed(4));
   const gasReady = nativeBal != null && nativeBal >= MIN_NATIVE;
-  const usdtReady = usdtBal != null && usdtBal >= BigInt(Math.floor(Number(amount) * 1e18 || 0));
+  const usdtReady = usdtBal != null && usdtBal > 0n;
   const stepIndex = { wallet: 0, deposit: 1, active: 2 }[step];
   const primaryBtn =
     'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
@@ -189,7 +236,11 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       <div className="rounded-2xl border border-border bg-surface p-6">
         {bestApyPct != null && bestVenue && (
           <div className="mb-5 flex items-center justify-between rounded-lg border border-success/20 bg-[linear-gradient(180deg,rgba(16,185,129,0.06),transparent)] px-3 py-2.5">
-            <span className="text-xs text-muted-2">Live {token} yield, auto-rotated to the best venue</span>
+            <span className="text-xs text-muted-2">
+              {automationReady
+                ? `Live ${token} yield, auto-rotated to the best venue`
+                : `Live ${token} venue rates · managed activation paused`}
+            </span>
             <span className="tabular font-mono text-sm font-semibold text-success">
               ~{bestApyPct.toFixed(2)}% APY <span className="text-muted-2">({bestVenue})</span>
             </span>
@@ -207,6 +258,12 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                 venues, never send it anywhere but back to you.
               </p>
             </div>
+            {!automationReady && (
+              <p className="rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm text-primary">
+                New managed sessions are temporarily paused. The existing router is recovery-only while
+                the debt-complete replacement is deployed and verified.
+              </p>
+            )}
             <div>
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Stablecoin to manage</p>
               <div className="flex flex-wrap gap-2">
@@ -248,12 +305,12 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               </p>
             </div>
             <div className="flex flex-wrap gap-3 pt-1">
-              <button onClick={() => connectPasskey('create')} disabled={busy} className={primaryBtn}>
+              <button onClick={() => connectPasskey('create')} disabled={busy || !automationReady} className={primaryBtn}>
                 {busy ? 'Waiting for passkey…' : 'Create with passkey'}
               </button>
               <button
                 onClick={() => connectPasskey('recover')}
-                disabled={busy}
+                disabled={busy || !automationReady}
                 className="rounded-lg border border-border-strong px-4 py-2.5 text-sm transition-colors hover:border-primary/40 disabled:opacity-50"
               >
                 I already have one
@@ -294,16 +351,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             <p className="break-all rounded-lg border border-border bg-surface-2 p-3 font-mono text-xs">
               {wallet.address}
             </p>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs uppercase tracking-wide text-muted-2">
-                Amount to put to work ({token})
-              </span>
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="tabular w-32 rounded-lg border border-border-strong bg-surface-2 p-2.5 font-mono text-sm focus:border-primary focus:outline-none"
-              />
-            </label>
+            <p className="text-xs leading-relaxed text-muted-2">
+              This mandate manages the account&apos;s entire current {token} balance. To manage only part,
+              use a separate account funded with that amount.
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <Balance symbol={token} label={token} value={usdtBal == null ? '…' : fmt(usdtBal)} ready={usdtReady} />
               <Balance
@@ -333,7 +384,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                 ))}
               </div>
             </label>
-            <button onClick={activate} disabled={busy || !gasReady || !usdtReady} className={primaryBtn}>
+            <button onClick={activate} disabled={busy || !gasReady || !usdtReady || !automationReady} className={primaryBtn}>
               {busy ? phase || 'Working…' : 'Put funds under management'}
             </button>
             <p className="text-xs text-muted-2">

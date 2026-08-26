@@ -8,15 +8,23 @@ This document states what that session key can do if it is stolen outright, and
 cites the file, the test, or the address behind each claim so a reviewer can
 check it rather than take it.
 
-Deployed and in use on BNB Smart Chain (`packages/shared/src/contracts.ts`):
+Deployed on BNB Smart Chain, but classified recovery-only because these
+immutable version-2 builds do not inspect Venus's separate VAI debt ledger
+(`packages/shared/src/contracts.ts`):
 
 | Managed token | Address | Deployed |
 | --- | --- | --- |
 | USDT | `0xE69503b265E4320f139A0F7b1A6f1D00fCBd3C02` | 2026-08-26 |
 | USDC | `0x0DD7B7446D449a8968F0FBf1f9a23bd9f2686167` | 2026-08-26 |
 
-Balances under management and every rotation on record are public at
-[`/funds`](https://agripinaa.vercel.app/funds).
+New activation and runner execution are paused until a debt-complete version-3
+replacement is deployed and verified. A version label alone cannot enable it:
+the manifest must pin the runtime bytecode hash, and the browser and runner
+both compare live code plus `DEBT_GUARD_VERSION()` before any value-moving
+action. Contract custody and bounded recent raw
+router activity are public at [`/funds`](https://agripinaa.vercel.app/funds);
+permissionless router events do not prove a managed mandate or a particular
+agent.
 
 ## Threat model
 
@@ -46,14 +54,14 @@ each taking nothing at all (`packages/shared/src/contracts.ts`, `ROUTER_ACTIONS`
 
 | Signature | Selector | Effect |
 | --- | --- | --- |
-| `toAave()` | `0xdb1a4d6d` | Unwind everything the caller holds, supply it to Aave, aTokens minted to the caller |
-| `toVenus()` | `0x88b480df` | Unwind everything the caller holds, mint vTokens, hand exactly this call's mint to the caller |
-| `toIdle()` | `0x18b5e866` | Unwind everything the caller holds back to the caller's plain USDT |
+| `toAave()` | `0xdb1a4d6d` | Collect idle stablecoin and any safe Venus source leg, then supply to Aave; an existing Aave target leg is untouched |
+| `toVenus()` | `0x88b480df` | Collect idle stablecoin and any safe Aave source leg, then mint Venus receipts; an existing Venus target leg is untouched |
+| `toIdle()` | `0x18b5e866` | Return idle stablecoin and unwind each debt-free source leg; encumbered collateral remains where it is |
 
 Every recipient in the contract is `msg.sender`, hardcoded. There is no calldata
 that names a destination, because there is no calldata. The account that calls
 is the account that receives, in all three paths and in the private
-`_unwindAllToUsdt` helper they share.
+`_collectUsdt` helper they share.
 
 Supporting properties, all readable in the source: no owner, no admin role, no
 upgrade path, no `selfdestruct`, no `delegatecall`, a `nonReentrant` guard on
@@ -73,7 +81,7 @@ The first deployment (`0x841CF14D…b260`, superseded) distributed the router's
 address, a stray or donated balance sitting in the router would have been paid
 out to whoever called next, including a caller who had deposited nothing.
 
-The fix is delta accounting. `_unwindAllToUsdt` snapshots the router's USDT
+The fix is delta accounting. `_collectUsdt` snapshots the router's stablecoin
 balance on entry, pulls only the caller's own positions in, and returns the
 difference:
 
@@ -128,11 +136,14 @@ medusa fuzz                                 # reads medusa.json
 `contracts/medusa.json` targets `RouterFuzz` with the same 60,000-case limit,
 call sequences of 60, six workers, and `testPrefixes: ["echidna_"]`.
 
-The harness has a known blind spot, and it is the one that matters below: its
-mocks have no collateral flags, no debt, no oracle, no health factor and no
-liquidation. It can prove nothing about an account that borrows.
+The harness now exercises Aave aggregate debt, ordinary Venus market debt and
+Venus VAI debt, and asserts that guarded receipt legs stay untouched while an
+independent idle leg can complete. It still has an economic-model blind spot:
+the mocks have no oracle, collateral-factor changes, health factor or
+liquidation engine. Fork tests and manual protocol review cover the ledger
+bindings; neither fuzzer proves lending-market solvency.
 
-## Thirteen fork tests against live BSC venues
+## Twenty fork tests against live BSC venues
 
 `contracts/test/AgripinaaYieldRouter.t.sol` forks BSC mainnet (`forge test
 --fork-url bsc`, or plain `forge test` using the `[rpc_endpoints]` alias in
@@ -146,13 +157,20 @@ vToken, not mocks:
 | `test_rotationRoundTripReturnsPrincipal` | Aave to Venus to idle returns the principal, within redemption dust |
 | `test_attackerCannotTouchAnotherUsersFunds` | An attacker hammering every entrypoint reaches only their own empty balances |
 | `test_idleOnEmptyAccountIsNoOp` | No entrypoint takes a recipient, so an empty caller moves nothing |
+| `test_idleOnlyToIdleIsNoOpAndEmitsNoRotated` | Returning already-idle funds does not manufacture activity telemetry |
+| `test_sameTargetOnlyCallsAreNoOps` | Calling the already-held target neither round-trips receipts nor emits a rotation |
 | `test_attackerCannotSweepStrayUsdt` | Stray USDT cannot be swept by a zero-balance caller |
 | `test_strayUsdtIsNotDistributedToUser` | A legitimate user gets exactly their principal, the stray stays stranded |
 | `test_strayVusdtIsNotHandedToUser` | The vToken hand-back returns only this call's mint |
 | `test_usdc_rotationRoundTripReturnsPrincipal` | Same bytecode, USDC venues, round trip holds |
 | `test_usdc_attackerCannotTouchAnotherUsersFunds` | Same bytecode, USDC venues, isolation holds |
-| `test_aaveDebtBlocksCollateralRemoval` | Any Aave debt blocks removal of the account's aToken collateral |
-| `test_venusDebtBlocksCollateralRemoval` | Debt in an entered Venus market blocks vToken removal |
+| `test_aaveDebtLeavesCollateralUntouchedAndProcessesIdle` | Aave debt protects the aToken leg while independent idle funds still complete |
+| `test_venusDebtLeavesCollateralUntouchedAndProcessesIdle` | Ordinary Venus debt protects the vToken leg while independent idle funds still complete |
+| `test_venusVaiDebtLeavesCollateralUntouchedAndProcessesIdle` | The separate VAI ledger protects the Venus receipt leg |
+| `test_venusComptrollerMigrationFailsClosed` | A governance migration of the vToken to another Comptroller cannot bypass the cached VAI/debt ledger |
+| `test_toVenusDoesNotInspectTargetVenusDebt` | A target-only Venus position is not needlessly pulled through the router |
+| `test_donatedAaveReceiptCannotBlockIdleWithdrawal` | A one-unit receipt donation cannot globally deny service to idle funds |
+| `test_venusDustMintRevertsInsteadOfBurningUnderlying` | A zero-share Venus mint cannot consume underlying silently |
 | `test_constructorRejectsInvalidOrMismatchedDependencies` | Zero/non-contract dependencies and receipt tokens for another underlying are rejected |
 
 ## Session scoping is fail-closed
@@ -184,14 +202,21 @@ here as code, not as coverage.
 
 The managed grant itself is built in `apps/web/src/lib/managed.ts`
 (`buildManagedScope`): call scopes limited to the three router signatures on the
-one router deployment for that token, a daily cap on the managed token, a tight
+one router deployment for that token, one canonical daily cap on the managed token, a tight
 native gas allowance (0.005 BNB per day, enough for a few rotations and not
 much else), and an explicit expiry. Sessions are persisted byte-exactly
 (`packages/session-kit/src/persist.ts`, tests in
 `packages/session-kit/tests/persist.test.ts`) because the relay validates
 against the exact granted object, and validity is read back from the KeyStore
 registry (`packages/session-kit/src/verify.ts`, `packages/session-kit/tests/verify.test.ts`)
-so revocation shows up on `/dashboard` rather than being assumed.
+so revocation shows up on `/dashboard` rather than being assumed. Mainnet
+authority reads require two of three independent RPC providers to agree. The
+runner also quorum-checks the smart account's own key descriptor and its
+enumerable call, spend, call-checker, and signature-checker maps. It requires
+the canonical secp256k1 manager identity, exact expiry, exact selector/cap
+shape, and no local or global authority extensions; public KeyStore facts
+therefore cannot be combined with invented session bytes to overwrite a
+working mandate.
 
 ## The key the session is granted to
 
@@ -209,9 +234,9 @@ refused before any pin check`.
 On the runner side, the manager key is derived per token and the executor
 refuses to sign with a key that does not match the granted session
 (`apps/agents/tests/managed.test.ts`: `deriveManagerKey: distinct on-chain
-identity per token, deterministic`, `managedExecutor rejects a manager key that
-does not match the granted session`, `token-driven selection rejects a USDC
-entry that was granted to the USDT key`). Managed state files are written 0600
+identity per token, deterministic`, `managedExecutor refuses a debt-incomplete
+router even when its manager key matches`, `token-driven selection also refuses
+the debt-incomplete USDC deployment`). Managed state files are written 0600
 inside a 0700 data directory (`the managed registry file lands at 0600 inside a
 data dir tightened to 0700`).
 
@@ -231,7 +256,7 @@ with where each one can be checked from this repo and where it cannot:
   independently verified on 2026-08-26.** Their creation transactions and
   exact blocks are pinned in `packages/shared/src/contracts.ts`; their USDT,
   aToken, Aave pool, and vToken getters match that registry.
-- **The thirteen fork tests passed.** Each is named under "Thirteen fork tests against
+- **The twenty fork tests passed.** Each is named under "Twenty fork tests against
   live BSC venues" above, in
   [`contracts/test/AgripinaaYieldRouter.t.sol`](../contracts/test/AgripinaaYieldRouter.t.sol),
   and `forge test --fork-url bsc` runs them against the live venues.
@@ -247,7 +272,7 @@ with where each one can be checked from this repo and where it cannot:
   script and no output from it are committed here, so this figure is reported
   rather than reproducible from this repo.
 
-## The Medium is fixed and deployed
+## The Medium is fixed in source; version-3 deployment is pending
 
 The 2026-08-25 audit found one Medium issue (confidence 90), with a working
 proof of concept. Stated in full, precondition included:
@@ -281,27 +306,34 @@ Three things follow, and none of them are softened here:
    `getAccountLiquidity` (the same reads `apps/agents/src/agents/health-factor.ts`
    and `apps/agents/src/agents/venus-guardian.ts` use) against the managed
    account.
-3. **The fuzz harness could never have found this.** Its mocks have no debt, no
-   collateral flags, no oracle and no liquidation, which is exactly why the
-   blind spot is written down above rather than left to be discovered.
+3. **The original fuzz harness could never have found this.** Its mocks had no
+   debt or collateral state. The current harness adds the relevant debt ledgers
+   and guarded-leg assertions, while retaining the economic-model limitation
+   described above.
 
 The source now implements the structural fix: it refuses an Aave unwind when
 `getUserAccountData` reports debt and refuses a Venus unwind when any entered
-market reports a borrow. Constructor checks also bind each receipt token to the
-configured underlying and Aave pool. The fork suite proves the new rejection
-paths. The routers are immutable, so both were replaced on 2026-08-26. New
-activation is scoped only to the guarded addresses at the top of this document.
-A session granted to an older router cannot authorize the replacement: its
-owner must approve the new router and activate a fresh mandate. Until then the
-old session is deliberately not serviced by the runner, while the user's venue
-position remains in the user's own account.
+market reports a borrow, including Venus's separate `mintedVAIs` ledger.
+Encumbered source legs are left untouched instead of reverting unrelated safe
+funds, and constructor checks bind the comptroller and receipt tokens to their
+configured dependencies. The fork suite proves these paths.
+
+The 2026-08-26 deployments at the top of this document are version 2: they
+check Aave aggregate debt and ordinary entered Venus-market borrows, but omit
+VAI. Because the routers are immutable, the complete source requires new
+addresses. The shared registry marks only version 3 as executable; the web
+activation path, owner unwind path and runner all fail closed on version 2.
+A prior session cannot authorize a replacement address: after deployment and
+bytecode/dependency verification, the owner must approve version 3 and grant a
+fresh mandate. Until then, the venue receipts remain in the owner's account and
+only already-idle stablecoin can be recovered without calling an old router.
 
 ## Reproduce it
 
 ```bash
 cd contracts
 git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
-forge test --fork-url bsc                                   # the thirteen fork tests
+forge test --fork-url bsc                                   # the twenty fork tests
 echidna test/fuzz/RouterFuzz.sol --contract RouterFuzz --config echidna.yaml
 medusa fuzz
 
