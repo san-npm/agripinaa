@@ -60,11 +60,10 @@ For managed yield, the session key is scoped to one contract whose entrypoints
 take no arguments at all: `AgripinaaYieldRouter`. Every recipient inside it is
 hardcoded to the calling account, so a stolen key can move the user's funds
 between the user's own positions or back to the user, and cannot name a third
-party. One open Medium qualifies that: unwinding can strip a receipt token that
-secures live venue debt for an account that also borrowed in the same venue,
-and no managed account carries venue debt today. The threat model, the audit
-finding the router already fixed, the two fuzz invariants, and that Medium in
-full are in [`docs/security-router.md`](docs/security-router.md).
+party. The guarded deployments also refuse to remove Aave or Venus receipt
+tokens while that venue reports debt, closing the audit's collateral-removal
+finding. The threat model, both fuzz invariants, the finding, and its deployed
+fix are in [`docs/security-router.md`](docs/security-router.md).
 
 ## Quickstart
 

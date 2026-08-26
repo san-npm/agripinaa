@@ -132,7 +132,7 @@ export default function FundsPage() {
       </section>
 
       <section className="mt-10 rounded-xl border border-border bg-surface p-5">
-        <h2 className="font-display text-xl font-semibold">Debt guard and deployment status</h2>
+        <h2 className="font-display text-xl font-semibold">Debt guard deployment</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           A compromised session key cannot move funds anywhere except back to their
           owner. That is the property the design above enforces and the fuzzing
@@ -140,15 +140,15 @@ export default function FundsPage() {
           harmless, only that it has nowhere to send anything.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          The 2026-08-25 source now rejects a receipt-token unwind whenever the
-          source lending venue reports debt.{' '}
+          The guarded deployments above reject a receipt-token unwind whenever
+          the source lending venue reports debt.{' '}
           <span className="font-mono text-xs">_unwindAllToUsdt</span> pulls an
           account&apos;s receipt token out of its lending venue. If that same account
           has also borrowed in that venue and the receipt token is what secures the
-          debt, the old deployment can strip collateral and leave the position open
-          to liquidation. The Solidity fix requires a redeploy because these routers
-          are immutable. Managed mode must remain disabled for the addresses above
-          until the guarded bytecode is deployed and the address registry is updated.
+          debt, an older deployment could strip collateral and leave the position
+          open to liquidation. Both immutable routers were replaced on 2026-08-26;
+          the addresses above are the guarded builds and managed activation scopes
+          only to them.
         </p>
       </section>
 

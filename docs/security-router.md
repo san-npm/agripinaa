@@ -12,8 +12,8 @@ Deployed and in use on BNB Smart Chain (`packages/shared/src/contracts.ts`):
 
 | Managed token | Address | Deployed |
 | --- | --- | --- |
-| USDT | `0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb` | 2026-08-20 |
-| USDC | `0xb0817946B5A30A0A2a3dE1B8202749EBEb664630` | 2026-08-21 |
+| USDT | `0xE69503b265E4320f139A0F7b1A6f1D00fCBd3C02` | 2026-08-26 |
+| USDC | `0x0DD7B7446D449a8968F0FBf1f9a23bd9f2686167` | 2026-08-26 |
 
 Balances under management and every rotation on record are public at
 [`/funds`](https://agripinaa.vercel.app/funds).
@@ -63,7 +63,8 @@ bool-returning non-standard token).
 
 So a stolen session key can shuffle the user's funds between the user's own
 positions, or return them idle to the user. It cannot name a third party. The
-one exception is the open Medium below, and it has a precondition.
+debt guards described below also prevent it from removing collateral while a
+venue reports an outstanding borrow.
 
 ## Delta accounting (audit finding L-1)
 
@@ -226,10 +227,10 @@ lenses)" and its "Router audit" paragraph
 The L-1 delta-accounting fix was checked rather than assumed. Claim by claim,
 with where each one can be checked from this repo and where it cannot:
 
-- **Both deployments' runtime bytecode matched the source as it existed on
-  2026-08-24.** The source now includes debt and dependency guards, so the live
-  immutable deployments are intentionally expected to differ until replacement
-  routers are deployed and the shared address registry is updated.
+- **The replacement deployments' constructor bindings and receipts were
+  independently verified on 2026-08-26.** Their creation transactions and
+  exact blocks are pinned in `packages/shared/src/contracts.ts`; their USDT,
+  aToken, Aave pool, and vToken getters match that registry.
 - **The thirteen fork tests passed.** Each is named under "Thirteen fork tests against
   live BSC venues" above, in
   [`contracts/test/AgripinaaYieldRouter.t.sol`](../contracts/test/AgripinaaYieldRouter.t.sol),
@@ -246,7 +247,7 @@ with where each one can be checked from this repo and where it cannot:
   script and no output from it are committed here, so this figure is reported
   rather than reproducible from this repo.
 
-## The Medium is fixed in source; deployment remains
+## The Medium is fixed and deployed
 
 The 2026-08-25 audit found one Medium issue (confidence 90), with a working
 proof of concept. Stated in full, precondition included:
@@ -288,9 +289,12 @@ The source now implements the structural fix: it refuses an Aave unwind when
 `getUserAccountData` reports debt and refuses a Venus unwind when any entered
 market reports a borrow. Constructor checks also bind each receipt token to the
 configured underlying and Aave pool. The fork suite proves the new rejection
-paths. The routers are immutable, so managed mode must remain disabled for the
-old addresses until guarded replacements are deployed, registered, approved,
-and the live mandate is migrated.
+paths. The routers are immutable, so both were replaced on 2026-08-26. New
+activation is scoped only to the guarded addresses at the top of this document.
+A session granted to an older router cannot authorize the replacement: its
+owner must approve the new router and activate a fresh mandate. Until then the
+old session is deliberately not serviced by the runner, while the user's venue
+position remains in the user's own account.
 
 ## Reproduce it
 
