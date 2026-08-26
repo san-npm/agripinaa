@@ -42,6 +42,12 @@ test('RPC quorum fails closed when providers disagree', () => {
 test('gas-price estimates use a median instead of exact equality', () => {
   assert.equal(selectGasPrice([5n, 7n, 6n]), 6n);
   assert.equal(selectGasPrice([5n, 500n, 6n]), 6n, 'one high outlier cannot set the fee');
-  assert.equal(selectGasPrice([5n, 6n]), 6n, 'two answers use the conservative estimate');
+  assert.equal(selectGasPrice([5n, 6n]), 6n, 'two close answers use the conservative estimate');
+  assert.throws(
+    () => selectGasPrice([5n, 500n]),
+    /exceed 20% spread/,
+    'one of two answers cannot set the fee',
+  );
+  assert.throws(() => selectGasPrice([0n, 5n]), /invalid gas-price estimate/);
   assert.throws(() => selectGasPrice([5n]), /fewer than two/);
 });
