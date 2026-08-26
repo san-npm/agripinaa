@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { appendLogLine, ensureDataDir, writeStateFile } from '../src/chassis';
+import { appendLogLine, ensureDataDir, loadAgentAccount, writeStateFile } from '../src/chassis';
 
 /**
  * State and log files sit beside the wallets on the VM, which are 0600. They
@@ -17,6 +17,13 @@ const posix = process.platform !== 'win32';
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), 'agripinaa-chassis-'));
 }
+
+test('a missing agent wallet prints a strict funding selector that exists', () => {
+  assert.throws(
+    () => loadAgentAccount('not-a-real-agent-recovery-test'),
+    /--gen --only agent-not-a-real-agent-recovery-test/,
+  );
+});
 
 test('the data dir is created owner-only', { skip: !posix }, () => {
   const root = scratch();

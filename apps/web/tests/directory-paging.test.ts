@@ -2,13 +2,19 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { AgentSummary } from '@agripinaa/agent-index/types';
+import type { ClaimRecord } from '../src/lib/claims';
 
 import {
   DIRECTORY_PAGE_SIZE,
   DIRECTORY_WALK_DEPTH,
   MAX_DIRECTORY_PAGES,
+  RegistryCursorExpiredError,
   directoryPage,
   directoryPageIndex,
+  mergeRegistryWindow,
+  pageRegistryWindow,
+  rankClaimedSearchResults,
+  validRegistryCursor,
 } from '../src/lib/data';
 
 /**
@@ -92,6 +98,78 @@ test('every registration a read brought back lands on exactly one page', () => {
     new Set(read.map((a) => a.id)),
     'every agent in the read has a page',
   );
+});
+
+test('locally injected cards do not displace entries behind the upstream cursor', () => {
+  const raw = classified(100);
+  const injected = classified(4, 1_001);
+  const merged = mergeRegistryWindow(raw, injected);
+  assert.equal(merged.length, 104);
+
+  const shown = Array.from({ length: Math.ceil(merged.length / DIRECTORY_PAGE_SIZE) }, (_, page) =>
+    directoryPage([merged], page).items,
+  ).flat();
+  assert.deepEqual(
+    new Set(shown.map((a) => a.tokenId)),
+    new Set([...injected, ...raw].map((a) => a.tokenId)),
+    'the next upstream cursor may advance past all 100 because all 100 remain reachable',
+  );
+});
+
+test('registry cursors can retain a position inside a complete upstream window', () => {
+  assert.equal(validRegistryCursor('1'), true);
+  assert.equal(validRegistryCursor('w:0:24:0123456789abcdef'), true);
+  assert.equal(validRegistryCursor('w:12:96:fedcba9876543210'), true);
+  assert.equal(validRegistryCursor('w:0:24:short'), false);
+  assert.equal(validRegistryCursor('w:nope:24:0123456789abcdef'), false);
+  assert.equal(validRegistryCursor('w:1:9999:0123456789abcdef'), false);
+});
+
+test('a small API limit walks an entire raw window before advancing upstream', () => {
+  const raw = classified(100);
+  const shown: AgentSummary[] = [];
+  let cursor: string | undefined;
+  for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+    const page = pageRegistryWindow(raw, 24, cursor, '2', '0123456789abcdef');
+    shown.push(...page.items);
+    if (page.nextCursor === '2') break;
+    cursor = page.nextCursor ?? undefined;
+  }
+  assert.deepEqual(
+    shown.map((a) => a.tokenId),
+    raw.map((a) => a.tokenId),
+  );
+});
+
+test('a changed upstream window expires its local cursor instead of skipping cards', () => {
+  const raw = classified(100);
+  const first = pageRegistryWindow(raw, 24, undefined, '2', '0123456789abcdef');
+  assert.throws(
+    () => pageRegistryWindow(raw.slice(1), 24, first.nextCursor ?? undefined, '2', 'fedcba9876543210'),
+    RegistryCursorExpiredError,
+  );
+});
+
+test('search applies an owner claim before filtering its resulting category', () => {
+  const unclassified = agent({ tokenId: '888', category: null });
+  const claim: ClaimRecord = {
+    fields: {
+      chainId: 56,
+      tokenId: '888',
+      description: '',
+      category: 'yield',
+      website: '',
+      endpoint: '',
+      issuedAt: '2026-08-24T00:00:00.000Z',
+    },
+    signature: `0x${'ab'.repeat(65)}`,
+    signer: unclassified.owner as `0x${string}`,
+    savedAt: '2026-08-24T00:00:00.000Z',
+  };
+  const results = rankClaimedSearchResults([unclassified], [claim], 'yield');
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.category, 'yield');
+  assert.equal(results[0]?.claimed, true);
 });
 
 test('a second read extends the same listing rather than restarting it', () => {

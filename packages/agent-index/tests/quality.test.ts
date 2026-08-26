@@ -67,6 +67,35 @@ test('flood of identical bare agents collapses to one representative with a coun
   assert.equal(spam?.duplicateCount, 5);
 });
 
+test('re-ranking an already-collapsed card keeps the count it arrived with', () => {
+  const flood = Array.from({ length: 5 }, (_, i) =>
+    agent({ tokenId: `f${i}`, name: 'Spam', owner: `0x${i}`, registeredAt: `2026-08-1${i}` }),
+  );
+  const once = rankAndDedupe(flood);
+  // The directory walk ranks each read, then ranks the reads together again.
+  const twice = rankAndDedupe(once);
+  assert.equal(twice.length, 1);
+  assert.equal(twice[0]!.duplicateCount, 5);
+});
+
+test('two collapsed cards for one name add their counts up', () => {
+  // What the walk holds after two reads: each was collapsed on its own, so
+  // neither card knows about the other's registrations.
+  const fromReadOne = { ...agent({ tokenId: 'a', name: 'Spam', owner: '0xA' }), duplicateCount: 30 };
+  const fromReadTwo = { ...agent({ tokenId: 'b', name: 'spam', owner: '0xB' }), duplicateCount: 25 };
+  const ranked = rankAndDedupe([fromReadOne, fromReadTwo]);
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0]!.duplicateCount, 55);
+});
+
+test('a collapsed card absorbing a single new registration counts it', () => {
+  const collapsedCard = { ...agent({ tokenId: 'a', name: 'Spam', owner: '0xA' }), duplicateCount: 4 };
+  const fresh = agent({ tokenId: 'c', name: 'Spam', owner: '0xC' });
+  const ranked = rankAndDedupe([collapsedCard, fresh]);
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0]!.duplicateCount, 5);
+});
+
 test('low-signal agents with distinct names are NOT collapsed', () => {
   const a1 = agent({ tokenId: '1', name: 'Alpha', owner: '0x1' });
   const a2 = agent({ tokenId: '2', name: 'Beta', owner: '0x2' });

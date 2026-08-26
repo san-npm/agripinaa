@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { selectQuorumValue, transactionReceiptFingerprint } from '../src/quorum-client';
+import {
+  selectGasPrice,
+  selectQuorumValue,
+  transactionReceiptFingerprint,
+} from '../src/quorum-client';
 
 test('RPC quorum accepts two matching independent responses', () => {
   assert.deepEqual(
@@ -33,4 +37,11 @@ test('RPC quorum fails closed when providers disagree', () => {
     () => selectQuorumValue([{ hf: 1.4 }, { hf: 9.9 }, { hf: 0.2 }]),
     /quorum mismatch/,
   );
+});
+
+test('gas-price estimates use a median instead of exact equality', () => {
+  assert.equal(selectGasPrice([5n, 7n, 6n]), 6n);
+  assert.equal(selectGasPrice([5n, 500n, 6n]), 6n, 'one high outlier cannot set the fee');
+  assert.equal(selectGasPrice([5n, 6n]), 6n, 'two answers use the conservative estimate');
+  assert.throws(() => selectGasPrice([5n]), /fewer than two/);
 });

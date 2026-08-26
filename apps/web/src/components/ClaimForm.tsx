@@ -447,6 +447,6 @@ function Stored({
 function endpointNote(probe: EndpointProbe | null, endpoint: string): string {
   const label = endpointProbeLabel(probe, endpoint);
   return probeCountsAsLive(probe, endpoint)
-    ? `${label}. The listing carries a live badge for as long as an answer stays inside 24 hours.`
+    ? `${label}. The listing carries a live badge for as long as an answer stays inside 36 hours.`
     : `${label}. Sign again once it answers to re-check it, or wait for the next scheduled probe.`;
 }

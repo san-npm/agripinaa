@@ -57,12 +57,29 @@ function stubbed(
 ) {
   return recordingFetch(state, (url, init) => {
     if (!url.startsWith(`${KV_BASE}/`)) return rpc(url);
-    // MGET goes to the base as a command array rather than as a path; it is
-    // what the chain-read counter reads its two buckets with.
+    // EVAL reserves the client and global chain-read slots in one transaction.
     if (url === `${KV_BASE}/`) {
       const command = JSON.parse(String(init?.body ?? '[]')) as string[];
-      if (command[0] !== 'MGET') return new Response('unexpected kv command', { status: 500 });
-      return Response.json({ result: command.slice(1).map((k) => store.get(k) ?? null) });
+      if (command[0] !== 'EVAL') return new Response('unexpected kv command', { status: 500 });
+      const clientKey = command[3]!;
+      const globalKey = command[4]!;
+      const window = Number(command[5]);
+      const perClientLimit = Number(command[6]);
+      const globalLimit = Number(command[7]);
+      const count = (key: string): number => {
+        try {
+          const parsed = JSON.parse(store.get(key) ?? '') as { w?: unknown; n?: unknown };
+          return parsed.w === window && typeof parsed.n === 'number' ? parsed.n : 0;
+        } catch {
+          return 0;
+        }
+      };
+      const mine = count(clientKey);
+      const all = count(globalKey);
+      if (mine >= perClientLimit || all >= globalLimit) return Response.json({ result: 0 });
+      store.set(clientKey, JSON.stringify({ w: window, n: mine + 1 }));
+      store.set(globalKey, JSON.stringify({ w: window, n: all + 1 }));
+      return Response.json({ result: 1 });
     }
     const [command, rawKey] = url.slice(KV_BASE.length + 1).split('/');
     const key = decodeURIComponent(rawKey ?? '');
@@ -271,6 +288,30 @@ test('POST refuses a body that is not a claim without reading the chain', async 
   assert.equal(res.status, 400);
   assert.deepEqual(await res.json(), { stored: false, error: 'bad json' });
   assert.deepEqual(state.calls, []);
+});
+
+test('POST stream-limits an oversized body before buffering or touching KV', async () => {
+  const { POST } = await import('../src/app/api/claim/route');
+  const state = newState();
+  const encoder = new TextEncoder();
+  let chunksRead = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      chunksRead += 1;
+      controller.enqueue(encoder.encode('x'.repeat(9_000)));
+      if (chunksRead === 3) controller.close();
+    },
+  });
+  const request = new Request(claimUrl(''), {
+    method: 'POST',
+    body,
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
+  const res = await withFetch(stubbed(state, new Map()), () => POST(request));
+  assert.equal(res.status, 413);
+  assert.deepEqual(await res.json(), { stored: false, error: 'body too large' });
+  assert.deepEqual(state.calls, [], 'oversized input spends neither KV nor RPC');
+  assert.equal(chunksRead, 2, 'the stream is cancelled as soon as the byte cap is crossed');
 });
 
 test('POST stops reading the chain once the minute of chain reads is spent', async () => {

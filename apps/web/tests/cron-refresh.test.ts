@@ -168,7 +168,7 @@ test('stops probing when the budget is spent and says what it left', async () =>
 
 test('claimed endpoints are re-probed before any hub is warmed', async () => {
   // Liveness is the half nothing else re-runs: a badge that misses its re-probe
-  // decays after 24 h, while an unwarmed hub is one cold page render.
+  // decays after 36 h, while an unwarmed hub is one cold page render.
   const order: string[] = [];
   await run({
     claims: [claim('1', 'https://one.example')],

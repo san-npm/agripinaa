@@ -24,6 +24,20 @@ export function selectQuorumValue<T>(values: readonly T[], required = 2): T {
   return winner.value;
 }
 
+/**
+ * Gas price is an estimate, not chain state: honest providers routinely return
+ * different recommendations. Use the numeric median so one outlier cannot set
+ * the fee, and use the higher value when only two backends answer so writes do
+ * not stall merely because the lower estimate is stale.
+ */
+export function selectGasPrice(values: readonly bigint[]): bigint {
+  if (values.length < 2) {
+    throw new Error('RPC quorum unavailable: fewer than two gas-price estimates');
+  }
+  const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return sorted[Math.floor(sorted.length / 2)]!;
+}
+
 async function fulfilled<T>(calls: readonly Promise<T>[]): Promise<T[]> {
   const settled = await Promise.allSettled(calls);
   const values: T[] = [];
@@ -136,7 +150,7 @@ export function createQuorumPublicClient(
   };
 
   const getGasPrice = async () =>
-    selectQuorumValue(await fulfilled(clients.map((client) => client.getGasPrice())));
+    selectGasPrice(await fulfilled(clients.map((client) => client.getGasPrice())));
 
   const overrides = new Map<PropertyKey, unknown>([
     ['readContract', readContract],

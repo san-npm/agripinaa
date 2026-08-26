@@ -49,8 +49,8 @@ test('every failure reason reaches the reader instead of being dropped', () => {
 });
 
 test('an answer nobody refreshed inside the window stops counting as live', () => {
-  const stale = probe({ checkedAt: new Date(NOW - DAY - 1).toISOString() });
-  assert.equal(endpointProbeLabel(stale, URL, NOW), 'not live: nothing has answered in the last 24 hours');
+  const stale = probe({ checkedAt: new Date(NOW - DAY - 12 * 60 * 60 * 1_000 - 1).toISOString() });
+  assert.equal(endpointProbeLabel(stale, URL, NOW), 'not live: nothing has answered in the last 36 hours');
 });
 
 test('a result about a different endpoint is not a result about this one', () => {
