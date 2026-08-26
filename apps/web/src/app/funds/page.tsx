@@ -7,7 +7,7 @@ import { RouterPanel } from '@/components/RouterPanel';
 import { clampDescription } from '@/lib/site';
 
 const DESCRIPTION = clampDescription(
-  'The two AgripinaaYieldRouter deployments on BNB Smart Chain: addresses, balances under management, the rotations each scan reaches, and why a compromised agent key cannot move funds anywhere except back to their owner.',
+  'AgripinaaYieldRouter deployments on BNB Smart Chain: addresses, bounded router-visible balances, recent rotations, and managed-session security.',
 );
 
 export const metadata: Metadata = {
@@ -125,14 +125,14 @@ export default function FundsPage() {
         </ul>
         <p className="mt-3 text-sm leading-relaxed text-muted">
           Echidna and Medusa each completed a 60,000 case campaign with both
-          properties holding, alongside 10 fork tests against BNB Smart Chain state
+          properties holding, alongside 13 fork tests against BNB Smart Chain state
           and a 30 day fork run confirming yield reaches the account while donated
           aTokens and vTokens stay untouched.
         </p>
       </section>
 
       <section className="mt-10 rounded-xl border border-border bg-surface p-5">
-        <h2 className="font-display text-xl font-semibold">The precondition, and the one open finding</h2>
+        <h2 className="font-display text-xl font-semibold">Debt guard and deployment status</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           A compromised session key cannot move funds anywhere except back to their
           owner. That is the property the design above enforces and the fuzzing
@@ -140,17 +140,15 @@ export default function FundsPage() {
           harmless, only that it has nowhere to send anything.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          One Medium severity finding from the 2026-08-24 review is open.{' '}
+          The 2026-08-25 source now rejects a receipt-token unwind whenever the
+          source lending venue reports debt.{' '}
           <span className="font-mono text-xs">_unwindAllToUsdt</span> pulls an
           account&apos;s receipt token out of its lending venue. If that same account
           has also borrowed in that venue and the receipt token is what secures the
-          debt, a rotation forced by a compromised key strips the collateral and can
-          leave the position open to liquidation after an adverse price move. The
-          loss lands on the account, and none of it reaches the attacker through the
-          router, but it is a loss. As of that review no managed account carried debt
-          in either venue, checked on-chain. The structural fix is a guarded
-          redeploy, which would change the addresses on this page, so it is a
-          decision rather than a patch.
+          debt, the old deployment can strip collateral and leave the position open
+          to liquidation. The Solidity fix requires a redeploy because these routers
+          are immutable. Managed mode must remain disabled for the addresses above
+          until the guarded bytecode is deployed and the address registry is updated.
         </p>
       </section>
 

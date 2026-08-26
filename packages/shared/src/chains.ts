@@ -4,6 +4,7 @@ export const BSC_MAINNET = {
   rpcUrls: [
     'https://bsc-rpc.publicnode.com',
     'https://bsc-dataseed.bnbchain.org',
+    'https://bsc-dataseed1.binance.org',
   ],
   explorer: 'https://bscscan.com',
 } as const;

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { routerByAddress } from '@agripinaa/shared/contracts';
 
@@ -18,8 +18,11 @@ function isManaged(meta: StoredSessionMeta): boolean {
 export default function DashboardPage() {
   const [sessions, setSessions] = useState<StoredSessionMeta[] | null>(null);
 
-  const refresh = () => setSessions(listStoredSessions());
-  useEffect(refresh, []);
+  const refresh = useCallback(() => setSessions(listStoredSessions()), []);
+  useEffect(() => {
+    const timer = window.setTimeout(refresh, 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   const active = sessions?.filter((s) => !s.revokedAt).length ?? 0;
 

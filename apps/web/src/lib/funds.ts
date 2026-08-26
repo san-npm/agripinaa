@@ -4,11 +4,13 @@ import { BSC_MAINNET } from '@agripinaa/shared';
 import { ROUTER_ACTIONS, routerFor, type RouterDeployment } from '@agripinaa/shared/contracts';
 import { cacheLife } from 'next/cache';
 import { createPublicClient, erc20Abi, fallback, http, parseAbi, parseAbiItem, type Hex } from 'viem';
-import { bsc } from 'viem/chains';
+
+import { bsc } from './bsc-chain';
 
 /**
  * Public, router-wide view of the managed-yield deployments: what the accounts
- * this router rotates are holding right now, and every Rotated event it has
+ * this router rotates are holding right now, and a bounded recent Rotated
+ * event window it has
  * emitted. `lib/managed.ts` reads the same event for ONE connected account and
  * runs in the browser; this module is the server-side, no-wallet-needed twin,
  * so /funds can show the whole picture to a visitor who has connected nothing.
@@ -104,6 +106,10 @@ const MAX_CHUNKS = 120;
 const CHUNK_CONCURRENCY = 6;
 /** Wall clock budget for the whole scan, so a slow endpoint cannot hang a render. */
 const SCAN_DEADLINE_MS = 20_000;
+/** Hard caps keep permissionless router telemetry from becoming unbounded work. */
+export const MAX_ROTATION_ROWS = 250;
+export const MAX_POSITION_ACCOUNTS = 100;
+const POSITION_READ_CONCURRENCY = 8;
 
 /** The shape of a viem Rotated log this module reads, and nothing more. */
 export interface RotationLogLike {
@@ -189,13 +195,13 @@ export function underManagementNote(input: {
   const floor = `block ${groupDigits(input.scannedFrom ?? input.deployBlock)}, the oldest block this scan reaches`;
   if (input.accounts === 0) {
     return coversDeployment
-      ? 'This router has rotated no account yet, so there is nothing to total.'
-      : `No account has rotated since ${floor}, so there is nothing to total. Anything rotated before that block is not counted.`;
+      ? 'This permissionless router has no nonzero rotation yet, so there is nothing to total.'
+      : `No nonzero rotation was found since ${floor}, so there is nothing to total. Anything before that block is not counted.`;
   }
   const accounts = `${input.accounts} account${input.accounts === 1 ? '' : 's'}`;
   return coversDeployment
-    ? `Held right now by the ${accounts} this router has rotated, in Aave, in Venus, or idle in the account itself.`
-    : `Held right now by the ${accounts} that ${input.accounts === 1 ? 'has' : 'have'} rotated since ${floor}. An account whose last rotation is older is not counted, so this is a floor.`;
+    ? `Held right now by the ${accounts} that used this permissionless router, whether or not they registered a managed session.`
+    : `Held right now by up to ${accounts} with nonzero rotations since ${floor}. This is router activity, not proof of a managed mandate.`;
 }
 
 /**
@@ -207,12 +213,14 @@ export function decodeRotationRows(
   secondsByBlock: Map<bigint, number>,
 ): RotationRow[] {
   return [...logs]
+    .filter((log) => (log.args.usdtAmount ?? BigInt(0)) > BigInt(0))
     .sort((a, b) => {
       const blockA = a.blockNumber ?? BigInt(0);
       const blockB = b.blockNumber ?? BigInt(0);
       if (blockA !== blockB) return blockB > blockA ? 1 : -1;
       return (b.logIndex ?? 0) - (a.logIndex ?? 0);
     })
+    .slice(0, MAX_ROTATION_ROWS)
     .map((log) => {
       const block = log.blockNumber ?? BigInt(0);
       const seconds = secondsByBlock.get(block);
@@ -226,6 +234,18 @@ export function decodeRotationRows(
         at: seconds != null ? new Date(seconds * 1000).toISOString() : null,
       };
     });
+}
+
+function boundedNonzeroLogs(logs: RotationLogLike[]): RotationLogLike[] {
+  return [...logs]
+    .filter((log) => (log.args.usdtAmount ?? BigInt(0)) > BigInt(0))
+    .sort((a, b) => {
+      const blockA = a.blockNumber ?? BigInt(0);
+      const blockB = b.blockNumber ?? BigInt(0);
+      if (blockA !== blockB) return blockB > blockA ? 1 : -1;
+      return (b.logIndex ?? 0) - (a.logIndex ?? 0);
+    })
+    .slice(0, MAX_ROTATION_ROWS);
 }
 
 /** Idle stablecoin plus venue balances an address holds, in stablecoin units. */
@@ -256,11 +276,18 @@ async function scanOneSource(router: RouterDeployment, source: LogSource, deadli
   const reach = source.maxSpan * BigInt(MAX_CHUNKS);
   const floor = latest - reach > router.deployBlock ? latest - reach : router.deployBlock;
   const ranges: { from: bigint; to: bigint }[] = [];
-  for (let block = floor; block <= latest; block += source.maxSpan) {
-    const to = block + source.maxSpan - BigInt(1);
-    ranges.push({ from: block, to: to > latest ? latest : to });
+  // Newest first: once the bounded public table is full there is no reason to
+  // scan or decode older permissionless telemetry.
+  for (let to = latest; to >= floor;) {
+    const candidate = to - source.maxSpan + BigInt(1);
+    const from = candidate > floor ? candidate : floor;
+    ranges.push({ from, to });
+    if (from === floor) break;
+    to = from - BigInt(1);
   }
   const logs: RotationLogLike[] = [];
+  let nonzeroLogs = 0;
+  let scannedFloor = latest;
   for (let i = 0; i < ranges.length; i += CHUNK_CONCURRENCY) {
     if (Date.now() > deadline) throw new Error('rotation log scan ran out of time');
     const batch = await Promise.all(
@@ -273,9 +300,15 @@ async function scanOneSource(router: RouterDeployment, source: LogSource, deadli
         }),
       ),
     );
-    for (const chunk of batch) logs.push(...(chunk as unknown as RotationLogLike[]));
+    for (const chunk of batch) {
+      const typed = chunk as unknown as RotationLogLike[];
+      logs.push(...typed);
+      nonzeroLogs += typed.filter((log) => (log.args.usdtAmount ?? BigInt(0)) > BigInt(0)).length;
+    }
+    scannedFloor = ranges[Math.min(i + CHUNK_CONCURRENCY, ranges.length) - 1]!.from;
+    if (nonzeroLogs >= MAX_ROTATION_ROWS) break;
   }
-  return { logs, floor, latest, client: source.client };
+  return { logs, floor: scannedFloor, latest, client: source.client };
 }
 
 /** The first log source that answers a whole scan, widest block span first. */
@@ -299,16 +332,18 @@ async function datesFor(
 ): Promise<Map<bigint, number>> {
   const blocks = [...new Set(logs.map((l) => l.blockNumber).filter((b): b is bigint => b != null))];
   const secondsByBlock = new Map<bigint, number>();
-  await Promise.all(
-    blocks.map(async (blockNumber) => {
-      try {
-        const block = await client.getBlock({ blockNumber });
-        secondsByBlock.set(blockNumber, Number(block.timestamp));
-      } catch {
-        /* leave the row undated rather than dropping it */
-      }
-    }),
-  );
+  for (let i = 0; i < blocks.length; i += POSITION_READ_CONCURRENCY) {
+    await Promise.all(
+      blocks.slice(i, i + POSITION_READ_CONCURRENCY).map(async (blockNumber) => {
+        try {
+          const block = await client.getBlock({ blockNumber });
+          secondsByBlock.set(blockNumber, Number(block.timestamp));
+        } catch {
+          /* leave the row undated rather than dropping it */
+        }
+      }),
+    );
+  }
   return secondsByBlock;
 }
 
@@ -344,9 +379,19 @@ export async function readRouterFunds(symbol: string): Promise<RouterFunds> {
     return { ...empty, custody };
   }
 
-  const rotations = decodeRotationRows(scan.logs, await datesFor(scan.logs, scan.client));
-  const accounts = [...new Set(rotations.map((r) => r.account.toLowerCase()).filter(Boolean))] as Hex[];
-  const managed = await Promise.all(accounts.map((account) => readPosition(router, account)))
+  const displayLogs = boundedNonzeroLogs(scan.logs);
+  const rotations = decodeRotationRows(displayLogs, await datesFor(displayLogs, scan.client));
+  const accounts = [...new Set(rotations.map((r) => r.account.toLowerCase()).filter(Boolean))]
+    .slice(0, MAX_POSITION_ACCOUNTS) as Hex[];
+  const managed = await (async () => {
+    const positions: Awaited<ReturnType<typeof readPosition>>[] = [];
+    for (let i = 0; i < accounts.length; i += POSITION_READ_CONCURRENCY) {
+      positions.push(...await Promise.all(
+        accounts.slice(i, i + POSITION_READ_CONCURRENCY).map((account) => readPosition(router, account)),
+      ));
+    }
+    return positions;
+  })()
     .then((positions) => {
       const idle = positions.reduce((sum, p) => sum + p.idle, BigInt(0));
       const deployed = positions.reduce((sum, p) => sum + p.deployed, BigInt(0));

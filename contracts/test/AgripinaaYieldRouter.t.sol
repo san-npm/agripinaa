@@ -2,7 +2,14 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {AgripinaaYieldRouter, IERC20} from "../src/AgripinaaYieldRouter.sol";
+import {
+    AgripinaaYieldRouter,
+    IERC20,
+    IAaveAToken,
+    IAavePool,
+    IVToken,
+    IVenusComptroller
+} from "../src/AgripinaaYieldRouter.sol";
 
 /**
  * Fork test against real BSC mainnet Venus + Aave. Proves the router rotates a
@@ -16,6 +23,7 @@ contract AgripinaaYieldRouterForkTest is Test {
     address constant AUSDT = 0xa9251ca9DE909CB71783723713B21E4233fbf1B1;
     address constant AAVE = 0x6807dc923806fE8Fd134338EABCA509979a7e0cB;
     address constant VUSDT = 0xfD5840Cd36d94D7229439859C0112a4185BC0255;
+    address constant AUSDC = 0x00901a076785e0906d1028c7d6372d247bec7d61;
 
     uint256 constant PRINCIPAL = 1000e18;
     // Lending redemptions round down by a few wei; principal must survive within dust.
@@ -113,10 +121,64 @@ contract AgripinaaYieldRouterForkTest is Test {
     /// agent could craft to send funds elsewhere. Calling with only the user's
     /// approval, funds always return to the user.
     function test_idleOnEmptyAccountIsNoOp() public {
+        vm.recordLogs();
         vm.prank(attacker);
         router.toIdle();
         assertEq(_bal(USDT, attacker), 0);
+        assertEq(vm.getRecordedLogs().length, 0, "empty call emitted trusted-looking activity");
         _assertRouterEmpty();
+    }
+
+    function test_aaveDebtBlocksCollateralRemoval() public {
+        vm.prank(user);
+        router.toAave();
+        vm.mockCall(
+            AAVE,
+            abi.encodeWithSelector(IAavePool.getUserAccountData.selector, user),
+            abi.encode(uint256(1000), uint256(1), uint256(0), uint256(8000), uint256(7500), uint256(1.2e18))
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(AgripinaaYieldRouter.EncumberedAavePosition.selector, uint256(1)));
+        vm.prank(user);
+        router.toVenus();
+    }
+
+    function test_venusDebtBlocksCollateralRemoval() public {
+        vm.prank(user);
+        router.toVenus();
+        address comptroller = IVToken(VUSDT).comptroller();
+        address[] memory markets = new address[](1);
+        markets[0] = VUSDT;
+        vm.mockCall(
+            comptroller, abi.encodeWithSelector(IVenusComptroller.getAssetsIn.selector, user), abi.encode(markets)
+        );
+        vm.mockCall(VUSDT, abi.encodeWithSelector(IVToken.borrowBalanceStored.selector, user), abi.encode(uint256(1)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AgripinaaYieldRouter.EncumberedVenusPosition.selector, VUSDT, uint256(1))
+        );
+        vm.prank(user);
+        router.toAave();
+    }
+
+    function test_constructorRejectsInvalidOrMismatchedDependencies() public {
+        vm.expectRevert(abi.encodeWithSelector(AgripinaaYieldRouter.InvalidDependency.selector, address(0)));
+        new AgripinaaYieldRouter(address(0), AUSDT, AAVE, VUSDT);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AgripinaaYieldRouter.UnderlyingMismatch.selector,
+                AUSDC,
+                USDT,
+                address(0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d)
+            )
+        );
+        new AgripinaaYieldRouter(USDT, AUSDC, AAVE, VUSDT);
+
+        address wrongPool = address(0xBEEF);
+        vm.mockCall(AUSDT, abi.encodeWithSelector(IAaveAToken.POOL.selector), abi.encode(wrongPool));
+        vm.expectRevert(abi.encodeWithSelector(AgripinaaYieldRouter.PoolMismatch.selector, AUSDT, AAVE, wrongPool));
+        new AgripinaaYieldRouter(USDT, AUSDT, AAVE, VUSDT);
     }
 
     // --- Delta accounting: stranded funds are never distributed (audit L-1) ---
@@ -152,7 +214,7 @@ contract AgripinaaYieldRouterForkTest is Test {
         deal(USDT, attacker, 100e18);
         vm.startPrank(attacker);
         IERC20(USDT).approve(VUSDT, type(uint256).max);
-        (bool ok, ) = VUSDT.call(abi.encodeWithSignature("mint(uint256)", uint256(100e18)));
+        (bool ok,) = VUSDT.call(abi.encodeWithSignature("mint(uint256)", uint256(100e18)));
         require(ok, "seed mint failed");
         uint256 strayV = IERC20(VUSDT).balanceOf(attacker);
         IERC20(VUSDT).transfer(address(router), strayV);

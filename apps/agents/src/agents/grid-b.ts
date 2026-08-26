@@ -62,6 +62,7 @@ import {
   type GridParams,
 } from '../grid-core';
 import { ChassisOphisWallet } from '../ophis-wallet';
+import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
 
 export { buildLadder };
@@ -330,7 +331,17 @@ export const gridBAgent: AgentModule = {
     const wallet = new ChassisOphisWallet(ctx.account, ctx.publicClient, ctx.walletClient);
     const result = await executeOphisSwap(
       wallet,
-      { sellToken, buyToken, sellAmount: clip.amount, slippageBps: SLIPPAGE_BPS },
+      {
+        sellToken,
+        buyToken,
+        sellAmount: clip.amount,
+        slippageBps: SLIPPAGE_BPS,
+        minimumBuyAmount: independentMinimumBuyAmount({
+          sellAmount: clip.amount,
+          buyUnitsPerSellUnit: hit.level.side === 'sell' ? price : 1 / price,
+          buyDecimals: hit.level.side === 'sell' ? USDT.decimals : BTCB.decimals,
+        }),
+      },
       {},
     );
     ctx.log({

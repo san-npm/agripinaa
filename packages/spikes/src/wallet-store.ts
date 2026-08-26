@@ -17,9 +17,10 @@ export interface StoredWallet {
 }
 
 export async function saveWallet(w: StoredWallet): Promise<string> {
-  await mkdir(WALLETS_DIR, { recursive: true });
+  await mkdir(WALLETS_DIR, { recursive: true, mode: 0o700 });
+  await chmod(WALLETS_DIR, 0o700);
   const file = join(WALLETS_DIR, `${w.name}.json`);
-  await writeFile(file, JSON.stringify(w, null, 2), { flag: 'wx' });
+  await writeFile(file, JSON.stringify(w, null, 2), { flag: 'wx', mode: 0o600 });
   await chmod(file, 0o600);
   return file;
 }

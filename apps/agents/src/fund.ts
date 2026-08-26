@@ -89,7 +89,8 @@ async function main() {
   const plan = selectFundingEntries(onlyArg());
 
   if (mode === '--gen') {
-    await mkdir(WALLETS_DIR, { recursive: true });
+    await mkdir(WALLETS_DIR, { recursive: true, mode: 0o700 });
+    await chmod(WALLETS_DIR, 0o700);
     const names = [
       ...plan.map((entry) => entry.name),
       ...plan.flatMap((entry) => (entry.sessionKey ? [entry.sessionKey] : [])),
@@ -105,7 +106,7 @@ async function main() {
       await writeFile(
         file,
         JSON.stringify({ name, address: account.address, privateKey, createdAt: new Date().toISOString() }, null, 2),
-        { flag: 'wx' },
+        { flag: 'wx', mode: 0o600 },
       );
       await chmod(file, 0o600);
       console.log(`${name}: ${account.address}`);
@@ -134,7 +135,8 @@ async function main() {
         to: dest,
         value: toBaseUnits(entry.bnb, 18),
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`BNB funding reverted: ${hash}`);
       console.log(`${entry.name} ← ${entry.bnb} BNB (${hash})`);
     }
     for (const { symbol, amount } of legs(entry)) {
@@ -145,7 +147,8 @@ async function main() {
         functionName: 'transfer',
         args: [dest, toBaseUnits(amount, token.decimals)],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`${symbol} funding reverted: ${hash}`);
       console.log(`${entry.name} ← ${amount} ${symbol} (${hash})`);
     }
   }

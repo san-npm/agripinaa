@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { CowApiError, CowOrderbookClient, isOphisOrder } from '../src/cow';
+import { CowApiError, CowOrderbookClient, isOphisOrder, isOrderUidValid } from '../src/cow';
 import { loadOrderFixture, loadTradesFixture } from './fixtures';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -27,13 +27,28 @@ test('isOphisOrder is true for the real fixture appData', () => {
 });
 
 test('isOphisOrder is false for other appCodes', () => {
-  assert.equal(isOphisOrder({ fullAppData: '{"appCode":"CoW Swap","metadata":{}}' }), false);
+  assert.equal(isOphisOrder({ appData: `0x${'0'.repeat(64)}`, fullAppData: '{"appCode":"CoW Swap","metadata":{}}' }), false);
 });
 
 test('isOphisOrder is false for malformed or null fullAppData', () => {
-  assert.equal(isOphisOrder({ fullAppData: '{not json' }), false);
-  assert.equal(isOphisOrder({ fullAppData: null }), false);
-  assert.equal(isOphisOrder({ fullAppData: '"just a string"' }), false);
+  const appData = `0x${'0'.repeat(64)}`;
+  assert.equal(isOphisOrder({ appData, fullAppData: '{not json' }), false);
+  assert.equal(isOphisOrder({ appData, fullAppData: null }), false);
+  assert.equal(isOphisOrder({ appData, fullAppData: '"just a string"' }), false);
+});
+
+test('isOphisOrder rejects appData JSON that was not signed by the owner', () => {
+  const order = loadOrderFixture();
+  assert.equal(
+    isOphisOrder({ ...order, fullAppData: '{"appCode":"ophis","metadata":{}}' }),
+    false,
+  );
+});
+
+test('the order UID binds every signed field returned by the API', () => {
+  const order = loadOrderFixture();
+  assert.equal(isOrderUidValid(order), true);
+  assert.equal(isOrderUidValid({ ...order, buyAmount: (BigInt(order.buyAmount) + 1n).toString() }), false);
 });
 
 test('getOrder hits /orders/{uid} on the default BSC base and parses the body', async () => {

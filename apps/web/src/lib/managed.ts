@@ -15,9 +15,9 @@ import {
   zeroAddress,
   type Hex,
 } from 'viem';
-import { bsc, bscTestnet } from 'viem/chains';
 
 import { altanaClient } from './altana';
+import { bsc, bscTestnet } from './bsc-chain';
 
 const ROUTER_SIGNATURES = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
 
@@ -178,7 +178,7 @@ export async function sendTokenOut(
 }
 
 /** Move native BNB out of the account to an external address (passkey action). */
-export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint, symbol = 'USDT') {
+export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint) {
   const problem = destinationProblem(to, wallet.address, chainId);
   if (problem) throw new Error(problem);
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');

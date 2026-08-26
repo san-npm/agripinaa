@@ -16,8 +16,21 @@ export { deserializeSession, roundTripIsExact, serializeSession } from './codec'
 // separate `@agripinaa/session-kit/codec` entrypoint instead.
 
 export async function saveSessionFile(path: string, session: unknown): Promise<void> {
-  const { writeFile } = await import('node:fs/promises');
-  await writeFile(path, serializeSession(session), 'utf8');
+  const { chmod, mkdir, rename, unlink, writeFile } = await import('node:fs/promises');
+  const { dirname } = await import('node:path');
+  const dir = dirname(path);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await chmod(dir, 0o700);
+  const temporary = `${path}.${process.pid}-${Date.now()}.tmp`;
+  try {
+    await writeFile(temporary, serializeSession(session), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    await chmod(temporary, 0o600);
+    await rename(temporary, path);
+    await chmod(path, 0o600);
+  } catch (error) {
+    await unlink(temporary).catch(() => {});
+    throw error;
+  }
 }
 
 export async function loadSessionFile(path: string): Promise<unknown> {

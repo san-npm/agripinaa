@@ -62,27 +62,59 @@ function selectedModules(): AgentModule[] {
 function acquireRunLock(): string {
   ensureDataDir();
   const lock = join(DATA_DIR, 'runner.lock');
-  try {
-    const fd = openSync(lock, 'wx'); // fails if it exists
-    writeFileSync(fd, String(process.pid));
-    closeSync(fd);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-    const holder = Number.parseInt(readFileSync(lock, 'utf8').trim(), 10);
-    let alive = false;
+  let acquired = false;
+  for (let attempt = 0; attempt < 3 && !acquired; attempt += 1) {
     try {
-      process.kill(holder, 0);
-      alive = true;
-    } catch {
-      alive = false;
+      const fd = openSync(lock, 'wx'); // the only operation that wins the lease
+      try {
+        writeFileSync(fd, String(process.pid));
+      } catch (writeError) {
+        // We created this inode, so a failed PID write cannot describe a live
+        // holder. Remove it rather than leaving an unrecoverable malformed lock.
+        try {
+          unlinkSync(lock);
+        } catch {
+          /* preserve the original write failure */
+        }
+        throw writeError;
+      } finally {
+        closeSync(fd);
+      }
+      acquired = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      let holder = Number.NaN;
+      try {
+        holder = Number.parseInt(readFileSync(lock, 'utf8').trim(), 10);
+      } catch (readError) {
+        if ((readError as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw readError;
+      }
+      if (!Number.isSafeInteger(holder) || holder <= 0) {
+        throw new Error(`runner lock is malformed; refusing to remove a possibly live lease: ${lock}`);
+      }
+      let holderIsDead = false;
+      try {
+        process.kill(holder, 0);
+      } catch (probeError) {
+        if ((probeError as NodeJS.ErrnoException).code !== 'ESRCH') throw probeError;
+        holderIsDead = true;
+      }
+      if (!holderIsDead) {
+        throw new Error(
+          `another agent runner is live (pid ${holder}); refusing to start a second (would double-trade)`,
+        );
+      }
+      // Remove a dead holder, then loop back through O_EXCL. Two contenders
+      // can both observe the stale pid, but only one can win the next `wx`.
+      try {
+        unlinkSync(lock);
+      } catch (unlinkError) {
+        if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') throw unlinkError;
+      }
     }
-    if (alive) {
-      throw new Error(
-        `another agent runner is live (pid ${holder}); refusing to start a second (would double-trade)`,
-      );
-    }
-    writeFileSync(lock, String(process.pid));
   }
+  if (!acquired) throw new Error('could not acquire the agent runner lock');
   const release = () => {
     try {
       unlinkSync(lock);

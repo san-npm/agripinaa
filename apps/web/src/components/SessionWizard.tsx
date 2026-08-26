@@ -6,9 +6,9 @@ import {
 } from '@agripinaa/session-kit/scope';
 import { useCallback, useEffect, useState } from 'react';
 import { createPublicClient, http, isAddress } from 'viem';
-import { bsc, bscTestnet } from 'viem/chains';
 
 import { altanaClient, SUPPORTED_CHAINS } from '@/lib/altana';
+import { bsc, bscTestnet } from '@/lib/bsc-chain';
 import { SESSION_GRANTED_COPY, sessionGrantedBody } from '@/lib/session-copy';
 import { storeSession } from '@/lib/session-store';
 import { toast } from '@/lib/toast';

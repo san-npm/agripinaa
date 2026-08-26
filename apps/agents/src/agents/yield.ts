@@ -594,6 +594,22 @@ export async function managedYieldTick(
     aaveUsdt: fromBaseUnits(position.aaveATokenWei, USDT.decimals),
   };
 
+  // A relay can return PENDING before finality. Persist that uncertainty and
+  // refuse another write until the next reads prove the requested venue is
+  // live. This is deliberately fail-closed: an unresolved bundle must never
+  // be followed by a second rotation that could race it.
+  const pendingTarget = ctx.state.get<Venue | null>(ns('pendingTarget'), null);
+  if (pendingTarget) {
+    if (venue === pendingTarget) {
+      ctx.state.set(ns('pendingTarget'), null);
+      ctx.state.set(ns('venue'), venue);
+      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-confirmed', target: pendingTarget });
+    } else {
+      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-awaiting-chain', target: pendingTarget });
+    }
+    return;
+  }
+
   if (venue === 'none') {
     // Managed funds deploy in full: the router moves the account's entire USDT
     // balance, so there is no reserve/partial-deploy split as in own-capital mode.
@@ -608,6 +624,19 @@ export async function managedYieldTick(
     }
     const action = target === 'venus' ? 'toVenus' : 'toAave';
     const res = await executor.execute(action);
+    if (res.status !== 'CONFIRMED') {
+      if (res.status === 'PENDING') ctx.state.set(ns('pendingTarget'), target);
+      ctx.log({
+        ...base,
+        event: 'managed-tick',
+        decision: res.status === 'PENDING' ? 'enter-pending' : 'enter-failed',
+        target,
+        action,
+        txHash: res.txHash,
+        status: res.status,
+      });
+      return;
+    }
     ctx.state.set(ns('venue'), target);
     ctx.state.set(ns('betterStreak'), 0);
     ctx.log({ ...base, event: 'managed-tick', decision: 'enter', target, action, txHash: res.txHash, status: res.status });
@@ -632,11 +661,12 @@ export async function managedYieldTick(
   if (policy.checkIntervalMs > 0 && sinceLastCheckMs < policy.checkIntervalMs) return;
   ctx.state.set(ns('lastCheckAt'), checkedAt);
 
+  const previousStreak = ctx.state.get<number>(ns('betterStreak'), 0);
   const decision = policy.decide({
     venue,
     venusBps: rates.venusBps,
     aaveBps: rates.aaveBps,
-    betterStreak: ctx.state.get<number>(ns('betterStreak'), 0),
+    betterStreak: previousStreak,
   });
   ctx.state.set(ns('betterStreak'), decision.nextStreak);
 
@@ -648,7 +678,8 @@ export async function managedYieldTick(
   // no slot, and it applies only here: an idle deposit is put to work on the
   // first tick regardless, since this bounds churn between venues, not entry.
   const now = Date.now();
-  const sinceLastRotateMs = now - ctx.state.get<number>(ns('lastRotateAt'), 0);
+  const previousLastRotateAt = ctx.state.get<number>(ns('lastRotateAt'), 0);
+  const sinceLastRotateMs = now - previousLastRotateAt;
   if (policy.minRotationIntervalMs > 0 && sinceLastRotateMs < policy.minRotationIntervalMs) {
     ctx.log({
       ...base,
@@ -672,6 +703,29 @@ export async function managedYieldTick(
   // the next tick fire a second rotation against a mandate already moving.
   ctx.state.set(ns('lastRotateAt'), now);
   const res = await executor.execute(action);
+  if (res.status !== 'CONFIRMED') {
+    if (res.status === 'FAILED') {
+      // A terminal relay failure never happened on-chain, so restore the
+      // policy anchors that existed before the attempt. PENDING deliberately
+      // keeps the cooldown: retrying an unresolved bundle can double-rotate.
+      ctx.state.set(ns('lastRotateAt'), previousLastRotateAt);
+      ctx.state.set(ns('betterStreak'), previousStreak);
+    } else {
+      ctx.state.set(ns('pendingTarget'), decision.target);
+    }
+    ctx.log({
+      ...base,
+      event: 'managed-tick',
+      decision: res.status === 'PENDING' ? 'rotate-pending' : 'rotate-failed',
+      from: venue,
+      to: decision.target,
+      action,
+      edgeBps: decision.edgeBps,
+      txHash: res.txHash,
+      status: res.status,
+    });
+    return;
+  }
   ctx.state.set(ns('venue'), decision.target);
   ctx.log({ ...base, event: 'managed-tick', decision: 'rotate', from: venue, to: decision.target, action, edgeBps: decision.edgeBps, txHash: res.txHash, status: res.status });
 }

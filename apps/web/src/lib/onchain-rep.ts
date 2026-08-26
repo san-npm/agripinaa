@@ -3,8 +3,8 @@ import 'server-only';
 import { BSC_MAINNET, ERC8004_REGISTRIES } from '@agripinaa/shared';
 import { cacheLife } from 'next/cache';
 import { createPublicClient, fallback, http, parseAbi } from 'viem';
-import { bsc } from 'viem/chains';
 
+import { bsc } from './bsc-chain';
 import { VERIFIED_AGENTS } from './verified';
 
 const REP_ABI = parseAbi([

@@ -34,6 +34,7 @@ import {
   type GridPair,
 } from '../grid-core';
 import { ChassisOphisWallet } from '../ophis-wallet';
+import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentModule } from '../types';
 import { driftPoints, valueGapUsd, weightOfBase } from '../value-split';
 
@@ -234,6 +235,11 @@ export const weightRebalancerAgent: AgentModule = {
         buyToken: buyToken.address,
         sellAmount,
         slippageBps: SLIPPAGE_BPS,
+        minimumBuyAmount: independentMinimumBuyAmount({
+          sellAmount,
+          buyUnitsPerSellUnit: plan.side === 'sell' ? price : 1 / price,
+          buyDecimals: buyToken.decimals,
+        }),
       },
       {},
     );

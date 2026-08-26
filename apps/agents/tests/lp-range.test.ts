@@ -11,6 +11,7 @@ import {
   OUT_OF_RANGE_EXIT_MS,
   WEEK_MS,
   computeRebalanceLeg,
+  exitMinimums,
   formatWholeUnits,
   isInRange,
   lpRangeAgent,
@@ -145,6 +146,11 @@ test('computeRebalanceLeg handles zero balances without NaN swaps', () => {
   assert.equal(leg.sell, 'USDT');
   assert.ok(Math.abs(leg.notionalUsd - 5) < 1e-9);
   assert.equal(computeRebalanceLeg(0, 0, 800), null);
+});
+
+test('exitMinimums enforces a nonzero 90 percent floor on both simulated legs', () => {
+  assert.deepEqual(exitMinimums([1_000n, 2_000n]), [900n, 1_800n]);
+  assert.deepEqual(exitMinimums([0n, 10n]), [0n, 9n]);
 });
 
 test('pruneWindow drops entries outside the window, boundary exclusive', () => {

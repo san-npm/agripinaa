@@ -39,6 +39,26 @@ interface IERC20 {
 interface IAavePool {
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
     function withdraw(address asset, uint256 amount, address to) external returns (uint256);
+    function getUserAccountData(address user)
+        external
+        view
+        returns (
+            uint256 totalCollateralBase,
+            uint256 totalDebtBase,
+            uint256 availableBorrowsBase,
+            uint256 currentLiquidationThreshold,
+            uint256 ltv,
+            uint256 healthFactor
+        );
+}
+
+interface IAaveAToken {
+    function UNDERLYING_ASSET_ADDRESS() external view returns (address);
+    function POOL() external view returns (address);
+}
+
+interface IVenusComptroller {
+    function getAssetsIn(address account) external view returns (address[] memory);
 }
 
 /// @dev Venus is a Compound-v2 fork: mint/redeem return an error code (0 == ok).
@@ -48,6 +68,9 @@ interface IVToken {
     function balanceOf(address account) external view returns (uint256);
     function transfer(address to, uint256 amount) external returns (bool);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function borrowBalanceStored(address account) external view returns (uint256);
+    function comptroller() external view returns (address);
+    function underlying() external view returns (address);
 }
 
 contract AgripinaaYieldRouter {
@@ -68,6 +91,11 @@ contract AgripinaaYieldRouter {
     error VenusRedeemFailed(uint256 code);
     error TransferFailed();
     error ApproveFailed();
+    error InvalidDependency(address dependency);
+    error UnderlyingMismatch(address receiptToken, address expected, address actual);
+    error PoolMismatch(address receiptToken, address expected, address actual);
+    error EncumberedAavePosition(uint256 debtBase);
+    error EncumberedVenusPosition(address debtMarket, uint256 debtAmount);
 
     modifier nonReentrant() {
         if (_locked != 1) revert Reentrancy();
@@ -77,6 +105,19 @@ contract AgripinaaYieldRouter {
     }
 
     constructor(address usdt, address aUsdt, address aavePool, address vUsdt) {
+        _requireContract(usdt);
+        _requireContract(aUsdt);
+        _requireContract(aavePool);
+        _requireContract(vUsdt);
+
+        address aaveUnderlying = IAaveAToken(aUsdt).UNDERLYING_ASSET_ADDRESS();
+        if (aaveUnderlying != usdt) revert UnderlyingMismatch(aUsdt, usdt, aaveUnderlying);
+        address tokenPool = IAaveAToken(aUsdt).POOL();
+        if (tokenPool != aavePool) revert PoolMismatch(aUsdt, aavePool, tokenPool);
+        address venusUnderlying = IVToken(vUsdt).underlying();
+        if (venusUnderlying != usdt) revert UnderlyingMismatch(vUsdt, usdt, venusUnderlying);
+        _requireContract(IVToken(vUsdt).comptroller());
+
         USDT = IERC20(usdt);
         AUSDT = IERC20(aUsdt);
         AAVE = IAavePool(aavePool);
@@ -91,7 +132,7 @@ contract AgripinaaYieldRouter {
             // aTokens are minted straight to the user's account.
             AAVE.supply(address(USDT), amount, msg.sender, 0);
         }
-        emit Rotated(msg.sender, this.toAave.selector, amount);
+        if (amount > 0) emit Rotated(msg.sender, this.toAave.selector, amount);
     }
 
     /// @notice Move all of the caller's USDT (unwinding any Aave position) into Venus.
@@ -108,7 +149,7 @@ contract AgripinaaYieldRouter {
             uint256 minted = VUSDT.balanceOf(address(this)) - preMint;
             if (!VUSDT.transfer(msg.sender, minted)) revert TransferFailed();
         }
-        emit Rotated(msg.sender, this.toVenus.selector, amount);
+        if (amount > 0) emit Rotated(msg.sender, this.toVenus.selector, amount);
     }
 
     /// @notice Unwind everything back to the caller's plain USDT balance (this is "withdraw").
@@ -117,7 +158,7 @@ contract AgripinaaYieldRouter {
         if (amount > 0) {
             if (!USDT.transfer(msg.sender, amount)) revert TransferFailed();
         }
-        emit Rotated(msg.sender, this.toIdle.selector, amount);
+        if (amount > 0) emit Rotated(msg.sender, this.toIdle.selector, amount);
     }
 
     /**
@@ -137,6 +178,7 @@ contract AgripinaaYieldRouter {
         // 1. Venus: pull ONLY the caller's vTokens and redeem exactly those.
         uint256 vBal = VUSDT.balanceOf(account);
         if (vBal > 0) {
+            _requireNoVenusDebt(account);
             if (!VUSDT.transferFrom(account, address(this), vBal)) revert TransferFailed();
             uint256 code = VUSDT.redeem(vBal);
             if (code != 0) revert VenusRedeemFailed(code);
@@ -146,6 +188,8 @@ contract AgripinaaYieldRouter {
         //    (not type(max)), so a stray aToken balance is left untouched.
         uint256 aBal = AUSDT.balanceOf(account);
         if (aBal > 0) {
+            (, uint256 debtBase,,,,) = AAVE.getUserAccountData(account);
+            if (debtBase != 0) revert EncumberedAavePosition(debtBase);
             if (!AUSDT.transferFrom(account, address(this), aBal)) revert TransferFailed();
             AAVE.withdraw(address(USDT), aBal, address(this));
         }
@@ -165,5 +209,21 @@ contract AgripinaaYieldRouter {
     function _approve(IERC20 token, address spender, uint256 amount) private {
         if (!token.approve(spender, 0)) revert ApproveFailed();
         if (!token.approve(spender, amount)) revert ApproveFailed();
+    }
+
+    function _requireNoVenusDebt(address account) private view {
+        address comptroller = VUSDT.comptroller();
+        _requireContract(comptroller);
+        address[] memory markets = IVenusComptroller(comptroller).getAssetsIn(account);
+        for (uint256 i; i < markets.length; ++i) {
+            uint256 debt = IVToken(markets[i]).borrowBalanceStored(account);
+            if (debt != 0) revert EncumberedVenusPosition(markets[i], debt);
+        }
+    }
+
+    function _requireContract(address dependency) private view {
+        if (dependency == address(0) || dependency.code.length == 0) {
+            revert InvalidDependency(dependency);
+        }
     }
 }

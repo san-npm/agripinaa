@@ -9,6 +9,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { collectProofEvents } from './proof';
+import { RequestGate } from './request-gate';
 import { loadManaged, upsertManaged, type ManagedAccount } from './managed';
 import type { AgentContext, AgentModule } from './types';
 
@@ -31,6 +32,15 @@ export interface ManagerSet {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ROUTER_SIGNATURES = new Set<string>(Object.values(ROUTER_ACTIONS).map((a) => a.signature));
+const manageGate = new RequestGate(20, 60_000, 8);
+
+function requestIdentity(req: IncomingMessage): string {
+  const remote = req.socket.remoteAddress ?? 'unknown';
+  const cloudflareIp = req.headers['cf-connecting-ip'];
+  const fromLocalTunnel = remote === '::1' || remote === '127.0.0.1' || remote === '::ffff:127.0.0.1';
+  if (fromLocalTunnel && typeof cloudflareIp === 'string' && cloudflareIp.length <= 64) return cloudflareIp;
+  return remote;
+}
 
 /**
  * Reject any manage request that isn't a real, on-chain, router-scoped session
@@ -264,6 +274,15 @@ export function startX402Server(opts: {
         res.end(JSON.stringify({ error: 'agent does not support managed mode' }));
         return;
       }
+      const permit = manageGate.enter(requestIdentity(req));
+      if (!permit.ok) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': String(permit.retryAfterSeconds),
+        });
+        res.end(JSON.stringify({ error: 'too many managed-session validations' }));
+        return;
+      }
       try {
         const body = deserializeSession(await readBody(req)) as {
           account?: string;
@@ -288,6 +307,8 @@ export function startX402Server(opts: {
       } catch (err) {
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'bad request' }));
+      } finally {
+        permit.release();
       }
       return;
     }

@@ -15,7 +15,8 @@
 
 - [ ] **Record the demo video** (~3 min): script + shot checklist in
       docs/demo-video-script.md. The HF drill re-runs any time with
-      `pnpm --filter @agripinaa/agents exec tsx src/drill-hf.ts` (keep
+      `pnpm --filter @agripinaa/agents exec tsx src/drill-hf.ts 1 --confirm-mainnet-borrow`
+      (this explicitly authorizes a bounded 1 USDT mainnet borrow; keep
       the runner up). Try the passkey wizard once on your phone first.
 - [ ] **Walk the full journey once** on a fresh browser: land → category →
       profile → activate (testnet is fine) → dashboard → revoke. You are

@@ -5,6 +5,8 @@
  * from api.cow.fi/bnb).
  */
 
+import { concatHex, hashTypedData, isAddress, keccak256, numberToHex, toBytes, type Hex } from 'viem';
+
 export type Address = `0x${string}`;
 
 export type OrderKind = 'sell' | 'buy';
@@ -21,6 +23,11 @@ export interface CowOrder {
   sellAmount: string;
   /** Signed buy amount (the limit), base units. */
   buyAmount: string;
+  receiver: string;
+  feeAmount: string;
+  partiallyFillable: boolean;
+  sellTokenBalance: string;
+  buyTokenBalance: string;
   executedSellAmount: string;
   executedBuyAmount: string;
   executedFeeAmount?: string;
@@ -172,13 +179,83 @@ export class CowOrderbookClient {
  * BSC is a CoW-hosted deployment, so the settlement domain is shared with
  * CoW Swap and every other integrator on the chain.
  */
-export function isOphisOrder(order: Pick<CowOrder, 'fullAppData'>): boolean {
-  if (!order.fullAppData) return false;
+export function isOphisOrder(order: Pick<CowOrder, 'appData' | 'fullAppData'>): boolean {
+  if (!order.fullAppData || !/^0x[0-9a-fA-F]{64}$/.test(order.appData)) return false;
   try {
+    if (keccak256(toBytes(order.fullAppData)).toLowerCase() !== order.appData.toLowerCase()) {
+      return false;
+    }
     const parsed: unknown = JSON.parse(order.fullAppData);
     if (!parsed || typeof parsed !== 'object') return false;
     return (parsed as { appCode?: unknown }).appCode === 'ophis';
   } catch {
     return false;
   }
+}
+
+const GPV2_ORDER_TYPES = {
+  Order: [
+    { name: 'sellToken', type: 'address' },
+    { name: 'buyToken', type: 'address' },
+    { name: 'receiver', type: 'address' },
+    { name: 'sellAmount', type: 'uint256' },
+    { name: 'buyAmount', type: 'uint256' },
+    { name: 'validTo', type: 'uint32' },
+    { name: 'appData', type: 'bytes32' },
+    { name: 'feeAmount', type: 'uint256' },
+    { name: 'kind', type: 'string' },
+    { name: 'partiallyFillable', type: 'bool' },
+    { name: 'sellTokenBalance', type: 'string' },
+    { name: 'buyTokenBalance', type: 'string' },
+  ],
+} as const;
+
+/**
+ * Recompute the canonical BSC CoW UID (order digest + owner + validTo). This
+ * binds every order field used by receipts/leaderboards back to the UID the
+ * caller requested, so an API response cannot silently splice fields from a
+ * different order into a valid-looking Ophis document.
+ */
+export function isOrderUidValid(order: CowOrder): boolean {
+  if (!/^0x[0-9a-fA-F]{112}$/.test(order.uid) || !isAddress(order.owner) || !isAddress(order.receiver)) {
+    return false;
+  }
+  try {
+    const digest = hashTypedData({
+      domain: {
+        name: 'Gnosis Protocol',
+        version: 'v2',
+        chainId: 56,
+        verifyingContract: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
+      },
+      types: GPV2_ORDER_TYPES,
+      primaryType: 'Order',
+      message: {
+        sellToken: order.sellToken as Hex,
+        buyToken: order.buyToken as Hex,
+        receiver: order.receiver as Hex,
+        sellAmount: BigInt(order.sellAmount),
+        buyAmount: BigInt(order.buyAmount),
+        validTo: order.validTo,
+        appData: order.appData as Hex,
+        feeAmount: BigInt(order.feeAmount),
+        kind: order.kind,
+        partiallyFillable: order.partiallyFillable,
+        sellTokenBalance: order.sellTokenBalance,
+        buyTokenBalance: order.buyTokenBalance,
+      },
+    });
+    const expected = concatHex([
+      digest,
+      order.owner as Hex,
+      numberToHex(order.validTo, { size: 4 }),
+    ]);
+    return expected.toLowerCase() === order.uid.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+export function isAuthenticOphisOrder(order: CowOrder): boolean {
+  return isOphisOrder(order) && isOrderUidValid(order);
 }
