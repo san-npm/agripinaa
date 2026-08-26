@@ -144,6 +144,30 @@ test('a small API limit walks an entire raw window before advancing upstream', (
   );
 });
 
+test('an API cursor remains valid when the continuation changes its page limit', () => {
+  // The listing models one fixed upstream window plus its fixed claimed-only
+  // injection. A client may omit `limit` on the next request; changing the
+  // slice size must not invalidate the cursor or skip any identity.
+  const listing = mergeRegistryWindow(classified(100), classified(8, 1_001));
+  const first = pageRegistryWindow(listing, 100, undefined, '2', '0123456789abcdef');
+  const second = pageRegistryWindow(
+    listing,
+    24,
+    first.nextCursor ?? undefined,
+    '2',
+    '0123456789abcdef',
+  );
+
+  assert.equal(first.items.length, 100);
+  assert.equal(second.items.length, 8);
+  assert.equal(second.nextCursor, '2');
+  assert.equal(
+    new Set([...first.items, ...second.items].map((a) => a.tokenId)).size,
+    108,
+    'the changed limit neither repeats nor skips a card',
+  );
+});
+
 test('a changed upstream window expires its local cursor instead of skipping cards', () => {
   const raw = classified(100);
   const first = pageRegistryWindow(raw, 24, undefined, '2', '0123456789abcdef');
