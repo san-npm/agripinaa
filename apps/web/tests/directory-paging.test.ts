@@ -12,6 +12,7 @@ import {
   RegistryCursorInvalidError,
   directoryPage,
   directoryPageIndex,
+  excludeInjectedRegistryEntries,
   mergeRegistryWindow,
   pageRegistryWindow,
   rankClaimedSearchResults,
@@ -114,6 +115,24 @@ test('locally injected cards do not displace entries behind the upstream cursor'
     new Set(shown.map((a) => a.tokenId)),
     new Set([...injected, ...raw].map((a) => a.tokenId)),
     'the next upstream cursor may advance past all 100 because all 100 remain reachable',
+  );
+});
+
+test('an injected native-category agent is removed if a later source window reaches it', () => {
+  const lateNative = classified(1, 1_001)[0]!;
+  const first = mergeRegistryWindow(classified(100), [lateNative]);
+  const later = excludeInjectedRegistryEntries(
+    [lateNative, ...classified(10, 101)],
+    [lateNative],
+  );
+  const shown = [...first, ...later].map((a) => a.tokenId);
+
+  assert.equal(shown.filter((id) => id === lateNative.tokenId).length, 1);
+  assert.equal(later.some((a) => a.tokenId === lateNative.tokenId), false);
+  assert.equal(
+    later.length,
+    10,
+    'only the already-injected identity is removed from the later source window',
   );
 });
 
