@@ -73,6 +73,10 @@ S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync di
 # Enforce 0600 on the remote regardless of what the local modes were (some
 # key files predate the chmod-on-write and could be 0644).
 S 'chmod 700 ~/agripinaa/wallets && chmod 600 ~/agripinaa/wallets/*.json'
+# Repair state created by older runners too. Current writes are already atomic
+# and private, but a deploy must not leave a pre-fix managed-session registry
+# readable by other users on the VM.
+S 'if [ -d ~/agripinaa/apps/agents/data ]; then chmod 700 ~/agripinaa/apps/agents/data; find ~/agripinaa/apps/agents/data -maxdepth 1 -type f -name "*.json" -exec chmod 600 {} +; fi'
 
 echo "== installing systemd services (user: $RUSER)…"
 # The checkout lives under the remote user's home, not a fixed path; every unit
