@@ -136,6 +136,26 @@ test('an injected native-category agent is removed if a later source window reac
   );
 });
 
+test('a transferred listing is retained instead of being hidden by its stale injection', () => {
+  const stale = classified(1, 1_001)[0]!;
+  const transferred = {
+    ...stale,
+    owner: '0x2222222222222222222222222222222222222222',
+    claimed: false,
+    claimedFields: [],
+  } satisfies AgentSummary;
+
+  const later = excludeInjectedRegistryEntries([transferred], [stale]);
+  assert.deepEqual(later, [transferred]);
+
+  const reconciledFirst = mergeRegistryWindow([transferred], [stale]);
+  assert.deepEqual(
+    reconciledFirst,
+    [transferred],
+    'a stale injected owner cannot replace fresher source ownership',
+  );
+});
+
 test('registry cursors can retain a position inside a complete upstream window', () => {
   assert.equal(validRegistryCursor('1'), true);
   assert.equal(validRegistryCursor('w:0:24:0123456789abcdef'), true);
