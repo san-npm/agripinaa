@@ -508,6 +508,24 @@ export function excludeInjectedRegistryEntries(
 }
 
 /**
+ * Drop an earlier injection when a later source window proves that token has a
+ * different owner. The caller can then rebuild its accumulated listing so the
+ * stale owner-provided card disappears instead of sitting beside the transfer.
+ */
+export function reconcileInjectedRegistryEntries(
+  injected: readonly AgentSummary[],
+  later: readonly AgentSummary[],
+): AgentSummary[] {
+  const laterOwners = new Map(
+    later.map((a) => [normalizeAgentId(a.tokenId), registryOwner(a)]),
+  );
+  return injected.filter((a) => {
+    const laterOwner = laterOwners.get(normalizeAgentId(a.tokenId));
+    return laterOwner === undefined || laterOwner === registryOwner(a);
+  });
+}
+
+/**
  * The listing the walk has read so far, ranked and de-duplicated end to end.
  *
  * `rankAndDedupe` does the collapsing over everything read at once, which is
@@ -623,11 +641,11 @@ export async function listRegistryPage(
   cursor?: string,
 ): Promise<RegistryPage> {
   const pageIndex = directoryPageIndex(cursor);
-  const reads: AgentSummary[][] = [];
+  const sourceReads: AgentSummary[][] = [];
   let at: string | undefined;
   let listingSource = 'unknown';
   let indexExhausted = false;
-  let page = directoryPage(reads, pageIndex);
+  let page = directoryPage(sourceReads, pageIndex);
   const claims = category ? claimsByTokenId(await storedClaims()) : null;
   let injected: AgentSummary[] = [];
 
@@ -659,10 +677,17 @@ export async function listRegistryPage(
         ),
       );
     }
-    reads.push(
-      read === 0
-        ? mergeRegistryWindow(indexed, injected)
-        : excludeInjectedRegistryEntries(indexed, injected),
+    if (read > 0) {
+      injected = reconcileInjectedRegistryEntries(injected, indexed);
+    }
+    sourceReads.push(indexed);
+    // Rebuild from the reconciled set. If this window revealed a transfer,
+    // the stale injection is removed from the accumulated first window as the
+    // fresh owner is retained here; the two can never survive together.
+    const reads = sourceReads.map((items, index) =>
+      index === 0
+        ? mergeRegistryWindow(items, injected)
+        : excludeInjectedRegistryEntries(items, injected),
     );
     page = directoryPage(reads, pageIndex);
     if (batch.nextCursor === null) {

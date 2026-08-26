@@ -16,6 +16,7 @@ import {
   mergeRegistryWindow,
   pageRegistryWindow,
   rankClaimedSearchResults,
+  reconcileInjectedRegistryEntries,
   validRegistryCursor,
 } from '../src/lib/data';
 
@@ -145,15 +146,13 @@ test('a transferred listing is retained instead of being hidden by its stale inj
     claimedFields: [],
   } satisfies AgentSummary;
 
-  const later = excludeInjectedRegistryEntries([transferred], [stale]);
-  assert.deepEqual(later, [transferred]);
+  const injection = reconcileInjectedRegistryEntries([stale], [transferred]);
+  const first = mergeRegistryWindow(classified(10), injection);
+  const later = excludeInjectedRegistryEntries([transferred], injection);
+  const shown = [...first, ...later].filter((a) => a.tokenId === stale.tokenId);
 
-  const reconciledFirst = mergeRegistryWindow([transferred], [stale]);
-  assert.deepEqual(
-    reconciledFirst,
-    [transferred],
-    'a stale injected owner cannot replace fresher source ownership',
-  );
+  assert.deepEqual(injection, [], 'the stale first-window injection is removed');
+  assert.deepEqual(shown, [transferred], 'only the fresh owner survives the walk');
 });
 
 test('registry cursors can retain a position inside a complete upstream window', () => {
