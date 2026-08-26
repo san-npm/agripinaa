@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { rankAndDedupe } from '@agripinaa/agent-index';
 import type { AgentSummary } from '@agripinaa/agent-index/types';
 import type { ClaimRecord } from '../src/lib/claims';
 
@@ -151,8 +152,64 @@ test('a transferred listing is retained instead of being hidden by its stale inj
   const later = excludeInjectedRegistryEntries([transferred], injection);
   const shown = [...first, ...later].filter((a) => a.tokenId === stale.tokenId);
 
-  assert.deepEqual(injection, [], 'the stale first-window injection is removed');
+  assert.deepEqual(injection, [transferred], 'the stale injection is replaced in place');
   assert.deepEqual(shown, [transferred], 'only the fresh owner survives the walk');
+});
+
+test('transfer reconciliation uses raw evidence hidden behind a ranked representative', () => {
+  const stale = { ...classified(1, 1_001)[0]!, name: 'Shared agent' };
+  const transferred = {
+    ...stale,
+    owner: '0x2222222222222222222222222222222222222222',
+    claimed: false,
+    claimedFields: [],
+  } satisfies AgentSummary;
+  const representative = {
+    ...transferred,
+    tokenId: '2001',
+    id: '56-2001',
+    description: 'The stronger indexed representative.',
+  } satisfies AgentSummary;
+  const ranked = rankAndDedupe([transferred, representative]);
+  assert.equal(ranked.some((a) => a.tokenId === transferred.tokenId), false);
+
+  const injection = reconcileInjectedRegistryEntries(
+    [stale],
+    [transferred, representative],
+    ranked,
+  );
+  const later = excludeInjectedRegistryEntries(ranked, injection);
+  assert.deepEqual(injection, [representative]);
+  assert.deepEqual(later, [], 'the representative cannot duplicate the refreshed slot');
+});
+
+test('replacing a stale injection preserves the previously served page boundary', () => {
+  const stale = classified(1, 1_001)[0]!;
+  const transferred = {
+    ...stale,
+    owner: '0x2222222222222222222222222222222222222222',
+    claimed: false,
+    claimedFields: [],
+  } satisfies AgentSummary;
+  const raw = classified(100);
+  const before = mergeRegistryWindow(raw, [stale]);
+  const after = mergeRegistryWindow(
+    raw,
+    reconcileInjectedRegistryEntries([stale], [transferred]),
+  );
+  const served = directoryPage([before], 3).items;
+  const expectedContinuation = directoryPage([before], 4).items;
+  const continuation = directoryPage([after], 4).items;
+
+  assert.equal(before.length, after.length);
+  assert.deepEqual(
+    continuation.map((a) => a.tokenId),
+    expectedContinuation.map((a) => a.tokenId),
+  );
+  assert.equal(
+    Number(continuation[0]?.tokenId),
+    Number(served.at(-1)?.tokenId) + 1,
+  );
 });
 
 test('registry cursors can retain a position inside a complete upstream window', () => {
