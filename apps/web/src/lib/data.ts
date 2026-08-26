@@ -184,12 +184,11 @@ function tokenIdSet(agents: AgentSummary[]): Set<string> {
  * resolve those ids itself. They join the unverified registry list: a claim
  * says who wrote the description, never that we vouch for the agent.
  *
- * A claim only names candidates. `claimForCategory` decides membership on the
- * merged record and only accepts a category that the claim actually supplies.
- * An id with any native category is left to the upstream category listing, so
- * injecting it here cannot duplicate a card from a later upstream window.
- * More ids are resolved than a page can hold (up to the read cap), so dropped
- * candidates leave the slots behind them fillable.
+ * A claim only names candidates. `already` suppresses identities actually seen
+ * in the active listing window; native metadata alone does not. After a detail
+ * resolve, `claimForCategory` accepts only records whose displayed category
+ * matches this hub. More ids are resolved than a page can hold (up to the read
+ * cap), so dropped candidates leave the slots behind them fillable.
  */
 async function claimedInCategory(
   category: Category,
@@ -208,6 +207,32 @@ async function claimedInCategory(
     }),
   );
   return resolved.filter((a): a is NonNullable<typeof a> => a != null).slice(0, slots);
+}
+
+/**
+ * The deterministic claimed injection attached to the first API window.
+ *
+ * Resolve membership against what the active list source actually returned in
+ * its first category window. A native category from `getAgent` is not enough
+ * to suppress an agent: the live list can lag that detail, or the merged source
+ * can currently be serving a committed snapshot. Every continuation rebuilds
+ * this same cached set so an injected identity can be removed if a later
+ * upstream window does contain it.
+ */
+async function claimedApiWindow(category: Category): Promise<AgentSummary[]> {
+  'use cache';
+  cacheLife('minutes');
+  const [raw, records] = await Promise.all([
+    readRegistryWindow(category),
+    storedClaims(),
+  ]);
+  const claims = claimsByTokenId(records);
+  return claimedInCategory(
+    category,
+    claims,
+    tokenIdSet(rankAndDedupe(raw.items)),
+    CLAIMED_PER_API_WINDOW,
+  );
 }
 
 /**
@@ -315,22 +340,20 @@ async function listAgentWindow(
   const raw = await readRegistryWindow(category, position.upstreamCursor);
   const claims = claimsByTokenId(await storedClaims());
   const ranked = rankAndDedupe(raw.items).map((a) => withClaim(a, claims));
-  // The upstream category filter cannot see a category supplied by an owner
-  // claim. Resolve those records into the first API window, and keep them in
-  // every local slice of that window. Later upstream windows annotate only, so
-  // the claimed records cannot repeat as the caller advances. The injection
-  // count is fixed per upstream window so changing `limit` while following a
-  // cursor cannot change this listing or its fingerprint.
+  // Resolve the fixed first-window injection on every continuation. It is
+  // prepended only to that first window; later windows remove the same ids if
+  // the active listing source eventually reaches one, so an index-lagged or
+  // snapshot-only native category is preserved without producing two cards.
+  // The injection count is independent of `limit`, keeping local fingerprints
+  // stable when a continuation changes its page size.
   const claimed =
-    includeClaimedCategory && category && position.upstreamCursor === undefined
-      ? await claimedInCategory(
-          category,
-          claims,
-          tokenIdSet(ranked),
-          CLAIMED_PER_API_WINDOW,
-        )
+    includeClaimedCategory && category
+      ? await claimedApiWindow(category)
       : [];
-  const listing = mergeRegistryWindow(ranked, claimed);
+  const listing =
+    position.upstreamCursor === undefined
+      ? mergeRegistryWindow(ranked, claimed)
+      : excludeInjectedRegistryEntries(ranked, claimed);
   const windowId = registryWindowId(listing);
   const page = pageRegistryWindow(listing, limit, cursor, raw.nextCursor, windowId);
   return { ...raw, nextCursor: page.nextCursor, items: await withLiveness(page.items) };
@@ -440,6 +463,15 @@ export function mergeRegistryWindow(
     ...injected,
     ...raw.filter((a) => !injectedIds.has(normalizeAgentId(a.tokenId))),
   ];
+}
+
+/** Remove identities already prepended to the first window from later ones. */
+export function excludeInjectedRegistryEntries(
+  raw: readonly AgentSummary[],
+  injected: readonly AgentSummary[],
+): AgentSummary[] {
+  const injectedIds = new Set(injected.map((a) => normalizeAgentId(a.tokenId)));
+  return raw.filter((a) => !injectedIds.has(normalizeAgentId(a.tokenId)));
 }
 
 /**
@@ -564,6 +596,7 @@ export async function listRegistryPage(
   let indexExhausted = false;
   let page = directoryPage(reads, pageIndex);
   const claims = category ? claimsByTokenId(await storedClaims()) : null;
+  let injected: AgentSummary[] = [];
 
   for (let read = 0; read < MAX_INDEX_READS; read++) {
     const batch = await listAgentWindow(category, INDEX_WINDOW_SIZE, at, false);
@@ -571,20 +604,23 @@ export async function listRegistryPage(
     const indexed = batch.items.filter(
       (a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId)),
     );
-    // Owner-claimed category entries do not exist in the upstream category
-    // result. Resolve them only once, then prepend them in addition to the
-    // complete first raw window; never exchange them for registrations the
-    // upstream cursor has already advanced past.
-    const claimed =
-      read === 0 && category && claims
-        ? await claimedInCategory(
-            category,
-            claims,
-            new Set([...PINNED_ID_SET, ...tokenIdSet(indexed)]),
-            claimedHubSlots(DIRECTORY_PAGE_SIZE),
-          )
-        : [];
-    reads.push(mergeRegistryWindow(indexed, claimed));
+    // Resolve records absent from the active first category window only once,
+    // then prepend them in addition to that complete window. A later window
+    // may catch up to a native-category record the detail endpoint resolved
+    // earlier; filtering the injected ids below keeps that card singular.
+    if (read === 0 && category && claims) {
+      injected = await claimedInCategory(
+        category,
+        claims,
+        new Set([...PINNED_ID_SET, ...tokenIdSet(indexed)]),
+        claimedHubSlots(DIRECTORY_PAGE_SIZE),
+      );
+    }
+    reads.push(
+      read === 0
+        ? mergeRegistryWindow(indexed, injected)
+        : excludeInjectedRegistryEntries(indexed, injected),
+    );
     page = directoryPage(reads, pageIndex);
     if (batch.nextCursor === null) {
       indexExhausted = true;

@@ -79,20 +79,22 @@ export function applyClaim<T extends AgentSummary>(
 }
 
 /**
- * Merge a claim that supplies an otherwise missing category, or return null.
+ * Merge a claim for one category hub, or return null when the merged record
+ * does not belong there.
  *
- * This helper is specifically for injecting records the upstream category
- * filter cannot see. A registration with any native category is already
- * discoverable through that filter and must not be injected, even when its
- * native category matches, or it would appear again in a later upstream
- * window. `other` classifies nothing, so it places nothing.
+ * A caller decides whether the active listing source already contains the
+ * record. Native metadata alone is not proof of that: the list can lag or fall
+ * back to a snapshot while the detail/registry lookup resolves a fresher
+ * registration. Metadata still wins the merge, so a native `grid` record
+ * cannot be placed in `yield`; it can only be preserved in `grid` when the
+ * listing source is known to have missed it. `other` classifies nothing.
  */
 export function claimForCategory<T extends AgentSummary>(
   agent: T,
   claim: ClaimRecord,
   category: Category,
 ): T | null {
-  if (agent.category != null) return null;
+  if (claim.fields.category !== category) return null;
   const merged = applyClaim(agent, claim);
   return merged.category === category ? merged : null;
 }
