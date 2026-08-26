@@ -11,6 +11,7 @@ import {
   OUT_OF_RANGE_EXIT_MS,
   WEEK_MS,
   computeRebalanceLeg,
+  exitMinimums,
   formatWholeUnits,
   isInRange,
   lpRangeAgent,
@@ -145,6 +146,11 @@ test('computeRebalanceLeg handles zero balances without NaN swaps', () => {
   assert.equal(leg.sell, 'USDT');
   assert.ok(Math.abs(leg.notionalUsd - 5) < 1e-9);
   assert.equal(computeRebalanceLeg(0, 0, 800), null);
+});
+
+test('exitMinimums enforces a nonzero 90 percent floor on both simulated legs', () => {
+  assert.deepEqual(exitMinimums([1_000n, 2_000n]), [900n, 1_800n]);
+  assert.deepEqual(exitMinimums([0n, 10n]), [0n, 9n]);
 });
 
 test('pruneWindow drops entries outside the window, boundary exclusive', () => {
@@ -304,7 +310,7 @@ function fakeCtx(opts: LpFakeOpts): {
       const { address, functionName, args } = call;
       /*
        * executeOphisSwap reads the sell token's decimals before it quotes, so a
-       * decimals read is the point of no return into the real swap library. Record
+       * decimals read is the point of no return into the live swap library. Record
        * it and stop there: the tests assert which swaps the agent decides to make,
        * not the orderbook round trip.
        */
@@ -533,7 +539,7 @@ test('inventory prep is refused when the daily breaker says no', async () => {
   assert.equal(skipped!['reason'], 'daily-cap');
   assert.deepEqual(swapAttempts, []);
   assert.deepEqual(writes, []);
-  /* Still honest about why it did not mint. */
+  /* Still explicit about why it did not mint. */
   assert.ok(events.includes('mint-skipped'));
 });
 
@@ -645,7 +651,7 @@ test('weeklyBudget counts both windows against the published ceiling', () => {
 /*
  * prepareInventory checked rebalanceTimes and refused at the ceiling, but only
  * wrote the pruned array back inside the refusal branch: passing the check
- * recorded nothing. Its real ceiling was the daily breaker alone, 2 a day and
+ * recorded nothing. Its effective ceiling was the daily breaker alone, 2 a day and
  * so 14 a week, against the maxRebalancesPerWeek: 4 published at the agent's
  * permanent ERC-8004 tokenURI.
  */

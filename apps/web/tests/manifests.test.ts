@@ -3,8 +3,32 @@ import { test } from 'node:test';
 
 import { buildManifest, MANIFEST_SLUGS } from '../src/lib/manifests';
 
-test('every registered agent has a manifest', () => {
-  assert.deepEqual([...MANIFEST_SLUGS].sort(), ['grid', 'health-factor', 'lp-range', 'yield']);
+test('every agent in the registry has a manifest, registered or not', () => {
+  // An agent needs its manifest served BEFORE it can be registered: register.ts
+  // preflights the URL, and the tokenURI it mints is permanent.
+  assert.deepEqual(
+    [...MANIFEST_SLUGS].sort(),
+    [
+      'grid',
+      'grid-b',
+      'health-factor',
+      'lp-range',
+      'venus-guardian',
+      'weight-rebalancer',
+      'yield',
+      'yield-b',
+    ],
+  );
+});
+
+test('an unregistered agent is served with its own body, not a placeholder', () => {
+  const m = buildManifest('grid-b', 'https://runner.example.com');
+  assert.equal(m?.name, 'Agripinaa BTC Grid');
+  assert.equal(m?.category, 'grid');
+  // The served pair is BTCB/USDT, not a second dollar quote on grid's WBNB: the
+  // manifest is what a judge reads to tell the two grid agents apart.
+  assert.equal(m?.execution.pair, 'BTCB/USDT');
+  assert.equal(m?.x402.endpoint, 'https://runner.example.com/grid-b/status');
 });
 
 test('injects the runner base into the x402 endpoint', () => {

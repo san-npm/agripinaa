@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   PROOF_AGENTS,
+  agentBySlug,
+  type ProofAgent,
   type ProofAgentSlug,
   type ProofEvent,
 } from '@agripinaa/shared';
@@ -58,10 +60,21 @@ function eventId(
   return `${agentId}:${event}:${ref ?? at}`;
 }
 
-function firstHealthFactorAfter(entries: readonly LogEntry[], at: string): number | undefined {
+/**
+ * The health factor the SAME agent read just after a repair, which is what
+ * makes the repair legible ("restoring HF to 1.71"). Scoped to the entry's own
+ * slug: two guardians run on two protocols (Aave and Venus) and both log `hf`,
+ * so a hardcoded slug would decorate one agent's repair with the other's
+ * position.
+ */
+function firstHealthFactorAfter(
+  entries: readonly LogEntry[],
+  at: string,
+  slug: ProofAgentSlug,
+): number | undefined {
   const atMs = Date.parse(at);
   const match = entries
-    .filter((entry) => entry.agent === 'health-factor' && entry.event === 'hf')
+    .filter((entry) => entry.agent === slug && entry.event === 'hf')
     .map((entry) => ({ at: validAt(entry.at), hf: numberValue(entry.hf) }))
     .filter((entry): entry is { at: string; hf: number } => entry.at !== undefined && entry.hf !== undefined)
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
@@ -69,12 +82,44 @@ function firstHealthFactorAfter(entries: readonly LogEntry[], at: string): numbe
   return match?.hf;
 }
 
-function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandidate | null {
+/**
+ * The two symbols a grid trades, base first, read from its own registry record
+ * rather than from the slug. Two grids run this same event now (WBNB/USDT and
+ * BTCB/USDT) and a third would be one record away, so naming the legs per slug
+ * in code is how a new grid's fills end up labelled as an older one's market.
+ * A record with no published pair falls back to what the line itself carries.
+ */
+function gridLegs(
+  slug: ProofAgentSlug,
+  side: 'buy' | 'sell',
+  clipToken: string | undefined,
+): { from: string; to: string } {
+  const [base, quote] = (agentBySlug(slug)?.manifest.execution.pair ?? '').split('/');
+  if (!base || !quote) return { from: clipToken ?? 'inventory', to: 'the paired asset' };
+  return side === 'sell' ? { from: base, to: quote } : { from: quote, to: base };
+}
+
+const VENUE_NAMES: Record<string, string> = { aave: 'Aave', venus: 'Venus' };
+
+/**
+ * One log line into one public feed row, or null.
+ *
+ * Dispatch is on the agent's CATEGORY plus the event name, never on the slug:
+ * agents in a category share their strategy module and therefore their log
+ * shapes (grid with grid-b, health-factor with venus-guardian, yield with
+ * yield-b), and a slug literal here is the reason a newly registered agent
+ * ticks, trades, and shows an empty track record on the marketplace.
+ */
+function mapLogEntry(
+  entry: LogEntry,
+  entries: readonly LogEntry[],
+  agents: Partial<Record<ProofAgentSlug, ProofAgent>>,
+): ProofCandidate | null {
   const slug = stringValue(entry.agent) as ProofAgentSlug | undefined;
-  const meta = slug ? PROOF_AGENTS[slug] : undefined;
+  const meta = slug ? agents[slug] : undefined;
   const event = stringValue(entry.event);
   const at = validAt(entry.at);
-  if (!meta || !event || !at) return null;
+  if (!meta || !slug || !event || !at) return null;
 
   const base = {
     agent: meta.tokenId,
@@ -83,12 +128,11 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
     at,
   } as const;
 
-  if (slug === 'grid' && event === 'trade-submitted') {
+  if (meta.category === 'grid' && event === 'trade-submitted') {
     const orderUid = orderValue(entry.orderUid);
     if (!orderUid) return null;
     const side = entry.side === 'buy' ? 'buy' : 'sell';
-    const from = side === 'sell' ? 'WBNB' : 'USDT';
-    const to = side === 'sell' ? 'USDT' : 'WBNB';
+    const { from, to } = gridLegs(slug, side, stringValue(entry.clipToken));
     const amount = stringValue(entry.clipAmount);
     return {
       ...base,
@@ -100,11 +144,11 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
     };
   }
 
-  if (slug === 'health-factor' && event === 'repair-done') {
+  if (meta.category === 'health-factor' && event === 'repair-done') {
     const txHash = txValue(entry.txHash);
     if (!txHash) return null;
     const repaid = stringValue(entry.repaidUsdt);
-    const hf = firstHealthFactorAfter(entries, at);
+    const hf = firstHealthFactorAfter(entries, at, slug);
     return {
       ...base,
       id: eventId(meta.tokenId, event, at, txHash),
@@ -115,34 +159,34 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
     };
   }
 
-  if (slug === 'yield' && event === 'supply') {
+  if (meta.category === 'yield' && event === 'supply') {
     const txHash = txValue(entry.txHash);
     if (!txHash) return null;
     const amount = stringValue(entry.amount);
-    const venue = stringValue(entry.venue) ?? 'the leading venue';
+    const venue = stringValue(entry.venue);
     return {
       ...base,
       id: eventId(meta.tokenId, event, at, txHash),
       kind: 'rotate',
-      summary: `Allocated${amount ? ` ${amount}` : ''} USDT to ${venue === 'aave' ? 'Aave' : venue === 'venus' ? 'Venus' : venue}`,
+      summary: `Allocated${amount ? ` ${amount}` : ''} USDT to ${venue ? (VENUE_NAMES[venue] ?? venue) : 'the leading venue'}`,
       txHash,
     };
   }
 
-  if (slug === 'yield' && event === 'withdraw') {
+  if (meta.category === 'yield' && event === 'withdraw') {
     const txHash = txValue(entry.txHash);
     if (!txHash) return null;
-    const venue = stringValue(entry.venue) ?? 'the previous venue';
+    const venue = stringValue(entry.venue);
     return {
       ...base,
       id: eventId(meta.tokenId, event, at, txHash),
       kind: 'rotate',
-      summary: `Withdrew USDT from ${venue === 'aave' ? 'Aave' : venue === 'venus' ? 'Venus' : venue} for a rate rotation`,
+      summary: `Withdrew USDT from ${venue ? (VENUE_NAMES[venue] ?? venue) : 'the previous venue'} for a rate rotation`,
       txHash,
     };
   }
 
-  if (slug === 'lp-range' && event === 'minted') {
+  if (meta.category === 'rebalancing' && event === 'minted') {
     const txHash = txValue(entry.txHash);
     const tokenId = stringValue(entry.tokenId);
     if (!txHash || !tokenId) return null;
@@ -155,7 +199,7 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
     };
   }
 
-  if (slug === 'lp-range' && (event === 'decrease-liquidity' || event === 'collected')) {
+  if (meta.category === 'rebalancing' && (event === 'decrease-liquidity' || event === 'collected')) {
     const txHash = txValue(entry.txHash);
     const tokenId = stringValue(entry.tokenId);
     if (!txHash) return null;
@@ -170,7 +214,13 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
     };
   }
 
-  if (slug === 'lp-range' && event === 'ophis-swap-submitted') {
+  // Both rebalancing agents place their swap through Ophis and log the same
+  // fields for it (symbols, not addresses): lp-range to re-balance the
+  // inventory around a position, weight-rebalancer to hold a target weight.
+  if (
+    meta.category === 'rebalancing' &&
+    (event === 'ophis-swap-submitted' || event === 'rebalance-submitted')
+  ) {
     const orderUid = orderValue(entry.orderUid);
     if (!orderUid) return null;
     const from = stringValue(entry.sellToken) ?? 'token inventory';
@@ -189,12 +239,20 @@ function mapLogEntry(entry: LogEntry, entries: readonly LogEntry[]): ProofCandid
   return null;
 }
 
-/** Map the deliberately small allowlist of public, meaningful log events. */
+/**
+ * Map the deliberately small allowlist of public, meaningful log events.
+ *
+ * `agents` is the roster a line's `agent` field is resolved against, and
+ * defaults to the registered agents. It is a parameter because PROOF_AGENTS
+ * admits a record only once it carries a token id and a wallet, so the mapping
+ * for an agent that is built but not yet minted is otherwise unprovable.
+ */
 export function mapProofLogEntries(
   entries: readonly LogEntry[],
+  agents: Partial<Record<ProofAgentSlug, ProofAgent>> = PROOF_AGENTS,
 ): ProofEvent[] {
   const mapped = entries
-    .map((entry) => mapLogEntry(entry, entries))
+    .map((entry) => mapLogEntry(entry, entries, agents))
     // The public feed promises a receipt for every row. Fail closed for
     // telemetry and for any future mapped event without an on-chain anchor.
     .filter((entry): entry is ProofCandidate =>

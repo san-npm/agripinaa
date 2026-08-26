@@ -1,6 +1,8 @@
 import type { AgentDetail } from '@agripinaa/agent-index';
 import { agentByTokenId } from '@agripinaa/shared/agents';
 
+import { countsAsLive, getLiveness, type LivenessRecord } from './liveness';
+
 /**
  * Whether anything on our side will read a session granted to this agent.
  *
@@ -23,7 +25,7 @@ export interface ActivationInput {
 }
 
 /**
- * Activation moves real money and asks for a passkey account, gas, and a signed
+ * Activation moves live funds and asks for a passkey account, gas, and a signed
  * grant, so it is offered only where something will consume that grant: an
  * agent with a managed path of ours, or a third-party agent whose own endpoint
  * answered a liveness probe.
@@ -82,15 +84,45 @@ export const ACTIVATION_BLOCKED_COPY: Record<ActivationBlockedReason, Activation
 };
 
 /**
- * Whether this agent's own endpoint answered a liveness probe. The probe itself
- * lands with lib/liveness.ts; until then nothing third-party counts as live,
- * which fails in the safe direction: activation is withheld rather than offered
- * for an agent that cannot act. Both the detail page and the activate gate
- * resolve liveness here, so wiring the probe in is a one-place change.
+ * Whether this agent's own endpoint answered a liveness probe. Both the detail
+ * page and the activate gate resolve liveness here, so there is one answer per
+ * agent whichever way a visitor arrives.
+ *
+ * Read only, never a probe: probing on a render would put an unrelated host in
+ * front of every page load, and it would let anyone aim this site's fetches by
+ * reloading a page. The probe runs when a claim is saved and from the re-probe
+ * cron; here a result that nobody refreshed inside the window decays to false,
+ * which fails in the safe direction (activation withheld, not offered).
+ *
+ * A first-party agent is not resolved this way at all. Its runner is ours, and
+ * what decides whether a granted session gets consumed is the registry's
+ * `managed` flag, which `agentConsumesSession` already answers.
  */
-export async function endpointIsLive(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the probe reads the agent record; kept so wiring it in touches this body only
-  agent: AgentDetail,
-): Promise<boolean> {
-  return false;
+export async function endpointIsLive(agent: AgentDetail): Promise<boolean> {
+  return (await endpointStatus(agent)).live;
+}
+
+/** What one agent's endpoint store holds, for a reader that renders the reason. */
+export interface EndpointStatus {
+  /** The endpoint this listing carries now. Empty when it carries none. */
+  url: string;
+  /** The stored probe result for it, or null when nothing has probed it. */
+  record: LivenessRecord | null;
+  /** Whether that result still counts as live, which is what the gate asks. */
+  live: boolean;
+}
+
+/**
+ * The same read as `endpointIsLive`, with the record it decided from.
+ *
+ * The gate only needs the boolean, but an owner whose endpoint answered 404 or
+ * timed out needs the reason: the record carries a status and a reason kept
+ * exactly for that, and until this existed nothing read them. The profile page
+ * renders both from one read, so its badge and its gate cannot disagree.
+ */
+export async function endpointStatus(agent: AgentDetail): Promise<EndpointStatus> {
+  const url = agent.endpoint?.trim() ?? '';
+  if (agentByTokenId(agent.tokenId) || !url) return { url, record: null, live: false };
+  const record = await getLiveness(agent.chainId, agent.tokenId).catch(() => null);
+  return { url, record, live: countsAsLive(record, url) };
 }

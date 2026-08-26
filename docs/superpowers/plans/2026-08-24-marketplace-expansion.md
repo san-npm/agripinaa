@@ -2362,7 +2362,7 @@ test('ranking is stable for identical inputs', () => {
 
 - [ ] **Step 2: Run test to verify it fails, then implement**
 
-Score = `avgSurplusBps * min(1, fills / 10)`, so a 3-fill sample cannot beat a 20-fill record on average alone; zero-fill agents get `unranked: true` and sort last. State this formula on the page itself.
+Score = `avgSurplusBps * min(1, fills / 10) ** 2`, so a 3-fill sample cannot beat a 20-fill record on average alone; zero-fill agents get `unranked: true` and sort last. State this formula on the page itself. The discount is the sample-depth confidence squared rather than the confidence itself: the plain factor leaves 30% of the average at 3 fills, which scores Step 1's row B (3 fills, 90 bps) at 27 against row A (20 fills, 10 bps) at 10 and breaks Step 1's second assertion. No threshold rescues the plain factor, since a 3-fill row would need a weight under one ninth of a 20-fill row's and a ramp reaching full weight at or below 20 fills cannot give one. Squared, row B scores 8.1 against row A's 10 and the Step 1 tests stand as written.
 
 - [ ] **Step 3: Build the page**
 

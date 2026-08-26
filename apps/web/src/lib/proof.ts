@@ -9,9 +9,10 @@ import {
 } from '@agripinaa/shared';
 import {
   CowOrderbookClient,
-  isOphisOrder,
+  isAuthenticOphisOrder,
   surplusBps,
 } from '@agripinaa/exec-metrics';
+import { safeFetchJson } from '@agripinaa/shared/ssrf';
 import { cacheLife } from 'next/cache';
 
 import { runnerUrl } from './runner-url';
@@ -28,6 +29,8 @@ const AGENT_BY_ID = new Map(PROOF_AGENT_LIST.map((agent) => [agent.tokenId, agen
 const SYMBOL_BY_ADDRESS = new Map(
   Object.values(TOKENS_BSC).map((token) => [token.address.toLowerCase(), token.symbol]),
 );
+/** Forty events with hashes and summaries are a few tens of KB; this is ample. */
+const PROOF_MAX_BYTES = 256 * 1024;
 
 async function proofEndpoint(): Promise<string> {
   return runnerUrl('/proof');
@@ -101,7 +104,7 @@ async function getOnchainTradeBackfill(): Promise<ProofEvent[]> {
       ]);
       const tradeByOrder = new Map(trades.map((trade) => [trade.orderUid, trade]));
       return orders
-        .filter((order) => order.status === 'fulfilled' && ORDER_UID.test(order.uid) && isOphisOrder(order))
+        .filter((order) => order.status === 'fulfilled' && ORDER_UID.test(order.uid) && isAuthenticOphisOrder(order))
         .map((order): ProofEvent => {
           const trade = tradeByOrder.get(order.uid);
           const txHash = trade && TX_HASH.test(trade.txHash)
@@ -129,19 +132,18 @@ async function getOnchainTradeBackfill(): Promise<ProofEvent[]> {
   return batches.flat().sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 40);
 }
 
-async function getRunnerEvents(): Promise<ProofEvent[]> {
-  try {
-    const response = await fetch(await proofEndpoint(), {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) return [];
-    const payload: unknown = await response.json();
-    if (!payload || typeof payload !== 'object') return [];
-    return normalizeProofEvents((payload as { events?: unknown }).events);
-  } catch {
-    return [];
-  }
+/**
+ * The runner's own event feed, read through the SSRF guard: the tunnel base
+ * is attacker-influenceable, so every redirect hop is re-validated against
+ * the private ranges and the body is capped while it streams. Any failure is
+ * an empty list; the on-chain backfill still fills the feed.
+ */
+export async function getRunnerEvents(): Promise<ProofEvent[]> {
+  const payload = await safeFetchJson(await proofEndpoint(), {
+    timeoutMs: 5_000,
+    maxBytes: PROOF_MAX_BYTES,
+  });
+  return payload ? normalizeProofEvents((payload as { events?: unknown }).events) : [];
 }
 
 function mergeEvents(runner: ProofEvent[], chain: ProofEvent[]): ProofEvent[] {

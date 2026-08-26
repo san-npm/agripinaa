@@ -24,6 +24,8 @@ contract MockERC20 {
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+    address public underlyingAddress;
+    address public poolAddress;
 
     constructor(string memory n) {
         name = n;
@@ -65,6 +67,19 @@ contract MockERC20 {
         balanceOf[from] -= a;
         totalSupply -= a;
     }
+
+    function setDependencies(address underlying_, address pool_) external {
+        underlyingAddress = underlying_;
+        poolAddress = pool_;
+    }
+
+    function UNDERLYING_ASSET_ADDRESS() external view returns (address) {
+        return underlyingAddress;
+    }
+
+    function POOL() external view returns (address) {
+        return poolAddress;
+    }
 }
 
 /// Aave-like pool: supply mints aTokens 1:1 to onBehalfOf; withdraw burns the
@@ -72,6 +87,7 @@ contract MockERC20 {
 contract MockAavePool {
     MockERC20 public usdt;
     MockERC20 public aToken;
+    mapping(address => uint256) public debtBase;
 
     constructor(MockERC20 _usdt, MockERC20 _aToken) {
         usdt = _usdt;
@@ -91,15 +107,31 @@ contract MockAavePool {
         usdt.transfer(to, amt);
         return amt;
     }
+
+    function setDebt(address account, uint256 amount) external {
+        debtBase[account] = amount;
+    }
+
+    function getUserAccountData(address account)
+        external
+        view
+        returns (uint256, uint256, uint256, uint256, uint256, uint256)
+    {
+        return (0, debtBase[account], 0, 0, 0, type(uint256).max);
+    }
 }
 
 /// Venus-like vToken (Compound-v2 fork): mint/redeem return an error code (0 ok),
 /// mint credits the caller. 1:1 exchange rate.
 contract MockVToken is MockERC20 {
     MockERC20 public usdt;
+    mapping(address => uint256) public marketDebt;
+    mapping(address => uint256) public vaiDebt;
+    address public activeComptroller;
 
     constructor(MockERC20 _usdt) MockERC20("vUSDT") {
         usdt = _usdt;
+        activeComptroller = address(this);
     }
 
     function mint(uint256 mintAmount) external returns (uint256) {
@@ -113,6 +145,34 @@ contract MockVToken is MockERC20 {
         burnFrom(msg.sender, redeemTokens);
         usdt.transfer(msg.sender, redeemTokens);
         return 0;
+    }
+
+    function underlying() external view returns (address) {
+        return address(usdt);
+    }
+
+    function comptroller() external view returns (address) {
+        return activeComptroller;
+    }
+
+    function setDebt(address account, uint256 ordinaryDebt, uint256 syntheticDebt) external {
+        marketDebt[account] = ordinaryDebt;
+        vaiDebt[account] = syntheticDebt;
+    }
+
+    function getAssetsIn(address account) external view returns (address[] memory markets) {
+        if (marketDebt[account] != 0) {
+            markets = new address[](1);
+            markets[0] = address(this);
+        }
+    }
+
+    function borrowBalanceStored(address account) external view returns (uint256) {
+        return marketDebt[account];
+    }
+
+    function mintedVAIs(address account) external view returns (uint256) {
+        return vaiDebt[account];
     }
 }
 
@@ -156,6 +216,7 @@ contract RouterFuzz {
         aToken = new MockERC20("aUSDT");
         vToken = new MockVToken(usdt);
         aave = new MockAavePool(usdt, aToken);
+        aToken.setDependencies(address(usdt), address(aave));
         router = new AgripinaaYieldRouter(address(usdt), address(aToken), address(aave), address(vToken));
         for (uint256 i = 0; i < 3; i++) {
             actors[i] = new Actor(router, address(usdt), address(aToken), address(vToken));
@@ -187,6 +248,44 @@ contract RouterFuzz {
         _actor(who).toIdle();
     }
 
+    /// Exercise the receipt-donation boundary while Aave reports debt. The
+    /// donated receipt must remain untouched and the unrelated idle leg must
+    /// still complete instead of reverting the entire router action.
+    function encumberedAaveReceiptCannotBlockIdle(uint8 who, uint96 amt) external {
+        Actor act = _actor(who);
+        uint256 idleGift = (uint256(amt) % 1_000e18) + 1;
+        usdt.mintTo(address(act), idleGift);
+        aToken.mintTo(address(act), 1);
+        deposited[address(act)] += idleGift + 1;
+        aave.setDebt(address(act), 1);
+        uint256 idleBefore = usdt.balanceOf(address(act));
+        uint256 protectedBefore = aToken.balanceOf(address(act));
+        (bool ok,) = address(act).call(abi.encodeCall(Actor.toIdle, ()));
+        assert(ok);
+        // Another debt-free venue may also unwind, so idle can increase. The
+        // debt-guard invariant is that no idle value is lost and this exact
+        // encumbered receipt leg does not move.
+        assert(usdt.balanceOf(address(act)) >= idleBefore);
+        assert(aToken.balanceOf(address(act)) == protectedBefore);
+    }
+
+    /// Synthetic VAI debt is a separate Comptroller ledger. It must protect
+    /// the Venus receipt while allowing unrelated idle stablecoin to move.
+    function vaiDebtCannotBlockIdle(uint8 who, uint96 amt) external {
+        Actor act = _actor(who);
+        uint256 idleGift = (uint256(amt) % 1_000e18) + 1;
+        usdt.mintTo(address(act), idleGift);
+        vToken.mintTo(address(act), 1);
+        deposited[address(act)] += idleGift + 1;
+        vToken.setDebt(address(act), 0, 1);
+        uint256 idleBefore = usdt.balanceOf(address(act));
+        uint256 protectedBefore = vToken.balanceOf(address(act));
+        (bool ok,) = address(act).call(abi.encodeCall(Actor.toIdle, ()));
+        assert(ok);
+        assert(usdt.balanceOf(address(act)) >= idleBefore);
+        assert(vToken.balanceOf(address(act)) == protectedBefore);
+    }
+
     /// Out-of-band donation of USDT straight into the router (the L-1 setup).
     function donate(uint96 amt) external {
         uint256 a = uint256(amt) % 1_000e18;
@@ -213,8 +312,8 @@ contract RouterFuzz {
 
     /// The router never custodies more than what was donated to it.
     function echidna_router_holds_only_donations() external view returns (bool) {
-        uint256 held = usdt.balanceOf(address(router)) + aToken.balanceOf(address(router))
-            + vToken.balanceOf(address(router));
+        uint256 held =
+            usdt.balanceOf(address(router)) + aToken.balanceOf(address(router)) + vToken.balanceOf(address(router));
         return held <= donated;
     }
 }

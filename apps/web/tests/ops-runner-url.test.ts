@@ -7,7 +7,7 @@ import { decideRunnerUrlReport } from '../src/lib/ops-runner-url';
 
 const TOKEN = 'test-ops-token';
 
-/** A stub resolver, so no test in this file touches real DNS. */
+/** A stub resolver, so no test in this file touches live DNS. */
 const resolvesTo =
   (...addresses: string[]): LookupFn =>
   async () =>

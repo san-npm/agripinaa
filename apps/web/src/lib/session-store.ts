@@ -12,11 +12,13 @@ export interface StoredSessionMeta {
   chainId: number;
   account: string;
   publicKey: string | null;
-  agent: { chainId: number; tokenId: string; name: string };
+  agent: { chainId: number; tokenId: string; name: string; slug?: string };
   scope: { allowlist: string[]; capFormatted: string; expiresAt: string };
   grantedAt: string;
   revokedAt: string | null;
-  /** Managed only: the USDT amount put to work at activation, for earnings math. */
+  /** Whether the runner acknowledged this locally recoverable session. */
+  registrationStatus?: 'pending' | 'registered';
+  /** Managed only: whole token balance observed at activation, for earnings math. */
   principalUsdt?: string;
   /** Byte-exact serialized session. */
   raw: string;
@@ -96,6 +98,7 @@ export function storeSession(input: {
     scope: input.scope,
     grantedAt: new Date().toISOString(),
     revokedAt: null,
+    registrationStatus: 'pending',
     principalUsdt: input.principalUsdt,
     raw,
   };
@@ -109,6 +112,10 @@ export function markRevoked(id: string): void {
       s.id === id ? { ...s, revokedAt: new Date().toISOString() } : s,
     ),
   );
+}
+
+export function markRegistered(id: string): void {
+  write(read().map((s) => (s.id === id ? { ...s, registrationStatus: 'registered' } : s)));
 }
 
 export function forgetSession(id: string): void {

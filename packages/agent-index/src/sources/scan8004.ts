@@ -22,6 +22,20 @@ const KEYED_BASE_URL = process.env.SCAN8004_KEYED_BASE ?? 'https://8004scan.io/a
 const API_KEY = process.env.SCAN8004_API_KEY;
 const KEY_HEADER = process.env.SCAN8004_KEY_HEADER ?? 'X-API-Key';
 
+/**
+ * Deadline on one upstream request, dns and body included.
+ *
+ * A host that accepts the connection and then goes quiet holds a `fetch()` open
+ * for as long as the runtime lets it, and every caller here is on a clock
+ * someone else set: a page render, the refresh cron's budget, the seeder's
+ * 400 ms cadence. Fifteen seconds is many times the observed page time, so
+ * reaching it means the request is not coming back.
+ */
+const REQUEST_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.SCAN8004_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 15_000;
+})();
+
 export class Scan8004Error extends Error {
   constructor(
     message: string,
@@ -73,7 +87,7 @@ async function scanFetch<T>(path: string, params: Record<string, string | number
   const headers: Record<string, string> = { accept: 'application/json' };
   if (API_KEY) headers[KEY_HEADER] = API_KEY;
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) {
     throw new Scan8004Error(`8004scan ${path} responded ${res.status}`, res.status);
   }
@@ -91,7 +105,7 @@ async function scanFetch<T>(path: string, params: Record<string, string | number
  * and upstream totals are never surfaced as chain-specific numbers.
  *
  * The detail endpoint (/agents/{chainId}/{tokenId}) IS chain-scoped by
- * path, so a mismatch there is a real bug and throws.
+ * path, so a mismatch there is an actual bug and throws.
  */
 function assertChain(agent: ScanAgent, expectedChainId: number): void {
   if (agent.chain_id !== expectedChainId) {
@@ -155,6 +169,7 @@ async function keyedFetch<T>(
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   const res = await fetch(url, {
     headers: { accept: 'application/json', [KEY_HEADER]: API_KEY! },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Scan8004Error(`8004scan keyed ${path} responded ${res.status}`, res.status);
@@ -164,7 +179,7 @@ async function keyedFetch<T>(
 
 /**
  * Headline agent count for one chain. The keyed /agents envelope carries a
- * real per-chain total; the public /stats total is global. Prefer the keyed
+ * chain-scoped per-chain total; the public /stats total is global. Prefer the keyed
  * one, fall back to the global one rather than showing nothing, and let the
  * caller label which of the two it got.
  */
@@ -183,7 +198,7 @@ export class Scan8004Source implements AgentIndexSource {
     return this.listAgentsPublic(q);
   }
 
-  /** Keyed surface: server-side chain filter, offset cursor, real per-chain total. */
+  /** Keyed surface: server-side chain filter, offset cursor, chain-scoped per-chain total. */
   private async listAgentsKeyed(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
     const limit = q.limit ?? 24;
     const offset = q.cursor ? Number.parseInt(q.cursor, 10) : 0;
@@ -313,7 +328,7 @@ export class Scan8004Source implements AgentIndexSource {
 
     // The public /stats endpoint ignores chain_id upstream, so it reports the
     // all-chains figure. When a key is present the keyed /agents envelope
-    // carries the real per-chain total; use that and label it BSC-scoped.
+    // carries the chain-scoped per-chain total; use that and label it BSC-scoped.
     let keyedTotal: number | null = null;
     if (API_KEY) {
       try {

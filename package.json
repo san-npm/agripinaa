@@ -14,9 +14,13 @@
   },
   "pnpm": {
     "overrides": {
-      "@ophis/sdk": "0.3.0"
+      "@cowprotocol/app-data": "npm:@cowprotocol/sdk-app-data@5.3.3",
+      "@cowprotocol/cow-sdk": "9.2.6",
+      "@ophis/sdk": "0.3.0",
+      "uuid": "11.1.1"
     },
     "patchedDependencies": {
+      "@altananetwork/x402-server@0.2.0": "patches/@altananetwork__x402-server@0.2.0.patch",
       "@ophis/agent-swap@0.3.1": "patches/@ophis__agent-swap@0.3.1.patch"
     }
   }

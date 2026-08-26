@@ -1,27 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { routerByAddress } from '@agripinaa/shared/contracts';
+import { recoveryRouterFromAllowlist } from '@agripinaa/shared/contracts';
 
 import { ManagedPositionCard } from '@/components/ManagedPositionCard';
 import { SessionCard } from '@/components/SessionCard';
 import { ArrowIcon, CoinsIcon, LightningIcon, ShieldIcon } from '@/components/icons';
 import { listStoredSessions, type StoredSessionMeta } from '@/lib/session-store';
 
-/** A managed-yield session is scoped to one of the deployed router addresses. */
+/** Active and recovery-only managed sessions both retain their funds controls. */
 function isManaged(meta: StoredSessionMeta): boolean {
-  return meta.scope.allowlist.some((a) => routerByAddress(a) !== undefined);
+  return recoveryRouterFromAllowlist(meta.scope.allowlist, meta.chainId) !== undefined;
 }
 
 export default function DashboardPage() {
   const [sessions, setSessions] = useState<StoredSessionMeta[] | null>(null);
 
-  const refresh = () => setSessions(listStoredSessions());
-  useEffect(refresh, []);
-
-  const active = sessions?.filter((s) => !s.revokedAt).length ?? 0;
+  const refresh = useCallback(() => setSessions(listStoredSessions()), []);
+  useEffect(() => {
+    const timer = window.setTimeout(refresh, 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   return (
     <div className="max-w-3xl">
@@ -38,7 +39,7 @@ export default function DashboardPage() {
       ) : (
         <>
           <p className="mt-6 text-xs uppercase tracking-wide text-muted-2">
-            {active} active · {sessions.length} total
+            {sessions.length} saved session{sessions.length === 1 ? '' : 's'} · live status shown per card
           </p>
           <ul className="mt-3 space-y-3">
             {sessions.map((meta) =>

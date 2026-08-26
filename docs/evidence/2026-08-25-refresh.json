@@ -1,0 +1,634 @@
+{
+  "asOf": {
+    "generatedAt": "2026-08-25T15:58:35.310Z",
+    "chainId": 56,
+    "blockNumber": 118027877,
+    "blockTimestamp": "2026-08-25T15:58:34.000Z"
+  },
+  "execution": {
+    "grid": {
+      "owner": "0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A",
+      "ordersFetched": 4,
+      "ophisAttributed": 4,
+      "filled": 4,
+      "avgSurplusBps": 110.11749999999999,
+      "slippageBpsAtSigning": 100,
+      "totalSurplus": [
+        "0.024190818740329959 USDT",
+        "0.000080291902987458 WBNB"
+      ],
+      "fills": [
+        {
+          "uid": "0xd3818dfd93c42bb120f8569f27bf3b72f70cfc6ef0144eb285c49e769b439e41d6db7ade6ed34d1cf0836d7a1aac5ba3b860c82a6a85cf8f",
+          "creationDate": "2026-08-19T15:15:20.592947Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "buyToken": "0x55d398326f99059ff775485246999027b3197955",
+          "signedSellAmount": "3265030000000000",
+          "signedBuyAmountLimit": "1972193093151789520",
+          "executedSellAmount": "3265030000000000",
+          "executedBuyAmount": "1996383911892119479",
+          "executedFee": "10868487119484",
+          "executedFeeToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "surplusVsSignedLimitBps": 122.65,
+          "vsQuoteBps": 21.42,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0x666b21c8a82a496a7a88c829618c8e37bb36d06f5bc38ebbd594e2a739d21dd4",
+          "settlementBlock": 116870543,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-19T15:15:29.000Z",
+          "secondsFromSubmitToSettle": 8.4,
+          "solverSubmitter": "0x53227a6d5a129143b6ad760810ece62c79ab8e97",
+          "settlementGasUsed": "321813",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "24190818740329959",
+            "surplusUsdAtFillPrice": 0.02419082,
+            "notionalUsdAtFillPrice": 1.996384,
+            "executedUsdtPerWbnb": 611.4443,
+            "feeBps": 33.29,
+            "feeUsdAtFillPrice": 0.00664547
+          }
+        },
+        {
+          "uid": "0xd19e86539475f32deff9fb2cd67d8bc2bdd2a10d96a5d2a11c89177692d2d056d6db7ade6ed34d1cf0836d7a1aac5ba3b860c82a6a893659",
+          "creationDate": "2026-08-22T05:11:01.084998Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0x55d398326f99059ff775485246999027b3197955",
+          "buyToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "signedSellAmount": "2000000000000000000",
+          "signedBuyAmountLimit": "2812854861805623",
+          "executedSellAmount": "2000000000000000000",
+          "executedBuyAmount": "2834015999649127",
+          "executedFee": "12664415488115886",
+          "executedFeeToken": "0x55d398326f99059ff775485246999027b3197955",
+          "surplusVsSignedLimitBps": 75.23,
+          "vsQuoteBps": -25.52,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0x9e914a0b6473b1f853813b5e3730e20f51672dbace4ce71adc76287f60a24099",
+          "settlementBlock": 117366158,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-22T05:13:50.000Z",
+          "secondsFromSubmitToSettle": 168.9,
+          "solverSubmitter": "0xc93edd00bebf5bcd65a19c750041490552e1eeb8",
+          "settlementGasUsed": "255021",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "21161137843504",
+            "surplusUsdAtFillPrice": 0.01493368,
+            "notionalUsdAtFillPrice": 2.0,
+            "executedUsdtPerWbnb": 705.7123,
+            "feeBps": 63.32,
+            "feeUsdAtFillPrice": 0.01266442
+          }
+        },
+        {
+          "uid": "0x671a57305384a4630a30f4d132404727e3f3ae310bee096a3a19646b4f3e98e5d6db7ade6ed34d1cf0836d7a1aac5ba3b860c82a6a8c6e1a",
+          "creationDate": "2026-08-24T15:45:23.524212Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0x55d398326f99059ff775485246999027b3197955",
+          "buyToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "signedSellAmount": "1996383911892119400",
+          "signedBuyAmountLimit": "2777315649293241",
+          "executedSellAmount": "1996383911892119400",
+          "executedBuyAmount": "2810130462352734",
+          "executedFee": "5763541261239988",
+          "executedFeeToken": "0x55d398326f99059ff775485246999027b3197955",
+          "surplusVsSignedLimitBps": 118.15,
+          "vsQuoteBps": 16.97,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0x68642b06dac85d650c2c496681c376f84dbba442b2fedf22cc885a0e8170d7a5",
+          "settlementBlock": 117834239,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-24T15:45:36.000Z",
+          "secondsFromSubmitToSettle": 12.5,
+          "solverSubmitter": "0x5920fe8e1e7f0014f217d0ed3920a403659f73cd",
+          "settlementGasUsed": "590076",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "32814813059493",
+            "surplusUsdAtFillPrice": 0.02331243,
+            "notionalUsdAtFillPrice": 1.996384,
+            "executedUsdtPerWbnb": 710.4239,
+            "feeBps": 28.87,
+            "feeUsdAtFillPrice": 0.00576354
+          }
+        },
+        {
+          "uid": "0xf39a13014b44f74029476211064d9ee8e7aa15c93457f843feec308a9cf0d2cbd6db7ade6ed34d1cf0836d7a1aac5ba3b860c82a6a8d6f41",
+          "creationDate": "2026-08-25T10:02:33.721945Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0x55d398326f99059ff775485246999027b3197955",
+          "buyToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "signedSellAmount": "1500000000000000000",
+          "signedBuyAmountLimit": "2114701793768260",
+          "executedSellAmount": "1500000000000000000",
+          "executedBuyAmount": "2141017745852721",
+          "executedFee": "5255039656814572",
+          "executedFeeToken": "0x55d398326f99059ff775485246999027b3197955",
+          "surplusVsSignedLimitBps": 124.44,
+          "vsQuoteBps": 23.2,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0x98962f41230e756c5fa58f0d1e56e4918703b769aab37ad060552f35d1f67ea2",
+          "settlementBlock": 117980455,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-25T10:02:46.000Z",
+          "secondsFromSubmitToSettle": 12.3,
+          "solverSubmitter": "0x1acadc810c0eeff52d7891e7ab8c4068cb5889e5",
+          "settlementGasUsed": "527713",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "26315952084461",
+            "surplusUsdAtFillPrice": 0.01843699,
+            "notionalUsdAtFillPrice": 1.5,
+            "executedUsdtPerWbnb": 700.6014,
+            "feeBps": 35.03,
+            "feeUsdAtFillPrice": 0.00525504
+          }
+        }
+      ],
+      "slippageSource": "apps/agents/src/agents/grid.ts SLIPPAGE_BPS = 100"
+    },
+    "lp-range": {
+      "owner": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+      "ordersFetched": 3,
+      "ophisAttributed": 3,
+      "filled": 3,
+      "avgSurplusBps": 140.14,
+      "slippageBpsAtSigning": 100,
+      "totalSurplus": [
+        "0.000089699201752126 WBNB"
+      ],
+      "fills": [
+        {
+          "uid": "0x979a20518bbd276c753a78fdac2959da08b87adefd13b84456f257c02a5a71e379827ef1fadea3b30a8e77fdbaf17944298a3bb66a86c4b0",
+          "creationDate": "2026-08-20T08:41:13.701792Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0x55d398326f99059ff775485246999027b3197955",
+          "buyToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "signedSellAmount": "1249640492253000000",
+          "signedBuyAmountLimit": "1917845154649555",
+          "executedSellAmount": "1249640492253000000",
+          "executedBuyAmount": "1947126077241379",
+          "executedFee": "7811931630471439",
+          "executedFeeToken": "0x55d398326f99059ff775485246999027b3197955",
+          "surplusVsSignedLimitBps": 152.67,
+          "vsQuoteBps": 51.14,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0xd6a407f217011f9af360b9c252406e0b203e983117907857dcca67c6a6bd53c8",
+          "settlementBlock": 117009941,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-20T08:41:22.000Z",
+          "secondsFromSubmitToSettle": 8.3,
+          "solverSubmitter": "0x53227a6d5a129143b6ad760810ece62c79ab8e97",
+          "settlementGasUsed": "343937",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "29280922591824",
+            "surplusUsdAtFillPrice": 0.01879212,
+            "notionalUsdAtFillPrice": 1.24964,
+            "executedUsdtPerWbnb": 641.7871,
+            "feeBps": 62.51,
+            "feeUsdAtFillPrice": 0.00781193
+          }
+        },
+        {
+          "uid": "0x5b37983b5c0a4f1e081e051a1f3039fd32aef32d9f5add43639752496a07417279827ef1fadea3b30a8e77fdbaf17944298a3bb66a88168d",
+          "creationDate": "2026-08-21T08:42:46.704411Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0x55d398326f99059ff775485246999027b3197955",
+          "buyToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "signedSellAmount": "1573711824826000000",
+          "signedBuyAmountLimit": "2291080760723837",
+          "executedSellAmount": "1573711824826000000",
+          "executedBuyAmount": "2325589824478365",
+          "executedFee": "9525020096009598",
+          "executedFeeToken": "0x55d398326f99059ff775485246999027b3197955",
+          "surplusVsSignedLimitBps": 150.62,
+          "vsQuoteBps": 49.11,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0xb306e1b7de4fae456ce313037974ed2a4e89935d644091c534061b3a58d1216b",
+          "settlementBlock": 117202091,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-21T08:42:55.000Z",
+          "secondsFromSubmitToSettle": 8.3,
+          "solverSubmitter": "0x53227a6d5a129143b6ad760810ece62c79ab8e97",
+          "settlementGasUsed": "397924",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "34509063754528",
+            "surplusUsdAtFillPrice": 0.02335206,
+            "notionalUsdAtFillPrice": 1.573712,
+            "executedUsdtPerWbnb": 676.6936,
+            "feeBps": 60.53,
+            "feeUsdAtFillPrice": 0.00952502
+          }
+        },
+        {
+          "uid": "0x70445ecfcd3d113335439c156b0df99ce220d1e6b9f967f443b3eef6ea3395d779827ef1fadea3b30a8e77fdbaf17944298a3bb66a8c6d2b",
+          "creationDate": "2026-08-24T15:41:24.442462Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0x55d398326f99059ff775485246999027b3197955",
+          "buyToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "signedSellAmount": "1597933602353000000",
+          "signedBuyAmountLimit": "2211816297892777",
+          "executedSellAmount": "1597933602353000000",
+          "executedBuyAmount": "2237725513298551",
+          "executedFee": "4454369004314745",
+          "executedFeeToken": "0x55d398326f99059ff775485246999027b3197955",
+          "surplusVsSignedLimitBps": 117.13,
+          "vsQuoteBps": 15.96,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0x509f1117e07ccb45184785cfe558b4c89cb3c6b6317bd791d45926948b5d6cad",
+          "settlementBlock": 117833706,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-24T15:41:35.000Z",
+          "secondsFromSubmitToSettle": 10.6,
+          "solverSubmitter": "0x5920fe8e1e7f0014f217d0ed3920a403659f73cd",
+          "settlementGasUsed": "518808",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "25909215405774",
+            "surplusUsdAtFillPrice": 0.01850147,
+            "notionalUsdAtFillPrice": 1.597934,
+            "executedUsdtPerWbnb": 714.0883,
+            "feeBps": 27.88,
+            "feeUsdAtFillPrice": 0.00445437
+          }
+        }
+      ],
+      "slippageSource": "apps/agents/src/agents/lp-range.ts slippageBps: 100"
+    },
+    "yield": {
+      "owner": "0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9",
+      "ordersFetched": 0,
+      "ophisAttributed": 0,
+      "filled": 0,
+      "avgSurplusBps": null,
+      "slippageBpsAtSigning": null,
+      "totalSurplus": [],
+      "fills": []
+    },
+    "health-factor": {
+      "owner": "0x7d2dCB4eD1a90B992B34C114C924c5643B461DFF",
+      "ordersFetched": 0,
+      "ophisAttributed": 0,
+      "filled": 0,
+      "avgSurplusBps": null,
+      "slippageBpsAtSigning": null,
+      "totalSurplus": [],
+      "fills": []
+    },
+    "spike-a (task 1 both sides)": {
+      "owner": "0x053fff26d28ff4e94dfe862b184f918a50c6f706",
+      "ordersFetched": 1,
+      "ophisAttributed": 1,
+      "filled": 1,
+      "avgSurplusBps": 48.61,
+      "slippageBpsAtSigning": 50,
+      "totalSurplus": [
+        "0.058332742861982384 USDT"
+      ],
+      "fills": [
+        {
+          "uid": "0xa2fa52fa97922df8b884345a2959a71209a73957073098c4af76cbd72fa1f02b053fff26d28ff4e94dfe862b184f918a50c6f7066a848e4c",
+          "creationDate": "2026-08-18T16:24:37.803524Z",
+          "status": "fulfilled",
+          "kind": "sell",
+          "sellToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "buyToken": "0x55d398326f99059ff775485246999027b3197955",
+          "signedSellAmount": "20000000000000000",
+          "signedBuyAmountLimit": "11998963063678816893",
+          "executedSellAmount": "20000000000000000",
+          "executedBuyAmount": "12057295806540799277",
+          "executedFee": "43920324779203",
+          "executedFeeToken": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+          "surplusVsSignedLimitBps": 48.61,
+          "vsQuoteBps": -1.63,
+          "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"hooks\":{},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":5}},\"version\":\"1.3.0\"}",
+          "settlementTxHash": "0x4c7b847b75ae82337ac28655db861a5cd512e0de77c820f64dc58bbaa50523d1",
+          "settlementBlock": 116687812,
+          "solverCompetition": "not-retained",
+          "settledAt": "2026-08-18T16:24:45.000Z",
+          "secondsFromSubmitToSettle": 7.2,
+          "solverSubmitter": "0x95480d3f27658e73b2785d30beb0c847d78294c7",
+          "settlementGasUsed": "421722",
+          "tradesInSettlement": 1,
+          "derived": {
+            "surplusRaw": "58332742861982384",
+            "surplusUsdAtFillPrice": 0.05833274,
+            "notionalUsdAtFillPrice": 12.057296,
+            "executedUsdtPerWbnb": 602.8648,
+            "feeBps": 21.96,
+            "feeUsdAtFillPrice": 0.02647802
+          }
+        }
+      ],
+      "slippageSource": "packages/spikes/scripts/spike-a.ts (slippageBps: 50)"
+    }
+  },
+  "rangerPositions": [
+    {
+      "tokenId": "7248592",
+      "owner": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+      "pool": "0x36696169C63e42cd08ce11f5deeBbCeBae652050",
+      "fee": 500,
+      "token0": "0x55d398326f99059fF775485246999027B3197955",
+      "token1": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "tickLower": -66170,
+      "tickUpper": -65180,
+      "liquidity": "2451189888573570005",
+      "tokensOwed0": "0",
+      "tokensOwed1": "0",
+      "poolTick": -65511,
+      "inRange": true,
+      "rangeUsdtPerWbnb": [
+        677.0019286485013,
+        747.4513145106465
+      ],
+      "spotUsdtPerWbnb": 699.7845254244531
+    },
+    {
+      "tokenId": "7173629",
+      "owner": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+      "pool": "0x36696169C63e42cd08ce11f5deeBbCeBae652050",
+      "fee": 500,
+      "token0": "0x55d398326f99059fF775485246999027B3197955",
+      "token1": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "tickLower": -64520,
+      "tickUpper": -63540,
+      "liquidity": "0",
+      "tokensOwed0": "0",
+      "tokensOwed1": "0",
+      "poolTick": -65511,
+      "inRange": false,
+      "rangeUsdtPerWbnb": [
+        574.6046971630464,
+        633.7644918727741
+      ],
+      "spotUsdtPerWbnb": 699.7845254244531
+    },
+    {
+      "tokenId": "7191882",
+      "owner": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+      "pool": "0x36696169C63e42cd08ce11f5deeBbCeBae652050",
+      "fee": 500,
+      "token0": "0x55d398326f99059fF775485246999027B3197955",
+      "token1": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "tickLower": -65120,
+      "tickUpper": -64130,
+      "liquidity": "0",
+      "tokensOwed0": "0",
+      "tokensOwed1": "0",
+      "poolTick": -65511,
+      "inRange": false,
+      "rangeUsdtPerWbnb": [
+        609.5246379830829,
+        672.9522806479671
+      ],
+      "spotUsdtPerWbnb": 699.7845254244531
+    },
+    {
+      "tokenId": "7209976",
+      "owner": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+      "pool": "0x36696169C63e42cd08ce11f5deeBbCeBae652050",
+      "fee": 500,
+      "token0": "0x55d398326f99059fF775485246999027B3197955",
+      "token1": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "tickLower": -65720,
+      "tickUpper": -64740,
+      "liquidity": "0",
+      "tokensOwed0": "0",
+      "tokensOwed1": "0",
+      "poolTick": -65511,
+      "inRange": true,
+      "rangeUsdtPerWbnb": [
+        647.8611000349116,
+        714.5631821231967
+      ],
+      "spotUsdtPerWbnb": 699.7845254244531
+    }
+  ],
+  "balances": {
+    "grid": {
+      "address": "0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A",
+      "bnb": "775420450000000",
+      "usdt": "79",
+      "wbnb": "8520134207854582",
+      "aUsdt": "0",
+      "aave": {
+        "collateralBase": "0",
+        "debtBase": "0",
+        "healthFactor": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      }
+    },
+    "lp-range": {
+      "address": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+      "bnb": "947960700000000",
+      "usdt": "144933602760642961",
+      "wbnb": "200000000000000",
+      "aUsdt": "0",
+      "aave": {
+        "collateralBase": "0",
+        "debtBase": "0",
+        "healthFactor": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      }
+    },
+    "yield": {
+      "address": "0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9",
+      "bnb": "879231900000000",
+      "usdt": "100000000000000000",
+      "wbnb": "0",
+      "aUsdt": "2400979956867106525",
+      "aave": {
+        "collateralBase": "240078787",
+        "debtBase": "0",
+        "healthFactor": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      }
+    },
+    "health-factor": {
+      "address": "0x7d2dCB4eD1a90B992B34C114C924c5643B461DFF",
+      "bnb": "543608200000000",
+      "usdt": "3131940353310033115",
+      "wbnb": "1000000000000000",
+      "aUsdt": "0",
+      "aave": {
+        "collateralBase": "279958953",
+        "debtBase": "113254818",
+        "healthFactor": "1853953928476579248"
+      }
+    },
+    "spike-a (task 1 both sides)": {
+      "address": "0x053fff26d28ff4e94dfe862b184f918a50c6f706",
+      "bnb": "14475205550000000",
+      "usdt": "40140037205154596",
+      "wbnb": "200000000000000",
+      "aUsdt": "0",
+      "aave": {
+        "collateralBase": "0",
+        "debtBase": "0",
+        "healthFactor": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      }
+    }
+  },
+  "yieldAccrual": {
+    "supplyTx": "0xefa6d0840e9974fdd28700116f152d054e3c5f178417e36d06f85399a30e058f",
+    "supplyBlock": 116703873,
+    "supplyAt": "2026-08-18T18:25:14.000Z",
+    "aUsdtMintedAtSupply": "2399999999999999999",
+    "aUsdtNow": "2400979956867106525",
+    "accruedRaw": "979956867106526",
+    "elapsedDays": 6.8981,
+    "annualizedBps": 216.05
+  },
+  "venueRates": {
+    "blocksPerYear": 70048867,
+    "derivedOverBlocks": 5000,
+    "derivedOverSeconds": 2251,
+    "USDT": {
+      "venusApyBps": 239.02,
+      "aaveApyBps": 239.04,
+      "edgeAaveMinusVenusBps": 0.03
+    },
+    "USDC": {
+      "venusApyBps": 226.34,
+      "aaveApyBps": 303.98,
+      "edgeAaveMinusVenusBps": 77.63
+    }
+  },
+  "managed": {
+    "account": "0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+    "delegatedCode": "0xef0100c0f16888f4198f53892c53af859f673e23f26fa3",
+    "rotations": [
+      {
+        "router": "0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb",
+        "routerVersion": "v2 (delta accounting)",
+        "at": "2026-08-21T00:02:40.000Z",
+        "block": 117132749,
+        "account": "0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+        "action": "toVenus",
+        "amountUsdt": "3",
+        "tx": "0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb",
+        "gasUsed": "509470",
+        "effectiveGasPrice": "50000000",
+        "gasCostBnb": 2.54735e-05,
+        "rateUsdtPerWbnb": 676.6936,
+        "rateSource": "nearest fill of our own to the rotation, execution['lp-range'] 2026-08-21T08:42Z executed rate",
+        "gasCostUsdAtNearestFillRate": 0.017238
+      },
+      {
+        "router": "0x841CF14Dfc0A315115EC5C9714c918210447b260",
+        "routerVersion": "v1 (superseded)",
+        "at": "2026-08-20T10:24:22.000Z",
+        "block": 117023670,
+        "account": "0xacf6fc404f2b2d11d77fe788f1edae5a7e0996cf",
+        "action": "toAave",
+        "amountUsdt": "3",
+        "tx": "0x9bc4b18d10c1b9a739806ef3ec1dead80d4b0cd8c75b21c31d8ab5904633dbad"
+      },
+      {
+        "router": "0x841CF14Dfc0A315115EC5C9714c918210447b260",
+        "routerVersion": "v1 (superseded)",
+        "at": "2026-08-20T10:24:27.000Z",
+        "block": 117023681,
+        "account": "0xacf6fc404f2b2d11d77fe788f1edae5a7e0996cf",
+        "action": "toIdle",
+        "amountUsdt": "3.0000000098757633",
+        "tx": "0xcb4b18aba4f4b251b9306ed4998cd0477df240b8f1cee8f385edee613fc689ce"
+      }
+    ],
+    "venusPositionNow": {
+      "vUsdtRaw": "11344002822",
+      "exchangeRateStored": "264532698921898178120181865",
+      "underlyingUsdtRaw": "3000859683081289290"
+    },
+    "accrual": {
+      "principalUsdt": "3",
+      "underlyingNowUsdt": "3.00085968308128929",
+      "accruedUsdt": "0.00085968308128929",
+      "elapsedDays": 4.6638,
+      "annualizedBps": 224.27
+    }
+  },
+  "erc8004": {
+    "registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    "identities": {
+      "grid": {
+        "tokenId": "269703",
+        "owner": "0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A",
+        "tokenURI": "https://agripinaa.vercel.app/manifests/grid.json"
+      },
+      "health-factor": {
+        "tokenId": "269704",
+        "owner": "0x7d2dCB4eD1a90B992B34C114C924c5643B461DFF",
+        "tokenURI": "https://agripinaa.vercel.app/manifests/health-factor.json"
+      },
+      "yield": {
+        "tokenId": "269705",
+        "owner": "0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9",
+        "tokenURI": "https://agripinaa.vercel.app/manifests/yield.json"
+      },
+      "lp-range": {
+        "tokenId": "269706",
+        "owner": "0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6",
+        "tokenURI": "https://agripinaa.vercel.app/manifests/lp-range.json"
+      }
+    }
+  },
+  "baselineSwap": {
+    "from": "0x053fff26d28ff4e94dfe862b184f918a50c6f706",
+    "router": "0x13f4ea83d0bd40e75c8222255bc855a974568dd4",
+    "at": "2026-08-18T18:40:49.000Z",
+    "block": 116705948,
+    "approveGasUsed": "28940",
+    "swapGasUsed": "146806",
+    "totalGasUsed": "175746",
+    "effectiveGasPriceWei": "50000000",
+    "totalGasCostBnb": 8.7873e-06,
+    "approveGasCostBnb": 1.447e-06,
+    "swapGasCostBnb": 7.3403e-06,
+    "rateUsdtPerWbnb": 603.5552883304441,
+    "rateSource": "this swap's own executed rate, evidence/task1-baseline.json effectiveRate",
+    "totalGasCostUsdAtSwapRate": 0.005304,
+    "approveGasCostUsdAtSwapRate": 0.000873,
+    "swapGasCostUsdAtSwapRate": 0.00443,
+    "approvalScope": "the approval is for the exact amount being swapped (apps/agents/src/baseline-swap.ts approves amountIn), so it recurs with every swap rather than being a one-time setup cost."
+  },
+  "aaveReserveParams": {
+    "pool": "0x6807dc923806fE8Fd134338EABCA509979a7e0cB",
+    "readAtBlock": 118028579,
+    "readAt": "2026-08-25T16:03:50.000Z",
+    "WBNB": {
+      "ltvBps": 7000,
+      "liquidationThresholdBps": 7500,
+      "liquidationBonus": 11000
+    },
+    "USDT": {
+      "ltvBps": 7500,
+      "liquidationThresholdBps": 7800,
+      "liquidationBonus": 10500
+    }
+  },
+  "notes": {
+    "surplusVsSignedLimitBps": "executedBuyAmount over the buyAmount the wallet signed, per @agripinaa/exec-metrics surplusBps.",
+    "vsQuoteBps": "the same fill measured against the quote it was signed against: @ophis/agent-swap builds buyAmount = quote * (1 - slippageBps/10000), so vsQuote = (1 - slippageBps/10000) * (1 + surplus/10000) - 1.",
+    "executedFee": "network fee the orderbook reports for the fill, taken in the sell token inside the settlement; executedBuyAmount is already net of it.",
+    "solverCompetition": "'not-retained' means GET /solver_competition/by_tx_hash returned 404 for that settlement at the time of this pull.",
+    "derived": "per-fill derived block: surplusRaw is executedBuyAmount minus signedBuyAmountLimit in the buy token's smallest unit; executedUsdtPerWbnb is that fill's own executed rate. notionalUsdAtFillPrice, surplusUsdAtFillPrice and feeUsdAtFillPrice are the dollar values of that fill's notional (its executedSellAmount), its surplus and its executedFee, and the rate is applied only to the legs denominated in WBNB: an amount already denominated in USDT is taken at 1 USDT = 1 USD with no rate applied. Six of the eight fills sell USDT and pay executedFee in USDT, so for those the notional and the fee are 1:1 and only the WBNB-denominated surplus uses the rate; the two WBNB-selling fills (grid 2026-08-19 and spike-a 2026-08-18) are the mirror image, notional and fee at the rate and surplus 1:1. feeBps is executedFee over executedSellAmount.",
+    "dollarValuation": "every dollar figure in the report is computed at a rate named on its own line: a WBNB-denominated leg of a fill uses that fill's own executed rate, the baseline swap's gas uses that swap's executed rate, the managed rotation's gas uses the nearest fill of ours to it. No figure is valued at the block-118027877 spot except where the report says so.",
+    "accrual": "managed.accrual: underlyingNowUsdt and accruedUsdt are exact decimal values of the integer venusPositionNow.underlyingUsdtRaw above them (vUsdtRaw * exchangeRateStored / 1e18, division floored), not float conversions; yieldAccrual keeps its balances as raw integers. In both blocks elapsedDays is the interval between the entry's own start timestamp and asOf.blockTimestamp (2026-08-25T15:58:34Z), rounded to four decimals, and annualizedBps follows from it at that precision."
+  },
+  "derivedTotals": {
+    "agentFills": 7,
+    "cumulativeSurplusUsdAtFillPrices": 0.14152,
+    "notionalUsdAtFillPrices": 11.9141,
+    "note": "each fill valued at its own executed USDT/WBNB rate, not at a single spot price"
+  }
+}

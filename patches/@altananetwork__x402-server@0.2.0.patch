@@ -1,0 +1,14 @@
+diff --git a/dist/verify.js b/dist/verify.js
+index 07add42137a06d171574145adea78b5893fb9533..15bd3cbccfd90e349b987b8cfc6c73ee37aa9801 100644
+--- a/dist/verify.js
++++ b/dist/verify.js
+@@ -54,6 +54,9 @@ export async function verifyPayment(d, cfg, opts) {
+             nonce: a.nonce,
+         });
+     }
++    else if (d.rail !== "permit2-witness") {
++        return { ok: false, reason: "recipient-bound permit2 witness is required" };
++    }
+     else {
+         const p = d.permit;
+         if (rail.rail !== "permit2-exact" || p.spender.toLowerCase() !== rail.spender.toLowerCase()) {
