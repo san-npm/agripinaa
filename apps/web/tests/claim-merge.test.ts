@@ -110,7 +110,7 @@ test('an unclaimed agent, and a claim that filled nothing, get no label', () => 
   assert.equal(claimProvenanceLabel(merged), null);
 });
 
-test('a hub injects an agent only when its claim supplies the category', () => {
+test('a hub keeps a source-missing native agent only in its displayed category', () => {
   const claim = {
     fields: { description: 'Owner text.', category: 'yield' },
   } as unknown as ClaimRecord;
@@ -118,12 +118,19 @@ test('a hub injects an agent only when its claim supplies the category', () => {
   assert.equal(claimForCategory(bare, claim, 'yield')?.category, 'yield');
   assert.equal(claimForCategory(bare, claim, 'grid'), null);
 
-  // Any indexed category makes the record native to an upstream category
-  // listing. It must never be injected, including into that same category, or
-  // it can appear once now and again when its upstream window is reached.
+  // A detail/registry lookup can be fresher than the active listing source.
+  // Native metadata still blocks the wrong hub, but the right hub may preserve
+  // this record when its actual listing window is known to have missed it.
   const grid = { ...bare, category: 'grid' } as unknown as AgentSummary;
   assert.equal(claimForCategory(grid, claim, 'yield'), null);
-  assert.equal(claimForCategory(grid, claim, 'grid'), null);
+  assert.equal(claimForCategory(grid, claim, 'grid'), null, 'the claim did not nominate grid');
+  const kept = claimForCategory(
+    grid,
+    { ...claim, fields: { ...claim.fields, category: 'grid' } },
+    'grid',
+  );
+  assert.equal(kept?.category, 'grid');
+  assert.equal(kept?.claimed, true, 'the claim can still supply its description');
 });
 
 test('a claim of other buys no hub placement at all', () => {
