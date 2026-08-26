@@ -5,6 +5,10 @@ import {
   DECOMMISSIONED_YIELD_ROUTER_ADDRESSES_BSC,
   RETIRED_YIELD_ROUTER_BSC,
   RETIRED_YIELD_ROUTER_BSC_USDC,
+  RETIRED_YIELD_ROUTER_V2_BSC,
+  RETIRED_YIELD_ROUTER_V2_BSC_USDC,
+  ROUTER_ACTIONS,
+  YIELD_ROUTER_BSC,
 } from '@agripinaa/shared/contracts';
 
 import {
@@ -29,19 +33,25 @@ test('managed venue classification surfaces a debt-blocked split position', () =
   assert.equal(classifyManagedVenue(0n, 60n, 0n, 1n), 'aave');
 });
 
-test('owner unwind fails closed until a debt-complete router is deployed', () => {
-  assert.throws(() => managedUnwindCall(56, 'USDT'), /debt-complete YieldRouter/);
+test('owner unwind targets the active debt-complete router', () => {
+  assert.deepEqual(managedUnwindCall(56, 'USDT'), {
+    to: YIELD_ROUTER_BSC.address,
+    data: ROUTER_ACTIONS.toIdle.selector,
+  });
 });
 
-test('legacy recovery resolves retired metadata but never builds a call to it', () => {
+test('legacy recovery resolves retired metadata but builds the unwind only to v3', () => {
   assert.equal(
     resolveManagedRouterDeployment(56, 'USDT', RETIRED_YIELD_ROUTER_BSC.address)?.address,
     RETIRED_YIELD_ROUTER_BSC.address,
   );
-  assert.throws(
-    () => (managedUnwindCall as (...args: unknown[]) => unknown)(56, 'USDT', RETIRED_YIELD_ROUTER_BSC.address),
-    /debt-complete YieldRouter/,
+  const call = (managedUnwindCall as (...args: unknown[]) => { to: string })(
+    56,
+    'USDT',
+    RETIRED_YIELD_ROUTER_BSC.address,
   );
+  assert.equal(call.to, YIELD_ROUTER_BSC.address);
+  assert.notEqual(call.to, RETIRED_YIELD_ROUTER_BSC.address);
 });
 
 test('withdrawal destinations reject every retired and decommissioned router', () => {
@@ -49,6 +59,8 @@ test('withdrawal destinations reject every retired and decommissioned router', (
   for (const address of [
     RETIRED_YIELD_ROUTER_BSC.address,
     RETIRED_YIELD_ROUTER_BSC_USDC.address,
+    RETIRED_YIELD_ROUTER_V2_BSC.address,
+    RETIRED_YIELD_ROUTER_V2_BSC_USDC.address,
     ...DECOMMISSIONED_YIELD_ROUTER_ADDRESSES_BSC,
   ]) {
     assert.match(destinationProblem(address.toLowerCase(), account, 56) ?? '', /contract address/);

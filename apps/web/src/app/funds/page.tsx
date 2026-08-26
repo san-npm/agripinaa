@@ -130,7 +130,7 @@ export default function FundsPage() {
       </section>
 
       <section className="mt-10 rounded-xl border border-border bg-surface p-5">
-        <h2 className="font-display text-xl font-semibold">Debt guard migration status</h2>
+        <h2 className="font-display text-xl font-semibold">Debt guard deployment status</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           A compromised session key cannot move funds anywhere except back to their
           owner. That is the property the design above enforces and the fuzzing
@@ -138,12 +138,12 @@ export default function FundsPage() {
           harmless, only that it has nowhere to send anything.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          The published 2026-08-26 addresses cover Aave aggregate debt and ordinary
-          Venus market borrows, but not Venus&apos;s separate VAI debt ledger. They are
-          marked debt-guard version 2, and the application and runner refuse new or
-          continued automated execution through them. The source now checks VAI,
-          leaves encumbered receipt tokens untouched, and requires a new immutable
-          version-3 deployment before management or deployed-position recovery resumes.
+          The published 2026-08-26 addresses are debt-guard version 3. They cover
+          Aave aggregate debt, ordinary Venus market borrows, and Venus&apos;s separate
+          VAI debt ledger. Their runtime hashes are pinned in the shared manifest and
+          checked against live bytecode before activation or runner execution.
+          Superseded version-2 and version-1 addresses remain owner-recovery-only;
+          an old session cannot authorize either active replacement address.
         </p>
       </section>
 

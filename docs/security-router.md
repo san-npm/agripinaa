@@ -8,20 +8,20 @@ This document states what that session key can do if it is stolen outright, and
 cites the file, the test, or the address behind each claim so a reviewer can
 check it rather than take it.
 
-Deployed on BNB Smart Chain, but classified recovery-only because these
-immutable version-2 builds do not inspect Venus's separate VAI debt ledger
+Debt-complete version-3 deployments on BNB Smart Chain
 (`packages/shared/src/contracts.ts`):
 
-| Managed token | Address | Deployed |
-| --- | --- | --- |
-| USDT | `0xE69503b265E4320f139A0F7b1A6f1D00fCBd3C02` | 2026-08-26 |
-| USDC | `0x0DD7B7446D449a8968F0FBf1f9a23bd9f2686167` | 2026-08-26 |
+| Managed token | Address | Block | Runtime hash |
+| --- | --- | ---: | --- |
+| USDT | `0x67c0005C2a9709a28DA42cEC9b11b8a7201B4C22` | 118230700 | `0xc20d8eb8623f79a688daa29414adc64dddd48634a68f46169cd871105cdd1f16` |
+| USDC | `0x4A2E2817736D8497EeB4296dd5e51ECAeA427f72` | 118230776 | `0x07a4f5743bffe23fd40cae068261a1d34b69e9362563c7a97ed5b0a4cb66fe1c` |
 
-New activation and runner execution are paused until a debt-complete version-3
-replacement is deployed and verified. A version label alone cannot enable it:
-the manifest must pin the runtime bytecode hash, and the browser and runner
-both compare live code plus `DEBT_GUARD_VERSION()` before any value-moving
-action. Contract custody and bounded recent raw
+Both creation receipts succeeded on 2026-08-26, every immutable getter was
+read back against its configured venue, and the runtime hash for each address
+matched through two independent RPC providers. A version label alone cannot
+enable a router: the manifest pins the runtime bytecode hash, and the browser
+and runner both compare live code plus `DEBT_GUARD_VERSION()` before any
+value-moving action. Contract custody and bounded recent raw
 router activity are public at [`/funds`](https://agripinaa.vercel.app/funds);
 permissionless router events do not prove a managed mandate or a particular
 agent.
@@ -272,7 +272,7 @@ with where each one can be checked from this repo and where it cannot:
   script and no output from it are committed here, so this figure is reported
   rather than reproducible from this repo.
 
-## The Medium is fixed in source; version-3 deployment is pending
+## The Medium is fixed in source and version 3 is deployed
 
 The 2026-08-25 audit found one Medium issue (confidence 90), with a working
 proof of concept. Stated in full, precondition included:
@@ -318,15 +318,21 @@ Encumbered source legs are left untouched instead of reverting unrelated safe
 funds, and constructor checks bind the comptroller and receipt tokens to their
 configured dependencies. The fork suite proves these paths.
 
-The 2026-08-26 deployments at the top of this document are version 2: they
-check Aave aggregate debt and ordinary entered Venus-market borrows, but omit
-VAI. Because the routers are immutable, the complete source requires new
-addresses. The shared registry marks only version 3 as executable; the web
-activation path, owner unwind path and runner all fail closed on version 2.
-A prior session cannot authorize a replacement address: after deployment and
-bytecode/dependency verification, the owner must approve version 3 and grant a
-fresh mandate. Until then, the venue receipts remain in the owner's account and
-only already-idle stablecoin can be recovered without calling an old router.
+The version-3 deployments at the top of this document check Aave aggregate
+debt, ordinary entered Venus-market borrows, and VAI. Their creation
+transactions are
+`0xd6501a3deeaf406a50b58bd44383c8d51e9e00ea5f3565a25d15ba6d6fbcd0f8`
+(USDT) and
+`0x1bb52e4a17ba05292a4fa208ecc7b13efc01a30ecec8363404d421ed9413f0e7`
+(USDC). The shared registry marks only version 3 with a matching pinned runtime
+hash as executable; the web activation path, owner unwind path and runner all
+fail closed on older deployments or a live-code mismatch.
+
+The superseded version-2 addresses `0xE69503b2…3C02` (USDT) and
+`0x0DD7B744…6167` (USDC), plus the earlier version-1 addresses, remain in the
+recovery registry. A prior session cannot authorize a replacement address: an
+owner who wants managed execution through version 3 must approve the new
+router and grant a fresh mandate. Old scopes remain recovery-only.
 
 ## Reproduce it
 
