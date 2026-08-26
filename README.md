@@ -34,17 +34,17 @@ USDT a call). Their meaningful actions also appear in the public
 [`/proof`](https://agripinaa.vercel.app/proof) feed, backed by the runners'
 bounded JSONL tails and Ophis on-chain settlement history.
 
-Four more agents (a second grid, a Venus-side guardian, a conservative rotator,
+Four more agents (Agripinaa BTC Grid, a Venus-side guardian, a conservative rotator,
 a weight rebalancer) are built and unit-tested under `apps/agents/src/agents/`
-and declared in `packages/shared/src/agents.ts`. They wait on the owner's
-sign-off on their display names before they are registered on-chain.
+and declared in `packages/shared/src/agents.ts`. Their names are settled, but
+their on-chain registrations and production runner rollout are still pending.
 
 ## What a judge is scoring, and where to look
 
 | Criterion | Where it is answered |
 |---|---|
 | **Functionality**: land, browse, understand, activate, no dead ends | `/` to `/agents` to `/c/<category>` to a profile to activation to `/dashboard`. Endpoint liveness is probed rather than assumed, and an agent whose endpoint does not answer offers inspection instead of an activate button that goes nowhere. |
-| **Data quality**: live data beyond counts | One score per agent with per-field provenance and a freshness stamp; execution quality computed from Ophis settlement; [`/leaderboard`](https://agripinaa.vercel.app/leaderboard) ranked on settlement-derived surplus with a squared sample-depth discount; [`/funds`](https://agripinaa.vercel.app/funds) with live router balances and every rotation on record; a proof feed that is populated at first paint. |
+| **Data quality**: live data beyond counts | One score per agent with per-field provenance and a freshness stamp; execution quality computed from Ophis settlement; [`/leaderboard`](https://agripinaa.vercel.app/leaderboard) ranked on settlement-derived surplus with a squared sample-depth discount; [`/funds`](https://agripinaa.vercel.app/funds) with live router custody and bounded recent permissionless activity; a proof feed that is populated at first paint. |
 | **Agent diversity**: the four mandated categories | Grid, health-factor, yield and rebalancing hubs, each with a first-party agent live on mainnet, plus the indexed BSC population sorted into the same taxonomy by the shared classifier. |
 | **Agent advantage**: the TermiX rubric | [`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md): eight settlements, a live liquidation drill, a managed rotation, receipts and transactions attached, dispersion and downtime reported alongside the wins. |
 
@@ -60,10 +60,12 @@ For managed yield, the session key is scoped to one contract whose entrypoints
 take no arguments at all: `AgripinaaYieldRouter`. Every recipient inside it is
 hardcoded to the calling account, so a stolen key can move the user's funds
 between the user's own positions or back to the user, and cannot name a third
-party. The guarded deployments also refuse to remove Aave or Venus receipt
-tokens while that venue reports debt, closing the audit's collateral-removal
-finding. The threat model, both fuzz invariants, the finding, and its deployed
-fix are in [`docs/security-router.md`](docs/security-router.md).
+party. The corrected source also leaves Aave or Venus receipt tokens untouched
+while that venue reports any supported debt ledger. The immutable deployed
+routers predate the complete Venus VAI check, so new management is deliberately
+paused until version 3 is deployed and verified. The threat model, fuzz
+invariants, finding, and migration state are in
+[`docs/security-router.md`](docs/security-router.md).
 
 ## Quickstart
 
@@ -84,7 +86,7 @@ documented in [`ops/launch.md`](ops/launch.md). Never commit an `.env` file.
 
 The agents need funded wallets (`wallets/`, gitignored) and are started with
 `./ops/start-agents.sh`; `ops/launch.md` covers the VM deploy. The router
-contracts live in `contracts/` and run with `forge test --fork-url bsc` (13 fork
+contracts live in `contracts/` and run with `forge test --fork-url bsc` (20 fork
 tests) plus the Echidna and Medusa harness described in the security doc.
 
 ## Monorepo

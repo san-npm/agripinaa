@@ -17,11 +17,12 @@ pragma solidity 0.8.28;
  * the user's own positions, or return them idle to the user. It can never
  * move value to a third party.
  *
- * Non-custodial: the router holds no funds between calls. Within one call it
- * pulls a position in, rotates it, and hands the resulting position token (or
- * plain USDT) straight back to the caller, ending every call at a zero
- * balance. The user's funds always live in the user's account as USDT, aToken
- * (Aave), or vToken (Venus).
+ * Non-custodial: within one call the router pulls a safe source leg in, rotates
+ * it, and hands the resulting position token (or plain USDT) straight back to
+ * the caller. It retains none of that call's funds. Tokens transferred to the
+ * router out of band remain deliberately stranded and are excluded by delta
+ * accounting; a later caller cannot sweep them. The user's managed funds live
+ * in the user's account as USDT, aToken (Aave), or vToken (Venus).
  *
  * Trust model: non-upgradeable, un-owned, no admin, no privileged role, no
  * `selfdestruct`, no delegatecall. The only powers it needs are the ERC-20
@@ -59,6 +60,7 @@ interface IAaveAToken {
 
 interface IVenusComptroller {
     function getAssetsIn(address account) external view returns (address[] memory);
+    function mintedVAIs(address account) external view returns (uint256);
 }
 
 /// @dev Venus is a Compound-v2 fork: mint/redeem return an error code (0 == ok).
@@ -74,10 +76,19 @@ interface IVToken {
 }
 
 contract AgripinaaYieldRouter {
+    uint256 public constant DEBT_GUARD_VERSION = 3;
+
+    enum Target {
+        IDLE,
+        AAVE,
+        VENUS
+    }
+
     IERC20 public immutable USDT;
     IERC20 public immutable AUSDT; // Aave aToken for USDT
     IAavePool public immutable AAVE;
     IVToken public immutable VUSDT; // Venus vToken for USDT
+    IVenusComptroller public immutable VENUS_COMPTROLLER;
 
     /// @dev Non-reentrancy: cheap defense in depth. The venue/token addresses
     /// are fixed and trusted, but a guard keeps the "ends at zero balance"
@@ -85,17 +96,21 @@ contract AgripinaaYieldRouter {
     uint256 private _locked = 1;
 
     event Rotated(address indexed account, bytes4 indexed action, uint256 usdtAmount);
+    event EncumberedPositionSkipped(
+        address indexed account, address indexed receiptToken, address indexed debtSource, uint256 debtAmount
+    );
 
     error Reentrancy();
     error VenusMintFailed(uint256 code);
     error VenusRedeemFailed(uint256 code);
+    error ZeroVenusMint();
+    error AaveWithdrawMismatch(uint256 expected, uint256 actual);
     error TransferFailed();
     error ApproveFailed();
     error InvalidDependency(address dependency);
     error UnderlyingMismatch(address receiptToken, address expected, address actual);
     error PoolMismatch(address receiptToken, address expected, address actual);
-    error EncumberedAavePosition(uint256 debtBase);
-    error EncumberedVenusPosition(address debtMarket, uint256 debtAmount);
+    error ComptrollerMismatch(address expected, address actual);
 
     modifier nonReentrant() {
         if (_locked != 1) revert Reentrancy();
@@ -116,17 +131,27 @@ contract AgripinaaYieldRouter {
         if (tokenPool != aavePool) revert PoolMismatch(aUsdt, aavePool, tokenPool);
         address venusUnderlying = IVToken(vUsdt).underlying();
         if (venusUnderlying != usdt) revert UnderlyingMismatch(vUsdt, usdt, venusUnderlying);
-        _requireContract(IVToken(vUsdt).comptroller());
+        address venusComptroller = IVToken(vUsdt).comptroller();
+        _requireContract(venusComptroller);
+        // This router is for the Venus Core Pool, whose VAI debt ledger is part
+        // of the safety predicate. Probe the selector now so an incompatible
+        // isolated-pool Comptroller cannot deploy a router that bricks later.
+        if (IVenusComptroller(venusComptroller).mintedVAIs(address(this)) != 0) {
+            revert InvalidDependency(venusComptroller);
+        }
 
         USDT = IERC20(usdt);
         AUSDT = IERC20(aUsdt);
         AAVE = IAavePool(aavePool);
         VUSDT = IVToken(vUsdt);
+        VENUS_COMPTROLLER = IVenusComptroller(venusComptroller);
     }
 
     /// @notice Move all of the caller's USDT (unwinding any Venus position) into Aave.
     function toAave() external nonReentrant {
-        uint256 amount = _unwindAllToUsdt(msg.sender);
+        // Existing Aave receipts are already at the destination. Only unwind
+        // Venus and collect idle USDT, avoiding churn and unrelated Aave risk.
+        uint256 amount = _collectUsdt(msg.sender, Target.AAVE);
         if (amount > 0) {
             _approve(USDT, address(AAVE), amount);
             // aTokens are minted straight to the user's account.
@@ -137,7 +162,9 @@ contract AgripinaaYieldRouter {
 
     /// @notice Move all of the caller's USDT (unwinding any Aave position) into Venus.
     function toVenus() external nonReentrant {
-        uint256 amount = _unwindAllToUsdt(msg.sender);
+        // Existing Venus receipts are already at the destination. Only unwind
+        // Aave and collect idle USDT, avoiding churn and unrelated Venus risk.
+        uint256 amount = _collectUsdt(msg.sender, Target.VENUS);
         if (amount > 0) {
             _approve(USDT, address(VUSDT), amount);
             // Snapshot after unwind (which redeemed any of the caller's own
@@ -147,6 +174,7 @@ contract AgripinaaYieldRouter {
             if (code != 0) revert VenusMintFailed(code);
             // ...so hand exactly this call's newly minted vTokens back to the user.
             uint256 minted = VUSDT.balanceOf(address(this)) - preMint;
+            if (minted == 0) revert ZeroVenusMint();
             if (!VUSDT.transfer(msg.sender, minted)) revert TransferFailed();
         }
         if (amount > 0) emit Rotated(msg.sender, this.toVenus.selector, amount);
@@ -154,7 +182,9 @@ contract AgripinaaYieldRouter {
 
     /// @notice Unwind everything back to the caller's plain USDT balance (this is "withdraw").
     function toIdle() external nonReentrant {
-        uint256 amount = _unwindAllToUsdt(msg.sender);
+        // Idle USDT is already at the destination. Do not round-trip it through
+        // the router: that was a zero-state-change way to manufacture events.
+        uint256 amount = _collectUsdt(msg.sender, Target.IDLE);
         if (amount > 0) {
             if (!USDT.transfer(msg.sender, amount)) revert TransferFailed();
         }
@@ -162,41 +192,50 @@ contract AgripinaaYieldRouter {
     }
 
     /**
-     * @dev Pull every USDT-equivalent the account holds (Venus vTokens, Aave
-     * aTokens, idle USDT) into this router as plain USDT, and return ONLY the
-     * amount this call brought in. Everything is pulled FROM `account` TO this
-     * router; each step touches only the caller's own position, so any balance
-     * stranded in the router beforehand (a stray transfer/donation) is ignored
-     * and can never be swept by a caller. This makes the "holds nothing between
-     * calls / only your own funds" invariants hold by construction, not by the
-     * router happening to be empty.
+     * @dev Pull the account's safe source legs for `target` into this router as
+     * plain USDT and return ONLY the amount this call brought in. The target
+     * leg is never round-tripped, and an encumbered source leg remains in the
+     * account while other legs continue. Every transfer is FROM `account` TO
+     * this router; any balance stranded here beforehand (a stray transfer or
+     * donation) is ignored and can never be swept by a later caller.
      */
-    function _unwindAllToUsdt(address account) private returns (uint256) {
+    function _collectUsdt(address account, Target target) private returns (uint256) {
         // Ignore any pre-existing (stranded) USDT: we distribute the delta only.
         uint256 entryUsdt = USDT.balanceOf(address(this));
 
         // 1. Venus: pull ONLY the caller's vTokens and redeem exactly those.
         uint256 vBal = VUSDT.balanceOf(account);
-        if (vBal > 0) {
-            _requireNoVenusDebt(account);
-            if (!VUSDT.transferFrom(account, address(this), vBal)) revert TransferFailed();
-            uint256 code = VUSDT.redeem(vBal);
-            if (code != 0) revert VenusRedeemFailed(code);
+        if (target != Target.VENUS && vBal > 0) {
+            (address debtSource, uint256 debtAmount) = _venusDebt(account);
+            if (debtAmount != 0) {
+                // Receipt balances are permissionlessly transferable. Leaving
+                // an encumbered leg untouched prevents one donated raw unit
+                // from blocking safe Aave/idle processing for the account.
+                emit EncumberedPositionSkipped(account, address(VUSDT), debtSource, debtAmount);
+            } else {
+                if (!VUSDT.transferFrom(account, address(this), vBal)) revert TransferFailed();
+                uint256 code = VUSDT.redeem(vBal);
+                if (code != 0) revert VenusRedeemFailed(code);
+            }
         }
 
         // 2. Aave: pull the caller's aTokens and withdraw EXACTLY that amount
         //    (not type(max)), so a stray aToken balance is left untouched.
         uint256 aBal = AUSDT.balanceOf(account);
-        if (aBal > 0) {
+        if (target != Target.AAVE && aBal > 0) {
             (, uint256 debtBase,,,,) = AAVE.getUserAccountData(account);
-            if (debtBase != 0) revert EncumberedAavePosition(debtBase);
-            if (!AUSDT.transferFrom(account, address(this), aBal)) revert TransferFailed();
-            AAVE.withdraw(address(USDT), aBal, address(this));
+            if (debtBase != 0) {
+                emit EncumberedPositionSkipped(account, address(AUSDT), address(AAVE), debtBase);
+            } else {
+                if (!AUSDT.transferFrom(account, address(this), aBal)) revert TransferFailed();
+                uint256 withdrawn = AAVE.withdraw(address(USDT), aBal, address(this));
+                if (withdrawn != aBal) revert AaveWithdrawMismatch(aBal, withdrawn);
+            }
         }
 
         // 3. Idle USDT sitting in the account.
         uint256 idle = USDT.balanceOf(account);
-        if (idle > 0) {
+        if (target != Target.IDLE && idle > 0) {
             if (!USDT.transferFrom(account, address(this), idle)) revert TransferFailed();
         }
 
@@ -211,14 +250,21 @@ contract AgripinaaYieldRouter {
         if (!token.approve(spender, amount)) revert ApproveFailed();
     }
 
-    function _requireNoVenusDebt(address account) private view {
-        address comptroller = VUSDT.comptroller();
-        _requireContract(comptroller);
-        address[] memory markets = IVenusComptroller(comptroller).getAssetsIn(account);
+    /// @dev Return the first Venus obligation that makes vUSDT unsafe to move.
+    /// VAI debt lives in the Comptroller, not in any vToken borrow balance, so
+    /// both ledgers are required for a complete zero-debt predicate.
+    function _venusDebt(address account) private view returns (address debtSource, uint256 debtAmount) {
+        address comptroller = address(VENUS_COMPTROLLER);
+        address liveComptroller = VUSDT.comptroller();
+        if (liveComptroller != comptroller) revert ComptrollerMismatch(comptroller, liveComptroller);
+        uint256 vaiDebt = VENUS_COMPTROLLER.mintedVAIs(account);
+        if (vaiDebt != 0) return (comptroller, vaiDebt);
+        address[] memory markets = VENUS_COMPTROLLER.getAssetsIn(account);
         for (uint256 i; i < markets.length; ++i) {
             uint256 debt = IVToken(markets[i]).borrowBalanceStored(account);
-            if (debt != 0) revert EncumberedVenusPosition(markets[i], debt);
+            if (debt != 0) return (markets[i], debt);
         }
+        return (address(0), 0);
     }
 
     function _requireContract(address dependency) private view {

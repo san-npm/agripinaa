@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { POST as manage } from '../src/app/api/managed/[agent]/manage/route';
 import { GET as managerKey } from '../src/app/api/managed/[agent]/manager-key/route';
+import { GET as managedStatus } from '../src/app/api/managed/[agent]/managed-status/route';
 
 import { newState, recordingFetch, RUNNER_BASE, streamBody, withFetch } from './fetch-stub';
 
@@ -17,6 +18,11 @@ const manageRequest = (body = '{"account":"0x1"}') =>
     headers: { 'content-type': 'application/json' },
     body,
   });
+const statusRequest = () => new Request(
+  'https://agripinaa.test/api/managed/yield/managed-status' +
+  '?account=0x1111111111111111111111111111111111111111' +
+  '&router=0x2222222222222222222222222222222222222222',
+);
 
 const METADATA = 'https://169.254.169.254/latest/meta-data/';
 const redirectToMetadata = (state = newState()) => ({
@@ -76,6 +82,20 @@ test('both routes still pass the runner status and body through', async () => {
   const reg = await withFetch(stub, () => manage(manageRequest(), ctx('yield')));
   assert.equal(reg.status, 200);
   assert.deepEqual(await reg.json(), { ok: true, managedCount: 2 });
+});
+
+test('managed status forwards only validated account and router addresses', async () => {
+  const state = newState();
+  const stub = recordingFetch(state, () => new Response('{"registered":true,"service":"ready"}', { status: 200 }));
+  const response = await withFetch(stub, () => managedStatus(statusRequest(), ctx('yield')));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json() as { service: string }).service, 'ready');
+  assert.equal(state.calls.length, 1);
+
+  const bad = new Request('https://agripinaa.test/api/managed/yield/managed-status?account=bad&router=bad');
+  const rejected = await withFetch(stub, () => managedStatus(bad, ctx('yield')));
+  assert.equal(rejected.status, 400);
+  assert.equal(state.calls.length, 1);
 });
 
 test('an echoed runner body is labelled application/json and marked nosniff', async () => {

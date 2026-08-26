@@ -1,5 +1,5 @@
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits, type TokenInfo } from '@agripinaa/shared';
-import { erc20Abi, maxUint256, parseAbi, type PublicClient } from 'viem';
+import { erc20Abi, maxUint256, padHex, parseAbi, toEventSelector, type Hex, type PublicClient } from 'viem';
 
 import type { ManagedExecutor } from '../executor';
 import type { AgentContext, AgentModule } from '../types';
@@ -64,6 +64,23 @@ export const DUST_WEI = toBaseUnits('0.01', USDT.decimals);
 
 export const HYSTERESIS_BPS = 50;
 export const REQUIRED_STREAK = 2;
+
+const ENCUMBERED_POSITION_SKIPPED_TOPIC = toEventSelector(
+  'EncumberedPositionSkipped(address,address,address,uint256)',
+);
+
+function receiptProvesEncumberedSkip(
+  receipt: { logs?: readonly { address: string; topics: readonly Hex[] }[] },
+  router: Hex,
+  account: Hex,
+): boolean {
+  const accountTopic = padHex(account, { size: 32 }).toLowerCase();
+  return receipt.logs?.some((log) =>
+    log.address.toLowerCase() === router.toLowerCase()
+    && log.topics[0]?.toLowerCase() === ENCUMBERED_POSITION_SKIPPED_TOPIC.toLowerCase()
+    && log.topics[1]?.toLowerCase() === accountTopic
+  ) ?? false;
+}
 
 // ---------------------------------------------------------------------------
 // Pure decision logic (unit-tested, no network)
@@ -555,15 +572,49 @@ export const DEFAULT_MANAGED_POLICY: ManagedPolicy = {
   maxRotationsPerDay: 1,
 };
 
+type PendingExecutionKind = 'relay-pending' | 'confirmed-reconcile';
+type PendingActionKind = 'enter' | 'rotate' | 'partial';
+const PENDING_EXECUTION_MAX_AGE_MS = 35 * 60 * 1000;
+const PARTIAL_RETRY_MIN_AGE_MS = 6 * 60 * 60 * 1000;
+
+export interface ManagedTickOutcome {
+  health: 'error';
+  reason: string;
+}
+
 export async function managedYieldTick(
   ctx: AgentContext,
   executor: ManagedExecutor,
   policy: ManagedPolicy = DEFAULT_MANAGED_POLICY,
-): Promise<void> {
+): Promise<ManagedTickOutcome | undefined> {
   const acct = executor.account;
   // Namespace strategy state by (account, token) so a USDT mandate's hysteresis
   // and rate-limit state can never bleed into a USDC mandate on the same account.
   const ns = (k: string) => `managed:${acct.toLowerCase()}:${executor.deployment.symbol}:${k}`;
+  const clearPending = () => {
+    ctx.state.set(ns('pendingTarget'), null);
+    ctx.state.set(ns('pendingKind'), null);
+    ctx.state.set(ns('pendingActionKind'), null);
+    ctx.state.set(ns('pendingAt'), null);
+    ctx.state.set(ns('pendingTxHash'), null);
+    ctx.state.set(ns('pendingPreviousLastRotateAt'), null);
+    ctx.state.set(ns('pendingPreviousBetterStreak'), null);
+  };
+  const rememberPending = (
+    target: Venue,
+    kind: PendingExecutionKind,
+    actionKind: PendingActionKind,
+    txHash?: `0x${string}`,
+    previousRotation?: { lastRotateAt: number; betterStreak: number },
+  ) => {
+    ctx.state.set(ns('pendingTarget'), target);
+    ctx.state.set(ns('pendingKind'), kind);
+    ctx.state.set(ns('pendingActionKind'), actionKind);
+    ctx.state.set(ns('pendingAt'), Date.now());
+    ctx.state.set(ns('pendingTxHash'), txHash ?? null);
+    ctx.state.set(ns('pendingPreviousLastRotateAt'), previousRotation?.lastRotateAt ?? null);
+    ctx.state.set(ns('pendingPreviousBetterStreak'), previousRotation?.betterStreak ?? null);
+  };
 
   const halted = ctx.breakers.isHalted();
   if (halted.halted) {
@@ -576,9 +627,11 @@ export async function managedYieldTick(
   const rates = await readRates(ctx.publicClient, venues);
   const position = await readPosition(ctx.publicClient, acct, venues);
   const venue = position.chainVenue;
+  const splitAcrossVenues =
+    position.venusUnderlyingWei > DUST_WEI && position.aaveATokenWei > DUST_WEI;
 
   const storedVenue = ctx.state.get<Venue>(ns('venue'), 'none');
-  if (venue !== storedVenue) {
+  if (!splitAcrossVenues && venue !== storedVenue) {
     ctx.log({ event: 'managed-venue-reconciled', account: acct, stored: storedVenue, chain: venue });
     ctx.state.set(ns('venue'), venue);
   }
@@ -594,20 +647,134 @@ export async function managedYieldTick(
     aaveUsdt: fromBaseUnits(position.aaveATokenWei, USDT.decimals),
   };
 
+  const pendingTarget = ctx.state.get<Venue | null>(ns('pendingTarget'), null);
+  const pendingKind = ctx.state.get<PendingExecutionKind | null>(ns('pendingKind'), null);
+  const pendingActionKind = ctx.state.get<PendingActionKind | null>(ns('pendingActionKind'), null);
+  const pendingPreviousLastRotateAt = ctx.state.get<number | null>(ns('pendingPreviousLastRotateAt'), null);
+  const pendingPreviousBetterStreak = ctx.state.get<number | null>(ns('pendingPreviousBetterStreak'), null);
+  const pendingBreakerKey = pendingActionKind === 'partial' ? 'rotate' : pendingActionKind;
+  const restorePendingRotation = () => {
+    if (pendingActionKind !== 'rotate') return;
+    if (pendingPreviousLastRotateAt != null) ctx.state.set(ns('lastRotateAt'), pendingPreviousLastRotateAt);
+    if (pendingPreviousBetterStreak != null) ctx.state.set(ns('betterStreak'), pendingPreviousBetterStreak);
+  };
+
+  // Raw receipt tokens are permissionlessly transferable. Never use their
+  // topology to resolve a relay-pending transaction: only a receipt can turn
+  // that uncertainty into a result.
+  const splitBlocked = ctx.state.get<boolean>(ns('splitBlocked'), false);
+  // Clear legacy persistent state from older runners. A split without an
+  // execution being reconciled is raw topology, not proof of debt.
+  if (splitBlocked) ctx.state.set(ns('splitBlocked'), false);
+
   // A relay can return PENDING before finality. Persist that uncertainty and
   // refuse another write until the next reads prove the requested venue is
   // live. This is deliberately fail-closed: an unresolved bundle must never
   // be followed by a second rotation that could race it.
-  const pendingTarget = ctx.state.get<Venue | null>(ns('pendingTarget'), null);
   if (pendingTarget) {
-    if (venue === pendingTarget) {
-      ctx.state.set(ns('pendingTarget'), null);
-      ctx.state.set(ns('venue'), venue);
-      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-confirmed', target: pendingTarget });
-    } else {
-      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-awaiting-chain', target: pendingTarget });
+    const submittedAt = ctx.state.get<number>(ns('pendingAt'), 0);
+    const txHash = ctx.state.get<`0x${string}` | null>(ns('pendingTxHash'), null);
+    let receiptResolved = false;
+    let encumberedSkip = false;
+    if (txHash) {
+      try {
+        const receipt = await ctx.publicClient.getTransactionReceipt({ hash: txHash });
+        if (receipt.status === 'reverted') {
+          clearPending();
+          restorePendingRotation();
+          if (pendingBreakerKey) ctx.breakers.releaseAction?.(ns(pendingBreakerKey));
+          ctx.log({ ...base, event: 'managed-tick', decision: 'pending-reverted', target: pendingTarget, txHash });
+          return { health: 'error', reason: 'the latest managed transaction reverted' };
+        }
+        receiptResolved = true;
+        encumberedSkip = receiptProvesEncumberedSkip(receipt, dep.address, acct);
+      } catch {
+        // Not mined or temporarily unavailable: age-bounded handling below.
+      }
     }
+
+    // A relay-pending result always needs a receipt. A synchronous CONFIRMED
+    // result needs one when it supplied a hash, because only the receipt log
+    // can distinguish a debt skip from a target-majority partial move.
+    const needsReceipt = pendingKind === 'relay-pending' || txHash != null;
+    if (needsReceipt && !receiptResolved) {
+      if (submittedAt === 0 || Date.now() - submittedAt >= PENDING_EXECUTION_MAX_AGE_MS) {
+        clearPending();
+        ctx.log({ ...base, event: 'managed-tick', decision: 'pending-expired', target: pendingTarget, txHash });
+        return { health: 'error', reason: 'the latest managed transaction expired without a receipt' };
+      }
+      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-awaiting-chain', target: pendingTarget, txHash });
+      return;
+    }
+
+    clearPending();
+    if (encumberedSkip) {
+      ctx.state.set(ns('partialTarget'), pendingTarget);
+      ctx.state.set(ns('partialLastAttemptAt'), Date.now());
+      ctx.log({ ...base, event: 'managed-skip', reason: 'partial-debt-blocked', target: pendingTarget, txHash });
+      return;
+    }
+    if (!splitAcrossVenues) ctx.state.set(ns('partialTarget'), null);
+    if (venue === pendingTarget) {
+      ctx.state.set(ns('venue'), venue);
+      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-confirmed', target: pendingTarget, txHash });
+      return;
+    }
+    if (splitAcrossVenues) {
+      // No debt-skip event: this may be a permissionless receipt donation.
+      // Surface topology without inventing debt or creating sticky state.
+      ctx.log({ ...base, event: 'managed-tick', decision: 'pending-confirmed-split-observed', target: pendingTarget, txHash });
+      return;
+    }
+    restorePendingRotation();
+    if (pendingBreakerKey) ctx.breakers.releaseAction?.(ns(pendingBreakerKey));
+    ctx.log({ ...base, event: 'managed-tick', decision: 'confirmed-no-state-change', target: pendingTarget, txHash });
     return;
+  }
+
+  // A proven debt skip is retried after the owner repays, even when the target
+  // leg was already the larger balance. The retry is both time- and
+  // breaker-bounded, so persistent debt cannot burn gas every sweep.
+  const partialTarget = ctx.state.get<Venue | null>(ns('partialTarget'), null);
+  if (partialTarget) {
+    if (venue === partialTarget && !splitAcrossVenues) {
+      ctx.state.set(ns('partialTarget'), null);
+    } else {
+      const lastAttemptAt = ctx.state.get<number>(ns('partialLastAttemptAt'), 0);
+      const retryAfterMs = Math.max(PARTIAL_RETRY_MIN_AGE_MS, policy.minRotationIntervalMs);
+      if (Date.now() - lastAttemptAt < retryAfterMs) {
+        ctx.log({ ...base, event: 'managed-tick', decision: 'partial-retry-cooldown', target: partialTarget });
+        return;
+      }
+      if (!ctx.breakers.allowAction(ns('rotate'), policy.maxRotationsPerDay)) {
+        ctx.log({ ...base, event: 'managed-tick', decision: 'partial-retry-capped', target: partialTarget });
+        return;
+      }
+      const previousPartialLastAttemptAt = lastAttemptAt;
+      ctx.state.set(ns('partialLastAttemptAt'), Date.now());
+      const action = partialTarget === 'venus' ? 'toVenus' : 'toAave';
+      let result: Awaited<ReturnType<ManagedExecutor['execute']>>;
+      try {
+        result = await executor.execute(action);
+      } catch (error) {
+        ctx.state.set(ns('partialLastAttemptAt'), previousPartialLastAttemptAt);
+        ctx.breakers.releaseAction?.(ns('rotate'));
+        throw error;
+      }
+      if (result.status === 'FAILED') {
+        ctx.state.set(ns('partialLastAttemptAt'), previousPartialLastAttemptAt);
+        ctx.breakers.releaseAction?.(ns('rotate'));
+        return { health: 'error', reason: 'the latest partial-position retry failed' };
+      }
+      rememberPending(
+        partialTarget,
+        result.status === 'PENDING' ? 'relay-pending' : 'confirmed-reconcile',
+        'partial',
+        result.txHash,
+      );
+      ctx.log({ ...base, event: 'managed-tick', decision: 'partial-retry-submitted', target: partialTarget, status: result.status, txHash: result.txHash });
+      return;
+    }
   }
 
   if (venue === 'none') {
@@ -623,9 +790,16 @@ export async function managedYieldTick(
       return;
     }
     const action = target === 'venus' ? 'toVenus' : 'toAave';
-    const res = await executor.execute(action);
+    let res: Awaited<ReturnType<ManagedExecutor['execute']>>;
+    try {
+      res = await executor.execute(action);
+    } catch (error) {
+      ctx.breakers.releaseAction?.(ns('enter'));
+      throw error;
+    }
     if (res.status !== 'CONFIRMED') {
-      if (res.status === 'PENDING') ctx.state.set(ns('pendingTarget'), target);
+      if (res.status === 'PENDING') rememberPending(target, 'relay-pending', 'enter', res.txHash);
+      else ctx.breakers.releaseAction?.(ns('enter'));
       ctx.log({
         ...base,
         event: 'managed-tick',
@@ -635,11 +809,25 @@ export async function managedYieldTick(
         txHash: res.txHash,
         status: res.status,
       });
+      if (res.status === 'FAILED') {
+        return { health: 'error', reason: 'the latest managed entry execution failed' };
+      }
       return;
     }
-    ctx.state.set(ns('venue'), target);
+    // Relay confirmation proves transaction inclusion, not that every source
+    // receipt moved: the router deliberately leaves encumbered collateral in
+    // place. Reconcile the resulting venue from chain state on the next tick.
+    rememberPending(target, 'confirmed-reconcile', 'enter', res.txHash);
     ctx.state.set(ns('betterStreak'), 0);
-    ctx.log({ ...base, event: 'managed-tick', decision: 'enter', target, action, txHash: res.txHash, status: res.status });
+    ctx.log({
+      ...base,
+      event: 'managed-tick',
+      decision: 'enter-confirmed-awaiting-chain',
+      target,
+      action,
+      txHash: res.txHash,
+      status: res.status,
+    });
     return;
   }
 
@@ -702,7 +890,15 @@ export async function managedYieldTick(
   // Anchored before the call, so a crash inside the execute window cannot let
   // the next tick fire a second rotation against a mandate already moving.
   ctx.state.set(ns('lastRotateAt'), now);
-  const res = await executor.execute(action);
+  let res: Awaited<ReturnType<ManagedExecutor['execute']>>;
+  try {
+    res = await executor.execute(action);
+  } catch (error) {
+    ctx.state.set(ns('lastRotateAt'), previousLastRotateAt);
+    ctx.state.set(ns('betterStreak'), previousStreak);
+    ctx.breakers.releaseAction?.(ns('rotate'));
+    throw error;
+  }
   if (res.status !== 'CONFIRMED') {
     if (res.status === 'FAILED') {
       // A terminal relay failure never happened on-chain, so restore the
@@ -710,8 +906,12 @@ export async function managedYieldTick(
       // keeps the cooldown: retrying an unresolved bundle can double-rotate.
       ctx.state.set(ns('lastRotateAt'), previousLastRotateAt);
       ctx.state.set(ns('betterStreak'), previousStreak);
+      ctx.breakers.releaseAction?.(ns('rotate'));
     } else {
-      ctx.state.set(ns('pendingTarget'), decision.target);
+      rememberPending(decision.target, 'relay-pending', 'rotate', res.txHash, {
+        lastRotateAt: previousLastRotateAt,
+        betterStreak: previousStreak,
+      });
     }
     ctx.log({
       ...base,
@@ -724,8 +924,26 @@ export async function managedYieldTick(
       txHash: res.txHash,
       status: res.status,
     });
+    if (res.status === 'FAILED') {
+      return { health: 'error', reason: 'the latest managed rotation execution failed' };
+    }
     return;
   }
-  ctx.state.set(ns('venue'), decision.target);
-  ctx.log({ ...base, event: 'managed-tick', decision: 'rotate', from: venue, to: decision.target, action, edgeBps: decision.edgeBps, txHash: res.txHash, status: res.status });
+  // A partial, debt-blocked execution is still CONFIRMED. Keep writes blocked
+  // until a fresh position read proves the requested venue actually won.
+  rememberPending(decision.target, 'confirmed-reconcile', 'rotate', res.txHash, {
+    lastRotateAt: previousLastRotateAt,
+    betterStreak: previousStreak,
+  });
+  ctx.log({
+    ...base,
+    event: 'managed-tick',
+    decision: 'rotate-confirmed-awaiting-chain',
+    from: venue,
+    to: decision.target,
+    action,
+    edgeBps: decision.edgeBps,
+    txHash: res.txHash,
+    status: res.status,
+  });
 }

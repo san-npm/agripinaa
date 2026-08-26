@@ -1,6 +1,7 @@
 import { agentBySlug } from '@agripinaa/shared/agents';
 
 import { proxyToRunner } from '@/lib/proxy-runner';
+import { readLimitedRequestText, RequestBodyTooLargeError } from '@/lib/request-body';
 
 /** Caps both directions: a serialized session in, a short status from the runner out. */
 const MAX_BODY_BYTES = 64 * 1024;
@@ -28,9 +29,14 @@ export async function POST(
   if (!agentBySlug(agent)) {
     return Response.json({ error: 'invalid agent' }, { status: 400 });
   }
-  const body = await request.text();
-  if (body.length > MAX_BODY_BYTES) {
-    return Response.json({ error: 'body too large' }, { status: 413 });
+  let body: string;
+  try {
+    body = await readLimitedRequestText(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json({ error: 'body too large' }, { status: 413 });
+    }
+    return Response.json({ error: 'body must be valid UTF-8' }, { status: 400 });
   }
   return proxyToRunner(`/${agent}/manage`, {
     method: 'POST',

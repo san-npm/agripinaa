@@ -16,6 +16,9 @@ const PORTO_ANY_SELECTOR = '0x32323232';
 const FORBIDDEN_TARGETS = new Set([PORTO_ANY_TARGET, PORTO_SELF_TARGET]);
 
 export const MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
+/** Canonical managed-session limits; fixed so the runner can reconstruct and validate the exact grant. */
+export const MANAGED_STABLE_CAP = '1000000';
+export const MANAGED_NATIVE_CAP = '0.005';
 
 export type SpendCapToken = 'USDT' | 'USDC';
 

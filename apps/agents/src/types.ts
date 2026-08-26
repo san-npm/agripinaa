@@ -18,6 +18,8 @@ export interface Breakers {
   isHalted(): { halted: boolean; reason?: string };
   /** Sliding-window action counter; returns false when the cap is reached. */
   allowAction(kind: string, maxPerDay: number): boolean;
+  /** Release the newest reservation when an attempted action definitively failed. */
+  releaseAction?(kind: string): void;
 }
 
 export interface AgentContext {

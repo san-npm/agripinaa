@@ -10,6 +10,8 @@
  * caller, this capability can rotate the user's funds but never divert them.
  */
 import {
+  isDebtCompleteRouter,
+  recoveryRouterByAddress,
   ROUTER_ACTIONS,
   routerByAddress,
   routerFor,
@@ -47,7 +49,7 @@ export interface ManagedExecutor {
  * entry's chain — never defaults to USDT, so a stale/malformed entry can't be
  * silently run against the wrong token's venues.
  */
-export function deploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
+function singleScopedTarget(entry: ManagedAccount): string | undefined {
   const rawCalls = entry.session?.permissions?.calls;
   const calls = Array.isArray(rawCalls) ? rawCalls : [];
   if (calls.length === 0) return undefined;
@@ -61,8 +63,20 @@ export function deploymentForEntry(entry: ManagedAccount): RouterDeployment | un
     targets.add(to.toLowerCase());
   }
   if (targets.size !== 1) return undefined;
-  const dep = routerByAddress([...targets][0]!);
+  return [...targets][0]!;
+}
+
+/** Known active or retired deployment used only to classify saved entries. */
+export function recoveryDeploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
+  const target = singleScopedTarget(entry);
+  const dep = target ? recoveryRouterByAddress(target) : undefined;
   return dep && dep.chainId === entry.chainId ? dep : undefined;
+}
+
+export function deploymentForEntry(entry: ManagedAccount): RouterDeployment | undefined {
+  const target = singleScopedTarget(entry);
+  const dep = target ? routerByAddress(target) : undefined;
+  return dep && dep.chainId === entry.chainId && isDebtCompleteRouter(dep) ? dep : undefined;
 }
 
 /** One client for the whole runner; supports both mainnet and testnet sessions. */

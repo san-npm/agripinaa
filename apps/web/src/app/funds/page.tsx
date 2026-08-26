@@ -7,13 +7,13 @@ import { RouterPanel } from '@/components/RouterPanel';
 import { clampDescription } from '@/lib/site';
 
 const DESCRIPTION = clampDescription(
-  'AgripinaaYieldRouter deployments on BNB Smart Chain: addresses, bounded router-visible balances, recent rotations, and managed-session security.',
+  'AgripinaaYieldRouter deployments on BNB Smart Chain: addresses, contract custody, bounded permissionless activity, and managed-session security.',
 );
 
 export const metadata: Metadata = {
-  title: 'Managed funds · Agripinaa',
+  title: 'Router security · Agripinaa',
   description: DESCRIPTION,
-  openGraph: { title: 'Managed funds · Agripinaa', description: DESCRIPTION },
+  openGraph: { title: 'Router security · Agripinaa', description: DESCRIPTION },
 };
 
 function PanelSkeleton({ symbol }: { symbol: string }) {
@@ -40,15 +40,14 @@ export default function FundsPage() {
       <span className="grid h-11 w-11 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
         <ShieldIcon className="h-5 w-5" />
       </span>
-      <h1 className="mt-4 font-display text-3xl font-semibold">Managed funds, in the open</h1>
+      <h1 className="mt-4 font-display text-3xl font-semibold">Router security, in the open</h1>
       <p className="mt-2 text-sm leading-relaxed text-muted">
         When you hand Agripinaa&apos;s yield agent a session key, the key is scoped to
         one contract: the AgripinaaYieldRouter. Your funds never leave your own
         smart account, and the agent&apos;s only power is to move them between Aave,
-        Venus, and idle. Both deployments are below with their balances and their
-        most recent rotations, each panel stating the block its scan reaches back
-        to, so you can check that before you deposit anything, and audit it
-        afterwards.
+        Venus, and idle. The published deployments are below with contract custody
+        and a bounded permissionless activity sample. Those events prove router execution,
+        not a managed mandate or which agent or owner signed.
       </p>
 
       <div className="mt-8 space-y-6">
@@ -86,7 +85,7 @@ export default function FundsPage() {
             anywhere for a caller to point at itself.
           </Claim>
           <Claim title="Delta accounting, so a donation cannot be swept">
-            <span className="font-mono text-xs">_unwindAllToUsdt</span> records the
+            <span className="font-mono text-xs">_collectUsdt</span> records the
             router&apos;s balance on entry and pays out only what that call brought
             in. Anything sitting in the router beforehand, whether a stray transfer
             or a deliberate donation, stays where it is. This is the fix for audit
@@ -96,9 +95,9 @@ export default function FundsPage() {
           <Claim title="No owner, no admin, no upgrade path">
             No owner variable, no privileged role, no proxy, no{' '}
             <span className="font-mono text-xs">delegatecall</span>, no{' '}
-            <span className="font-mono text-xs">selfdestruct</span>. The runtime
-            bytecode of both deployments above matched the compiled source when the
-            audit checked it, and immutability means it stays matched.
+            <span className="font-mono text-xs">selfdestruct</span>. Runtime bytecode
+            cannot change after deployment, so a security fix requires a new address
+            instead of silently changing either contract above.
           </Claim>
         </ul>
       </section>
@@ -124,15 +123,14 @@ export default function FundsPage() {
           </li>
         </ul>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          Echidna and Medusa each completed a 60,000 case campaign with both
-          properties holding, alongside 13 fork tests against BNB Smart Chain state
-          and a 30 day fork run confirming yield reaches the account while donated
-          aTokens and vTokens stay untouched.
+          The repository runs stateful Medusa properties alongside fork tests against
+          BNB Smart Chain state, including donated balances, ordinary venue debt,
+          Venus VAI debt, same-target no-ops, and zero-share mint protection.
         </p>
       </section>
 
       <section className="mt-10 rounded-xl border border-border bg-surface p-5">
-        <h2 className="font-display text-xl font-semibold">Debt guard deployment</h2>
+        <h2 className="font-display text-xl font-semibold">Debt guard migration status</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           A compromised session key cannot move funds anywhere except back to their
           owner. That is the property the design above enforces and the fuzzing
@@ -140,15 +138,12 @@ export default function FundsPage() {
           harmless, only that it has nowhere to send anything.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          The guarded deployments above reject a receipt-token unwind whenever
-          the source lending venue reports debt.{' '}
-          <span className="font-mono text-xs">_unwindAllToUsdt</span> pulls an
-          account&apos;s receipt token out of its lending venue. If that same account
-          has also borrowed in that venue and the receipt token is what secures the
-          debt, an older deployment could strip collateral and leave the position
-          open to liquidation. Both immutable routers were replaced on 2026-08-26;
-          the addresses above are the guarded builds and managed activation scopes
-          only to them.
+          The published 2026-08-26 addresses cover Aave aggregate debt and ordinary
+          Venus market borrows, but not Venus&apos;s separate VAI debt ledger. They are
+          marked debt-guard version 2, and the application and runner refuse new or
+          continued automated execution through them. The source now checks VAI,
+          leaves encumbered receipt tokens untouched, and requires a new immutable
+          version-3 deployment before management or deployed-position recovery resumes.
         </p>
       </section>
 
@@ -156,8 +151,8 @@ export default function FundsPage() {
         Source: <span className="font-mono">contracts/src/AgripinaaYieldRouter.sol</span>,{' '}
         <span className="font-mono">contracts/test/AgripinaaYieldRouter.t.sol</span>, and{' '}
         <span className="font-mono">contracts/test/fuzz/RouterFuzz.sol</span> in this
-        repository. Balances and rotations on this page are read from BNB Smart
-        Chain, not from any indexer of ours.
+        repository. Contract custody and raw calls on this page are read from BNB
+        Smart Chain, not from a managed-session indexer.
       </p>
     </div>
   );

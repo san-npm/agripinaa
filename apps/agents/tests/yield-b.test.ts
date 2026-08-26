@@ -341,7 +341,7 @@ test('the confirmation gate alone blocks a rotation that yield would take', asyn
 });
 
 test('a lead that is big and confirmed does rotate', async () => {
-  const { ctx, store } = fakeCtx({
+  const { ctx, store, logs } = fakeCtx({
     ...BIG_LEAD,
     ...IN_VENUS,
     initialState: { [ns('betterStreak')]: 2 },
@@ -349,7 +349,11 @@ test('a lead that is big and confirmed does rotate', async () => {
   const ex = fakeExecutor();
   await managedYieldTick(ctx, ex, YIELD_B_POLICY);
   assert.deepEqual(ex.calls, ['toAave']);
-  assert.equal(store.get(ns('venue')), 'aave');
+  // Relay confirmation proves inclusion only. The source may have stayed in
+  // Venus under a debt guard, so venue is not claimed until the next read.
+  assert.equal(store.get(ns('venue')), 'venus');
+  assert.equal(store.get(ns('pendingTarget')), 'aave');
+  assert.equal(logs.at(-1)?.['decision'], 'rotate-confirmed-awaiting-chain');
   // The rotation timestamp is written BEFORE the router call, so a crash in
   // the execute window cannot let the next tick fire a second rotation.
   assert.equal(typeof store.get(ns('lastRotateAt')), 'number');

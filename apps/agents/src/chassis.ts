@@ -199,6 +199,14 @@ export async function buildContext(name: string): Promise<AgentContext> {
       saveDisk(name, disk);
       return true;
     },
+    releaseAction(kind: string): void {
+      const actions = disk.actions ?? {};
+      const current = actions[kind] ?? [];
+      if (current.length === 0) return;
+      actions[kind] = current.slice(0, -1);
+      disk.actions = actions;
+      saveDisk(name, disk);
+    },
   };
 
   // Enrollment with the rebate indexer is best-effort: marketplace execution

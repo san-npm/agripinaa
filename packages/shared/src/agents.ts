@@ -411,6 +411,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       safety: {
         maxMovesPerDay: 1,
         hysteresisBps: 120,
+        thresholdComparator: 'inclusive',
         confirmations: 3,
         minHoursBetweenMoves: 48,
         checkEveryHours: 12,

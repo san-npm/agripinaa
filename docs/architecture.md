@@ -145,11 +145,13 @@ is its manifest, which is why a registered agent's manifest bytes in
 `packages/shared/tests/agents.test.ts`. No ValidationRegistry is deployed on any
 chain, so trust surfaces are reputation-based and the UI says so.
 
-**The two routers.** `AgripinaaYieldRouter`, deployed once for USDT and once for
-USDC (`packages/shared/src/contracts.ts`), is the only contract a managed yield
-session is scoped to. Source in `contracts/src/AgripinaaYieldRouter.sol`, threat
-model and evidence in [security-router.md](./security-router.md), live balances
-and every rotation on `/funds`.
+**The two router deployments.** `AgripinaaYieldRouter` has immutable USDT and
+USDC version-2 deployments (`packages/shared/src/contracts.ts`). They are
+recovery-only because their Venus guard omits VAI debt; activation and runner
+execution require a pending version-3 replacement. Source in
+`contracts/src/AgripinaaYieldRouter.sol`, threat model and migration evidence in
+[security-router.md](./security-router.md), contract custody and bounded recent
+permissionless activity on `/funds`.
 
 **Ophis settlement.** Agents that trade sign intents rather than sending swaps,
 and a solver settles them in a batch auction. That is what makes execution

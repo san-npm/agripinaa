@@ -224,14 +224,14 @@ async function main() {
         if (ctx.breakers.isHalted().halted) return;
         running = true;
         try {
-          const { serviced, errors } = await tickManagedYield({
+          const { serviced, recoveryOnly, errors } = await tickManagedYield({
             ctx,
             client,
             managerKeys: keySet,
             policy,
           });
           if (serviced > 0 || errors > 0) {
-            ctx.log({ event: 'managed-sweep', serviced, errors });
+            ctx.log({ event: 'managed-sweep', serviced, recoveryOnly, errors });
           }
         } catch (err) {
           ctx.log({
