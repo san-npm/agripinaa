@@ -66,11 +66,12 @@ echo "== deploying commit $DEPLOY_COMMIT and syncing secrets…"
 S 'test -d ~/agripinaa/.git || git clone https://github.com/san-npm/agripinaa.git ~/agripinaa'
 S "cd ~/agripinaa && git fetch -q origin && git cat-file -e '$DEPLOY_COMMIT^{commit}' && git checkout --detach -q '$DEPLOY_COMMIT' && test \"\$(git rev-parse HEAD)\" = '$DEPLOY_COMMIT' && pnpm install --frozen-lockfile"
 # -a preserves the local 600 modes (macOS rsync lacks modern --chmod syntax).
-# --checksum is required for key rotation: wallet JSON files keep the same
-# length, and an update inside rsync's timestamp granularity must not be skipped.
+# --ignore-times deliberately retransmits this tiny directory on every deploy:
+# rotated wallet JSON often keeps the same length and timestamp granularity,
+# and a secret cutover must never depend on rsync's quick-check heuristics.
 # rsync splits -e on spaces and honours quotes, so the key and host-key paths
 # are quoted for it, not for this shell.
-rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --checksum "$OPS_DIR/../wallets/" "$HOST:agripinaa/wallets/"
+rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --ignore-times "$OPS_DIR/../wallets/" "$HOST:agripinaa/wallets/"
 S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync did not land"; exit 1; }
 # Enforce 0600 on the remote regardless of what the local modes were (some
 # key files predate the chmod-on-write and could be 0644).
