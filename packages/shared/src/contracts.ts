@@ -35,44 +35,39 @@ export interface RouterDeployment {
 }
 
 /**
- * BNB Chain mainnet (56) deployment. Deployed 2026-08-20. This is the
- * delta-accounting build (audit L-1 fix): the router distributes only the
- * funds each call brings in, never any stranded balance. Supersedes the first
- * cut at 0x841CF14D…b260 (which paid out its whole balance).
+ * Guarded BNB Chain mainnet (56) deployment. It includes delta accounting,
+ * debt-aware unwind guards, and constructor binding checks. It supersedes the
+ * 2026-08-20 build at 0xD18375cA…E3eb.
  */
 export const YIELD_ROUTER_BSC: RouterDeployment = {
   chainId: 56,
   symbol: 'USDT',
-  address: '0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb',
+  address: '0xE69503b265E4320f139A0F7b1A6f1D00fCBd3C02',
   usdt: '0x55d398326f99059fF775485246999027B3197955',
   aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
-  // Created by tx 0x161a2aaddb3f20a2ee4c23b7dcc42b05cd5dc5c7a9b56ff56c3fcf1c0907a051,
-  // mined 2026-08-20 13:45:00 UTC. This replaces an earlier hand-written floor of
-  // 117084000, which sat ~33.6k blocks ABOVE the creation block and would have
-  // hidden any rotation from the router's first nine hours (there was none).
-  deployBlock: BigInt(117050416),
-  deployedOn: '2026-08-20',
+  // Created by tx 0xb8d59e133e9cae6499701a25254eb08fa310dda26500c0d4ef8b8d6efd4bf731.
+  deployBlock: BigInt(118145573),
+  deployedOn: '2026-08-26',
 };
 
 /**
- * USDC deployment (same router bytecode, USDC venues). Deployed 2026-08-21.
+ * Guarded USDC deployment (same router bytecode, USDC venues).
  * The `usdt`/`aUsdt`/`vUsdt` fields hold the USDC-side addresses (names kept
  * for continuity); `symbol` disambiguates.
  */
 export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   chainId: 56,
   symbol: 'USDC',
-  address: '0xb0817946B5A30A0A2a3dE1B8202749EBEb664630',
+  address: '0x0DD7B7446D449a8968F0FBf1f9a23bd9f2686167',
   usdt: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
   aUsdt: '0x00901a076785e0906d1028c7d6372d247bec7d61',
   aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
   vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
-  // Created by tx 0xc28a69ac38759e950042644570096b7a95a8ef854e569b3f9c529f2e5fac8c4a,
-  // mined 2026-08-21 12:22:09 UTC, located the same way.
-  deployBlock: BigInt(117231310),
-  deployedOn: '2026-08-21',
+  // Created by tx 0x79c95b920bc310df5d563dacaab5c94d15648beaed2ad54c618aebd634789fd7.
+  deployBlock: BigInt(118145739),
+  deployedOn: '2026-08-26',
 };
 
 /** Every managed-yield router deployment. */
