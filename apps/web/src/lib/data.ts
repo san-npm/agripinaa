@@ -230,7 +230,10 @@ async function claimedApiWindow(category: Category): Promise<AgentSummary[]> {
   return claimedInCategory(
     category,
     claims,
-    tokenIdSet(rankAndDedupe(raw.items)),
+    // Presence is about every source identity, not the representative that
+    // ranking keeps for a duplicate cluster. Otherwise a claimed token hidden
+    // behind its representative is falsely treated as source-missing.
+    tokenIdSet(raw.items),
     CLAIMED_PER_API_WINDOW,
   );
 }
@@ -283,7 +286,7 @@ export async function listDirectory(category?: Category): Promise<Directory> {
     ? await claimedInCategory(
         category,
         claims,
-        tokenIdSet([...enriched, ...indexed]),
+        new Set([...tokenIdSet(raw.items), ...tokenIdSet(enriched)]),
         claimedHubSlots(DIRECTORY_PAGE_SIZE),
       )
     : [];
@@ -453,25 +456,55 @@ export function pageRegistryWindow<T>(
   };
 }
 
-/** Prepend locally resolved cards without dropping any card in the raw window. */
+function registryOwner(agent: AgentSummary): string {
+  return agent.owner.trim().toLowerCase();
+}
+
+/**
+ * Prepend locally resolved cards without letting a stale injected owner replace
+ * a fresher occurrence of the same token in the active source window.
+ */
 export function mergeRegistryWindow(
   raw: readonly AgentSummary[],
   injected: readonly AgentSummary[],
 ): AgentSummary[] {
-  const injectedIds = new Set(injected.map((a) => normalizeAgentId(a.tokenId)));
+  const rawOwners = new Map(
+    raw.map((a) => [normalizeAgentId(a.tokenId), registryOwner(a)]),
+  );
+  const accepted = injected.filter((a) => {
+    const rawOwner = rawOwners.get(normalizeAgentId(a.tokenId));
+    return rawOwner === undefined || rawOwner === registryOwner(a);
+  });
+  const injectedIdentities = new Set(
+    accepted.map((a) => `${normalizeAgentId(a.tokenId)}:${registryOwner(a)}`),
+  );
   return [
-    ...injected,
-    ...raw.filter((a) => !injectedIds.has(normalizeAgentId(a.tokenId))),
+    ...accepted,
+    ...raw.filter(
+      (a) =>
+        !injectedIdentities.has(
+          `${normalizeAgentId(a.tokenId)}:${registryOwner(a)}`,
+        ),
+    ),
   ];
 }
 
-/** Remove identities already prepended to the first window from later ones. */
+/**
+ * Remove a later occurrence only while it still has the injected owner.
+ * A changed owner is fresher transfer evidence and must replace the stale
+ * owner-provided view rather than being discarded by token id alone.
+ */
 export function excludeInjectedRegistryEntries(
   raw: readonly AgentSummary[],
   injected: readonly AgentSummary[],
 ): AgentSummary[] {
-  const injectedIds = new Set(injected.map((a) => normalizeAgentId(a.tokenId)));
-  return raw.filter((a) => !injectedIds.has(normalizeAgentId(a.tokenId)));
+  const injectedOwners = new Map(
+    injected.map((a) => [normalizeAgentId(a.tokenId), registryOwner(a)]),
+  );
+  return raw.filter(
+    (a) =>
+      injectedOwners.get(normalizeAgentId(a.tokenId)) !== registryOwner(a),
+  );
 }
 
 /**
@@ -599,6 +632,13 @@ export async function listRegistryPage(
   let injected: AgentSummary[] = [];
 
   for (let read = 0; read < MAX_INDEX_READS; read++) {
+    // listAgentWindow returns ranked representatives. Keep the raw first
+    // window alongside it so a claimed token collapsed into another card is
+    // still known to exist in the active listing source.
+    const rawFirst =
+      read === 0 && category && claims
+        ? await readRegistryWindow(category, at)
+        : null;
     const batch = await listAgentWindow(category, INDEX_WINDOW_SIZE, at, false);
     listingSource = batch.source;
     const indexed = batch.items.filter(
@@ -607,13 +647,16 @@ export async function listRegistryPage(
     // Resolve records absent from the active first category window only once,
     // then prepend them in addition to that complete window. A later window
     // may catch up to a native-category record the detail endpoint resolved
-    // earlier; filtering the injected ids below keeps that card singular.
-    if (read === 0 && category && claims) {
-      injected = await claimedInCategory(
-        category,
-        claims,
-        new Set([...PINNED_ID_SET, ...tokenIdSet(indexed)]),
-        claimedHubSlots(DIRECTORY_PAGE_SIZE),
+    // earlier; filtering the same-owner identity below keeps that card
+    // singular, while a changed owner remains as fresher transfer evidence.
+    if (read === 0 && category && claims && rawFirst) {
+      injected = await withLiveness(
+        await claimedInCategory(
+          category,
+          claims,
+          new Set([...PINNED_ID_SET, ...tokenIdSet(rawFirst.items)]),
+          claimedHubSlots(DIRECTORY_PAGE_SIZE),
+        ),
       );
     }
     reads.push(
