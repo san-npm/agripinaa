@@ -552,13 +552,68 @@ function registryIdentity(agent: AgentSummary): string {
   return JSON.stringify([normalizeAgentId(agent.tokenId), registryOwner(agent)]);
 }
 
+function sameDirectoryDedupeGroup(
+  candidate: AgentSummary,
+  agent: AgentSummary,
+): boolean {
+  if (registryOwnedName(candidate) === registryOwnedName(agent)) return true;
+  return (
+    candidate.duplicateCount != null &&
+    candidate.name.trim().toLowerCase() === agent.name.trim().toLowerCase()
+  );
+}
+
+/**
+ * Keep the reconciled injection's old ordinal. If its new name+owner collides
+ * with another card that was already visible in the first listing, reserve
+ * that card's ordinal too: rankAndDedupe will collapse the pair, but a paging
+ * walk must retain both positions it already issued.
+ */
+export function reconciledDirectoryOrdinalSlots(
+  firstListing: readonly AgentSummary[],
+  initialInjected: readonly AgentSummary[],
+  currentInjected: readonly AgentSummary[],
+): DirectoryOrdinalSlot[] {
+  const slots = new Map<number, DirectoryOrdinalSlot>();
+  const used = new Set<number>();
+
+  initialInjected.forEach((initial, index) => {
+    const current = currentInjected[index];
+    if (!current) return;
+    const ordinal = firstListing.findIndex(
+      (candidate, at) =>
+        !used.has(at) &&
+        registryIdentity(candidate) === registryIdentity(initial),
+    );
+    if (ordinal < 0) return;
+    used.add(ordinal);
+    slots.set(ordinal, { agent: current, ordinal });
+
+    firstListing.forEach((candidate, candidateOrdinal) => {
+      if (
+        !slots.has(candidateOrdinal) &&
+        registryOwnedName(candidate) === registryOwnedName(current)
+      ) {
+        slots.set(candidateOrdinal, {
+          agent: candidate,
+          ordinal: candidateOrdinal,
+        });
+      }
+    });
+  });
+
+  return [...slots.values()].sort((a, b) => a.ordinal - b.ordinal);
+}
+
 /**
  * Ranking is allowed to choose a fresher representative, but reconciliation
  * must not let that representative's changed score or timestamp move a page
  * boundary that was already served. Pull each reconciled card out after the
  * global rank/dedupe pass and put it back at the ordinal its stale predecessor
- * occupied. The card itself remains fresh; only its presentation slot is
- * retained.
+ * occupied. Exact identities claim their slots before equivalent
+ * representatives do, so one surviving representative cannot consume two
+ * reservations. If deduplication removed a reserved identity entirely, its
+ * current, non-stale card is restored to keep the walk's cardinality stable.
  */
 function preserveDirectoryOrdinals(
   listing: AgentSummary[],
@@ -566,27 +621,43 @@ function preserveDirectoryOrdinals(
 ): AgentSummary[] {
   if (slots.length === 0) return listing;
 
-  const remaining = [...listing];
-  const positioned: DirectoryOrdinalSlot[] = [];
-  for (const slot of [...slots].sort((a, b) => a.ordinal - b.ordinal)) {
-    let index = remaining.findIndex(
-      (candidate) => registryIdentity(candidate) === registryIdentity(slot.agent),
-    );
-    // rankAndDedupe can choose another token as the representative of the same
-    // name+owner pair. Move that selected card instead of resurrecting the
-    // particular token object reconciliation supplied.
-    if (index < 0) {
-      index = remaining.findIndex(
-        (candidate) => registryOwnedName(candidate) === registryOwnedName(slot.agent),
-      );
-    }
-    if (index < 0) continue;
-    positioned.push({ agent: remaining.splice(index, 1)[0]!, ordinal: slot.ordinal });
-  }
+  const ordered = [...slots].sort((a, b) => a.ordinal - b.ordinal);
+  const selected: Array<AgentSummary | undefined> = new Array(ordered.length);
+  const used = new Set<number>();
 
-  for (const slot of positioned) {
+  // Reserve exact identities across every slot first. Without this pass, an
+  // equivalent representative can steal the slot belonging to its own token,
+  // forcing the same token to be restored twice after a collision.
+  ordered.forEach((slot, slotIndex) => {
+    const index = listing.findIndex(
+      (candidate, at) =>
+        !used.has(at) &&
+        registryIdentity(candidate) === registryIdentity(slot.agent),
+    );
+    if (index < 0) return;
+    used.add(index);
+    selected[slotIndex] = listing[index];
+  });
+
+  // A later, stronger token can legitimately become the representative of the
+  // same dedupe group. Use it for an unmatched slot, once, without changing
+  // that slot's ordinal.
+  ordered.forEach((slot, slotIndex) => {
+    if (selected[slotIndex]) return;
+    const index = listing.findIndex(
+      (candidate, at) =>
+        !used.has(at) && sameDirectoryDedupeGroup(candidate, slot.agent),
+    );
+    if (index < 0) return;
+    used.add(index);
+    selected[slotIndex] = listing[index];
+  });
+
+  const remaining = listing.filter((_, index) => !used.has(index));
+  for (const [slotIndex, slot] of ordered.entries()) {
+    const agent = selected[slotIndex] ?? slot.agent;
     const ordinal = Math.max(0, Math.min(slot.ordinal, remaining.length));
-    remaining.splice(ordinal, 0, slot.agent);
+    remaining.splice(ordinal, 0, agent);
   }
   return remaining;
 }
@@ -721,7 +792,8 @@ export async function listRegistryPage(
   let page = directoryPage(sourceReads, pageIndex);
   const claims = category ? claimsByTokenId(await storedClaims()) : null;
   let injected: AgentSummary[] = [];
-  let injectedOrdinals: Array<number | null> = [];
+  let initialInjected: AgentSummary[] = [];
+  let firstListing: AgentSummary[] = [];
 
   for (let read = 0; read < MAX_INDEX_READS; read++) {
     // listAgentWindow returns ranked representatives. Keep every raw window
@@ -759,20 +831,10 @@ export async function listRegistryPage(
     }
     sourceReads.push(indexed);
     if (read === 0 && injected.length > 0) {
-      const firstListing = directoryListing([
+      initialInjected = [...injected];
+      firstListing = directoryListing([
         mergeRegistryWindow(indexed, injected),
       ]);
-      const used = new Set<number>();
-      injectedOrdinals = injected.map((agent) => {
-        const ordinal = firstListing.findIndex(
-          (candidate, index) =>
-            !used.has(index) &&
-            registryIdentity(candidate) === registryIdentity(agent),
-        );
-        if (ordinal < 0) return null;
-        used.add(ordinal);
-        return ordinal;
-      });
     }
     // Rebuild from the reconciled set. If this window revealed a transfer, the
     // first window now carries the fresh source record and the ordinal slot
@@ -783,10 +845,11 @@ export async function listRegistryPage(
         ? mergeRegistryWindow(items, injected)
         : excludeInjectedRegistryEntries(items, injected),
     );
-    const ordinalSlots = injected.flatMap((agent, index) => {
-      const ordinal = injectedOrdinals[index];
-      return ordinal == null ? [] : [{ agent, ordinal }];
-    });
+    const ordinalSlots = reconciledDirectoryOrdinalSlots(
+      firstListing,
+      initialInjected,
+      injected,
+    );
     page = directoryPage(reads, pageIndex, ordinalSlots);
     if (batch.nextCursor === null) {
       indexExhausted = true;
