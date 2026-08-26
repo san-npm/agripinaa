@@ -110,7 +110,7 @@ test('an unclaimed agent, and a claim that filled nothing, get no label', () => 
   assert.equal(claimProvenanceLabel(merged), null);
 });
 
-test('a hub takes a claimed agent only when the merged listing lands in that hub', () => {
+test('a hub injects an agent only when its claim supplies the category', () => {
   const claim = {
     fields: { description: 'Owner text.', category: 'yield' },
   } as unknown as ClaimRecord;
@@ -118,13 +118,12 @@ test('a hub takes a claimed agent only when the merged listing lands in that hub
   assert.equal(claimForCategory(bare, claim, 'yield')?.category, 'yield');
   assert.equal(claimForCategory(bare, claim, 'grid'), null);
 
-  // Indexed metadata already says grid, and metadata wins the merge, so the
-  // owner's yield claim buys no placement it would render a grid chip on.
+  // Any indexed category makes the record native to an upstream category
+  // listing. It must never be injected, including into that same category, or
+  // it can appear once now and again when its upstream window is reached.
   const grid = { ...bare, category: 'grid' } as unknown as AgentSummary;
   assert.equal(claimForCategory(grid, claim, 'yield'), null);
-  const kept = claimForCategory(grid, claim, 'grid');
-  assert.equal(kept?.category, 'grid', 'it still belongs to the hub it declares');
-  assert.equal(kept?.claimed, true, 'and it still carries the owner description');
+  assert.equal(claimForCategory(grid, claim, 'grid'), null);
 });
 
 test('a claim of other buys no hub placement at all', () => {

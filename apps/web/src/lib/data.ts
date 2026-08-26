@@ -94,6 +94,18 @@ export const DIRECTORY_PAGE_SIZE = 24;
 const INDEX_WINDOW_SIZE = 100;
 
 /**
+ * Claimed-only records prepended to an API window. This uses the directory's
+ * fixed default page policy, never the caller's page size: a local cursor may
+ * be resumed with a different `limit`, and every slice must rebuild exactly
+ * the same identities and fingerprint. Keeping the fixed budget at one third
+ * of the normal 24-card page also prevents claims from taking over that page.
+ */
+const CLAIMED_PER_API_WINDOW = Math.min(
+  CLAIMED_PER_HUB_LIMIT,
+  claimedHubSlots(DIRECTORY_PAGE_SIZE),
+);
+
+/**
  * How many upstream reads one directory request may make. This is the bound a
  * hand-written `?cursor=` runs into: whatever number it carries, one render
  * cannot fan out past this.
@@ -173,10 +185,11 @@ function tokenIdSet(agents: AgentSummary[]): Set<string> {
  * says who wrote the description, never that we vouch for the agent.
  *
  * A claim only names candidates. `claimForCategory` decides membership on the
- * merged record, so an id whose indexed metadata declares another category is
- * dropped here rather than shown on the wrong hub. More ids are resolved than
- * a page can hold (up to the read cap), so dropped candidates leave the slots
- * behind them fillable.
+ * merged record and only accepts a category that the claim actually supplies.
+ * An id with any native category is left to the upstream category listing, so
+ * injecting it here cannot duplicate a card from a later upstream window.
+ * More ids are resolved than a page can hold (up to the read cap), so dropped
+ * candidates leave the slots behind them fillable.
  */
 async function claimedInCategory(
   category: Category,
@@ -305,14 +318,16 @@ async function listAgentWindow(
   // The upstream category filter cannot see a category supplied by an owner
   // claim. Resolve those records into the first API window, and keep them in
   // every local slice of that window. Later upstream windows annotate only, so
-  // the claimed records cannot repeat as the caller advances.
+  // the claimed records cannot repeat as the caller advances. The injection
+  // count is fixed per upstream window so changing `limit` while following a
+  // cursor cannot change this listing or its fingerprint.
   const claimed =
     includeClaimedCategory && category && position.upstreamCursor === undefined
       ? await claimedInCategory(
           category,
           claims,
           tokenIdSet(ranked),
-          claimedHubSlots(limit),
+          CLAIMED_PER_API_WINDOW,
         )
       : [];
   const listing = mergeRegistryWindow(ranked, claimed);
@@ -340,12 +355,12 @@ export class RegistryCursorInvalidError extends Error {
 }
 
 /**
- * A raw read has at most 100 entries and the API may prepend at most one third
- * of its largest page in claimed-only entries. Every emitted local offset is
- * strictly below this bound (and is checked against the actual window later).
+ * A raw read has at most 100 entries and the API may prepend its fixed claimed
+ * window. Every emitted local offset is strictly below this bound (and is
+ * checked against the actual window later).
  */
 const MAX_REGISTRY_WINDOW_ITEMS =
-  INDEX_WINDOW_SIZE + Math.min(CLAIMED_PER_HUB_LIMIT, claimedHubSlots(INDEX_WINDOW_SIZE));
+  INDEX_WINDOW_SIZE + CLAIMED_PER_API_WINDOW;
 
 /** Whether a public listing cursor is one this module can decode safely. */
 export function validRegistryCursor(cursor: string): boolean {
