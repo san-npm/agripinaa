@@ -18,22 +18,27 @@ import 'server-only';
  *   in, and the one that actually caps what the site can spend in a minute.
  *
  * Fixed windows, stored as a single value per bucket carrying the window it
- * counts for, so an expired window resets on read: the KV client here has no
- * TTL and no atomic increment (see kv.ts), and a stamped value needs neither.
- * Two requests landing together can read the same count and write back the same
- * number, which loses a tick. That costs precision at the limit and nothing
- * else; the point is the order of magnitude, not the exact count.
+ * counts for. One Redis script checks both ceilings and increments both values
+ * atomically before the caller may spend an RPC read, so a parallel flood
+ * cannot make many reservations collapse into one last-write-wins counter.
  *
- * Every failure direction is open on purpose: no KV configured, a read that
- * throws, a value that is not a counter, all let the request through. Without
- * the store this file is a no-op and claims work exactly as they did before it.
+ * With no KV configured, or when the atomic reservation fails, the guarded
+ * path closes: allowing an RPC read without a reservation would recreate the
+ * unlimited-spend condition this guard exists to prevent. Pages can still use
+ * their indexed fallback without spending the shared RPC budget.
  */
 
 /** The KV commands this needs. `ClaimKv` satisfies it, so callers share one store. */
 export interface ThrottleKv {
   available(): boolean;
-  mget(keys: string[]): Promise<(string | null)[]>;
-  set(key: string, value: string): Promise<boolean>;
+  reserveCounterPair(input: {
+    clientKey: string;
+    globalKey: string;
+    window: number;
+    perClientLimit: number;
+    globalLimit: number;
+    ttlMs: number;
+  }): Promise<boolean | null>;
 }
 
 /** Window length. Short, so a throttled visitor is never stuck for long. */
@@ -75,27 +80,10 @@ export function clientKey(headers: { get(name: string): string | null }): string
   return /^[0-9a-f.:]+$/.test(candidate) ? candidate : UNATTRIBUTED_CLIENT;
 }
 
-/** The count a stored bucket holds for `window`, and zero for anything else. */
-function countFor(raw: string | null, window: number): number {
-  if (!raw) return 0;
-  try {
-    const parsed = JSON.parse(raw) as { w?: unknown; n?: unknown };
-    if (!parsed || typeof parsed !== 'object' || parsed.w !== window) return 0;
-    const n = parsed.n;
-    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function bucketValue(window: number, count: number): string {
-  return JSON.stringify({ w: window, n: count });
-}
-
 /**
  * Take one slot for a chain read. True means the caller may make it; false
  * means a window's budget is spent and the caller is refused before anything
- * reaches an RPC node. A refusal costs the read that found it and no write.
+ * reaches an RPC node. The reservation happens before true is returned.
  */
 export async function takeChainRead(input: {
   /** Bucket name for the caller, from `clientKey`. */
@@ -105,25 +93,24 @@ export async function takeChainRead(input: {
   now?: () => number;
 }): Promise<boolean> {
   const { kv } = input;
-  if (!kv.available()) return true;
+  if (!kv.available()) return false;
 
   const window = Math.floor((input.now?.() ?? Date.now()) / CHAIN_READ_WINDOW_MS);
   const key = chainReadKey(input.client);
 
-  let stored: (string | null)[];
   try {
-    stored = await kv.mget([key, CHAIN_READ_GLOBAL_KEY]);
+    const reserved = await kv.reserveCounterPair({
+      clientKey: key,
+      globalKey: CHAIN_READ_GLOBAL_KEY,
+      window,
+      perClientLimit: CHAIN_READ_LIMIT_PER_CLIENT,
+      globalLimit: CHAIN_READ_LIMIT_GLOBAL,
+      // Two windows of slack: a key is never evicted while its stamped window
+      // could still be the one an adjacent request is evaluating.
+      ttlMs: CHAIN_READ_WINDOW_MS * 2,
+    });
+    return reserved === true;
   } catch {
-    return true;
+    return false;
   }
-
-  const mine = countFor(stored[0] ?? null, window);
-  const all = countFor(stored[1] ?? null, window);
-  if (mine >= CHAIN_READ_LIMIT_PER_CLIENT || all >= CHAIN_READ_LIMIT_GLOBAL) return false;
-
-  await Promise.all([
-    kv.set(key, bucketValue(window, mine + 1)),
-    kv.set(CHAIN_READ_GLOBAL_KEY, bucketValue(window, all + 1)),
-  ]).catch(() => null);
-  return true;
 }

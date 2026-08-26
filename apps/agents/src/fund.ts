@@ -36,16 +36,10 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { selectFundingEntries, type FundingEntry } from './agent-config';
+import { parseFundingArgs } from './fund-cli';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WALLETS_DIR = join(ROOT, '..', '..', 'wallets');
-
-/** The `--only` value, or undefined for the whole plan. */
-function onlyArg(): string | undefined {
-  const i = process.argv.indexOf('--only');
-  if (i < 0) return undefined;
-  return process.argv[i + 1] ?? '';
-}
 
 /**
  * Every ERC20 leg the plan can carry, in the order --execute sends them, each
@@ -85,8 +79,11 @@ async function loadKey(name: string): Promise<`0x${string}`> {
 }
 
 async function main() {
-  const mode = process.argv.find((a) => ['--gen', '--plan', '--execute'].includes(a)) ?? '--plan';
-  const plan = selectFundingEntries(onlyArg());
+  // Parse the entire command line before reading a sender key or constructing
+  // transfers. Funding is non-idempotent, so a typo must never widen --only to
+  // the full plan, and conflicting modes must never silently pick one.
+  const { mode, only } = parseFundingArgs(process.argv.slice(2));
+  const plan = selectFundingEntries(only);
 
   if (mode === '--gen') {
     await mkdir(WALLETS_DIR, { recursive: true, mode: 0o700 });

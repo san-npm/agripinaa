@@ -7,7 +7,7 @@ import { Suspense } from "react";
 import { AgentCard } from "@/components/AgentCard";
 import { ArrowIcon, CATEGORY_ICON } from "@/components/icons";
 import { CATEGORY_INFO } from "@/lib/categories";
-import { listAgents } from "@/lib/data";
+import { listDirectory } from "@/lib/data";
 import { clampDescription } from "@/lib/site";
 
 export function generateStaticParams() {
@@ -37,8 +37,9 @@ export async function generateMetadata(
 }
 
 async function CategoryAgents({ category }: { category: Category }) {
-  const page = await listAgents(category, 24);
-  if (page.items.length === 0) {
+  const directory = await listDirectory(category);
+  const items = [...directory.verified, ...directory.registry].slice(0, 24);
+  if (items.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border-strong bg-surface p-8 text-center">
         <p className="text-sm text-muted">
@@ -53,7 +54,7 @@ async function CategoryAgents({ category }: { category: Category }) {
   }
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {page.items.map((agent) => (
+      {items.map((agent) => (
         <AgentCard key={agent.id} agent={agent} />
       ))}
     </div>

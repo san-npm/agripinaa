@@ -102,6 +102,22 @@ function memoryKv(opts: { available?: boolean; writes?: boolean } = {}): TestKv 
       return true;
     },
     mget: async (keys) => keys.map((key) => store.get(key) ?? null),
+    reserveCounterPair: async (input) => {
+      const count = (key: string): number => {
+        try {
+          const parsed = JSON.parse(store.get(key) ?? '') as { w?: unknown; n?: unknown };
+          return parsed.w === input.window && typeof parsed.n === 'number' ? parsed.n : 0;
+        } catch {
+          return 0;
+        }
+      };
+      const mine = count(input.clientKey);
+      const all = count(input.globalKey);
+      if (mine >= input.perClientLimit || all >= input.globalLimit) return false;
+      store.set(input.clientKey, JSON.stringify({ w: input.window, n: mine + 1 }));
+      store.set(input.globalKey, JSON.stringify({ w: input.window, n: all + 1 }));
+      return true;
+    },
   };
 }
 

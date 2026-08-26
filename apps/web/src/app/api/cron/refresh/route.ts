@@ -1,10 +1,10 @@
 import { listClaims } from '@/lib/claims';
 import { decideCronAccess, runRefresh } from '@/lib/cron-refresh';
-import { listAgents } from '@/lib/data';
+import { listDirectory } from '@/lib/data';
 import { recordLiveness } from '@/lib/liveness';
 
 /**
- * The six-hourly refresh (see apps/web/vercel.json for the schedule).
+ * The daily refresh (see apps/web/vercel.json for the schedule).
  *
  * Vercel's scheduler calls this with `Authorization: Bearer $CRON_SECRET`;
  * `OPS_TOKEN` works too, so the same run can be triggered by hand. Every
@@ -37,7 +37,7 @@ export async function GET(request: Request): Promise<Response> {
     // The same call the hub page makes, so this fills the entry it reads
     // rather than a neighbouring one.
     warmHub: async (category) => {
-      await listAgents(category, 24);
+      await listDirectory(category);
     },
     now: Date.now,
   });

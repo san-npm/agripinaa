@@ -30,9 +30,10 @@ export interface EndpointProbe {
 /**
  * How long a stored probe result counts for. Past this it is not evidence: the
  * KV client has no TTL, so a result nobody refreshed decays here instead of
- * lingering as a badge for an endpoint that went away.
+ * lingering as a badge for an endpoint that went away. The refresh job runs
+ * daily, so the extra twelve hours absorb scheduler and probe-ordering delay.
  */
-export const LIVENESS_TTL_MS = 24 * 60 * 60 * 1_000;
+export const LIVENESS_TTL_MS = 36 * 60 * 60 * 1_000;
 
 /** Whether a result still says this endpoint is live, for the url it carries now. */
 export function probeCountsAsLive(
@@ -68,7 +69,7 @@ export function endpointProbeLabel(
   if (!probe || probe.url.trim() !== url.trim()) return 'not checked yet';
   if (probe.live) {
     if (!probeCountsAsLive(probe, url, now)) {
-      return 'not live: nothing has answered in the last 24 hours';
+      return 'not live: nothing has answered in the last 36 hours';
     }
     return probe.status ? `live, answered ${probe.status}` : 'live';
   }
