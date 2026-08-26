@@ -184,24 +184,48 @@ test('transfer reconciliation uses raw evidence hidden behind a ranked represent
 });
 
 test('replacing a stale injection preserves the previously served page boundary', () => {
-  const stale = classified(1, 1_001)[0]!;
+  const stale = {
+    ...classified(1, 1_001)[0]!,
+    description: 'Owner-supplied detail that raises the stale card score.',
+    registeredAt: '2026-08-26T00:00:00.000Z',
+  } satisfies AgentSummary;
   const transferred = {
     ...stale,
     owner: '0x2222222222222222222222222222222222222222',
+    description: '',
+    registeredAt: '2020-01-01T00:00:00.000Z',
     claimed: false,
     claimedFields: [],
   } satisfies AgentSummary;
   const raw = classified(100);
   const before = mergeRegistryWindow(raw, [stale]);
+  const reconciled = reconcileInjectedRegistryEntries([stale], [transferred]);
   const after = mergeRegistryWindow(
     raw,
-    reconcileInjectedRegistryEntries([stale], [transferred]),
+    reconciled,
   );
+  const originalListing = Array.from(
+    { length: Math.ceil(before.length / DIRECTORY_PAGE_SIZE) },
+    (_, page) => directoryPage([before], page).items,
+  ).flat();
+  const originalOrdinal = originalListing.findIndex(
+    (candidate) => candidate.tokenId === stale.tokenId,
+  );
+  assert.equal(originalOrdinal, 0, 'the claimed signal initially ranks first');
+
   const served = directoryPage([before], 3).items;
   const expectedContinuation = directoryPage([before], 4).items;
-  const continuation = directoryPage([after], 4).items;
+  const unpinnedContinuation = directoryPage([after], 4).items;
+  const continuation = directoryPage([after], 4, [
+    { agent: reconciled[0]!, ordinal: originalOrdinal },
+  ]).items;
 
   assert.equal(before.length, after.length);
+  assert.notDeepEqual(
+    unpinnedContinuation.map((a) => a.tokenId),
+    expectedContinuation.map((a) => a.tokenId),
+    'the fixture proves that reranking alone moves the reconciled card',
+  );
   assert.deepEqual(
     continuation.map((a) => a.tokenId),
     expectedContinuation.map((a) => a.tokenId),
