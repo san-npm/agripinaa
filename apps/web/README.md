@@ -19,8 +19,16 @@ Run from anywhere in the monorepo:
 pnpm --filter @agripinaa/web dev        # next dev
 pnpm --filter @agripinaa/web build      # next build --webpack
 pnpm --filter @agripinaa/web test       # node:test via tsx, react-server condition
-pnpm --filter @agripinaa/web typecheck  # tsc --noEmit
+pnpm --filter @agripinaa/web typegen    # next typegen, route types under .next
+pnpm --filter @agripinaa/web typecheck  # tsc --noEmit, needs typegen first
 ```
+
+`typecheck` reads the `PageProps`, `LayoutProps` and `RouteContext` helpers
+Next writes under `.next/types`, so in a fresh clone it fails with a stack of
+`TS2304: Cannot find name 'PageProps'` errors until those exist. `dev` and
+`build` write them as a side effect; on their own, run `typegen`. The root
+`pnpm typecheck:ci` runs `typegen` before it walks the workspaces, which is
+what an unattended machine needs.
 
 Tests run under the `react-server` condition, because that is how Next resolves
 `server-only`: the `test` script carries the flag, so lib modules keep their

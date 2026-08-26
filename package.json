@@ -9,6 +9,7 @@
     "dev": "pnpm --filter @agripinaa/web dev",
     "build": "pnpm --filter @agripinaa/web build",
     "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck:ci": "pnpm --filter @agripinaa/web typegen && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "seed:agents": "pnpm --filter @agripinaa/agent-index seed"
   },

@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import {
   MergedSource,
   rankAndDedupe,
@@ -253,54 +255,124 @@ export async function listDirectory(category?: Category): Promise<Directory> {
   return { verified: enriched, registry, registrySource: raw.source, asOf: new Date().toISOString() };
 }
 
+/**
+ * One immutable upstream window. Local `w:` cursors intentionally do not form
+ * part of this cache key: every slice of the window must see the same records
+ * and ranking even if registrations arrive while a caller pages through it.
+ */
+async function readRegistryWindow(
+  category?: Category,
+  upstreamCursor?: string,
+): Promise<Page<AgentSummary>> {
+  'use cache';
+  cacheLife('minutes');
+  return source.listAgents({
+    chainId: CHAIN_ID,
+    category,
+    limit: INDEX_WINDOW_SIZE,
+    cursor: upstreamCursor,
+  });
+}
+
 export async function listAgents(
   category?: Category,
   limit = 24,
   cursor?: string,
 ): Promise<Page<AgentSummary>> {
-  'use cache';
-  cacheLife('minutes');
-  // Over-fetch so ranking/dedupe has an actual sample to work on (the registry
-  // is flooded with low-signal duplicate registrations); then rank by quality
-  // and collapse true duplicates before slicing to the requested page.
-  const raw = await source.listAgents({ chainId: CHAIN_ID, category, limit: 100, cursor });
-  const ranked = rankAndDedupe(raw.items);
+  const position = decodeRegistryWindowCursor(cursor);
+  // The public 8004scan API always reads 100 upstream registrations at a time.
+  // Read that complete window here too, then encode any remaining local offset
+  // into our cursor. Advancing raw.nextCursor before the ranked tail is served
+  // would permanently skip that tail for callers asking for fewer than 100.
+  const raw = await readRegistryWindow(category, position.upstreamCursor);
   const claims = claimsByTokenId(await storedClaims());
+  const ranked = rankAndDedupe(raw.items).map((a) => withClaim(a, claims));
+  const windowId = registryWindowId(ranked);
+  const page = pageRegistryWindow(ranked, limit, cursor, raw.nextCursor, windowId);
+  return { ...raw, nextCursor: page.nextCursor, items: await withLiveness(page.items) };
+}
 
-  // Past the first page a claim only annotates: injecting there would repeat on
-  // every page the visitor walks through.
-  if (cursor) {
-    const page = ranked.slice(0, limit).map((a) => withClaim(a, claims));
-    return { ...raw, items: await withLiveness(page) };
+const REGISTRY_WINDOW_CURSOR = /^w:(0|\d{1,9}):(\d{1,3}):([a-f0-9]{16})$/;
+
+/** A local cursor no longer describes the upstream window it was issued for. */
+export class RegistryCursorExpiredError extends Error {
+  constructor() {
+    super('registry cursor expired; restart from the first page');
+    this.name = 'RegistryCursorExpiredError';
   }
+}
 
-  // Pinned reference agents resolve through getAgent (enriched from the
-  // on-chain manifest) and always lead, replacing any poorer copy in the list.
-  const pinned = (
-    await Promise.all(
-      PINNED_AGENT_IDS.map((id) => source.getAgent(CHAIN_ID, id).catch(() => null)),
-    )
-  )
-    .filter((a): a is NonNullable<typeof a> => a != null)
-    .filter((a) => (category ? a.category === category : true));
-  const pinnedEnriched = await withOnchainAttestation(pinned);
-  const pinnedIds = new Set(pinnedEnriched.map((a) => a.tokenId));
-  const indexed = ranked
-    .filter((a) => !pinnedIds.has(a.tokenId))
-    .map((a) => withClaim(a, claims));
-  const claimed = category
-    ? await claimedInCategory(
-        category,
-        claims,
-        tokenIdSet([...pinnedEnriched, ...indexed]),
-        claimedHubSlots(limit),
-      )
-    : [];
-  // Ahead of the indexed tail so a hub's own claimed agents survive the slice,
-  // and capped at a third of the page so they cannot take it; still behind the
-  // pinned ones, which are the only verified cards here.
-  const items = [...pinnedEnriched, ...claimed, ...indexed].slice(0, limit);
-  return { ...raw, items: await withLiveness(items) };
+/** Whether a public listing cursor is one this module can decode safely. */
+export function validRegistryCursor(cursor: string): boolean {
+  return /^\d{1,9}$/.test(cursor) || REGISTRY_WINDOW_CURSOR.test(cursor);
+}
+
+function decodeRegistryWindowCursor(cursor?: string): {
+  upstreamCursor?: string;
+  offset: number;
+  windowId?: string;
+} {
+  if (!cursor || !cursor.startsWith('w:')) return { upstreamCursor: cursor, offset: 0 };
+  const match = REGISTRY_WINDOW_CURSOR.exec(cursor);
+  if (!match) return { upstreamCursor: cursor, offset: 0 };
+  return {
+    upstreamCursor: match[1] === '0' ? undefined : match[1],
+    offset: Number(match[2]),
+    windowId: match[3],
+  };
+}
+
+function encodeRegistryWindowCursor(
+  upstreamCursor: string | undefined,
+  offset: number,
+  windowId: string,
+): string {
+  return `w:${upstreamCursor ?? '0'}:${offset}:${windowId}`;
+}
+
+/** Bind a cursor to the exact ranked identities and order it is slicing. */
+function registryWindowId(items: readonly AgentSummary[]): string {
+  const identities = items
+    .map((agent) => `${normalizeAgentId(agent.tokenId)}:${agent.duplicateCount ?? 1}`)
+    .join('|');
+  return createHash('sha256').update(identities).digest('hex').slice(0, 16);
+}
+
+/**
+ * Cut one local page without advancing past the unread tail of a raw window.
+ * If a platform cache loses that window, its fingerprint changes and paging
+ * fails explicitly instead of silently duplicating or omitting registrations.
+ */
+export function pageRegistryWindow<T>(
+  items: readonly T[],
+  limit: number,
+  cursor: string | undefined,
+  nextUpstreamCursor: string | null,
+  windowId: string,
+): { items: T[]; nextCursor: string | null } {
+  const position = decodeRegistryWindowCursor(cursor);
+  if (position.windowId && position.windowId !== windowId) {
+    throw new RegistryCursorExpiredError();
+  }
+  return {
+    items: items.slice(position.offset, position.offset + limit),
+    nextCursor:
+      items.length > position.offset + limit
+        ? encodeRegistryWindowCursor(position.upstreamCursor, position.offset + limit, windowId)
+        : nextUpstreamCursor,
+  };
+}
+
+/** Prepend locally resolved cards without dropping any card in the raw window. */
+export function mergeRegistryWindow(
+  raw: readonly AgentSummary[],
+  injected: readonly AgentSummary[],
+): AgentSummary[] {
+  const injectedIds = new Set(injected.map((a) => normalizeAgentId(a.tokenId)));
+  return [
+    ...injected,
+    ...raw.filter((a) => !injectedIds.has(normalizeAgentId(a.tokenId))),
+  ];
 }
 
 /**
@@ -411,8 +483,8 @@ export interface RegistryPage {
  * which is what that budget is sized against. However deep the cursor points, it
  * cannot make more reads than that.
  *
- * Our own agents are dropped here: they lead the first read of `listAgents`
- * (pinned), and a directory renders them in its verified section instead.
+ * Our own agents are dropped here because the directory renders them in its
+ * verified section instead.
  */
 export async function listRegistryPage(
   category?: Category,
@@ -424,13 +496,28 @@ export async function listRegistryPage(
   let listingSource = 'unknown';
   let indexExhausted = false;
   let page = directoryPage(reads, pageIndex);
+  const claims = category ? claimsByTokenId(await storedClaims()) : null;
 
   for (let read = 0; read < MAX_INDEX_READS; read++) {
     const batch = await listAgents(category, INDEX_WINDOW_SIZE, at);
     listingSource = batch.source;
-    reads.push(
-      batch.items.filter((a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId))),
+    const indexed = batch.items.filter(
+      (a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId)),
     );
+    // Owner-claimed category entries do not exist in the upstream category
+    // result. Resolve them only once, then prepend them in addition to the
+    // complete first raw window; never exchange them for registrations the
+    // upstream cursor has already advanced past.
+    const claimed =
+      read === 0 && category && claims
+        ? await claimedInCategory(
+            category,
+            claims,
+            new Set([...PINNED_ID_SET, ...tokenIdSet(indexed)]),
+            claimedHubSlots(DIRECTORY_PAGE_SIZE),
+          )
+        : [];
+    reads.push(mergeRegistryWindow(indexed, claimed));
     page = directoryPage(reads, pageIndex);
     if (batch.nextCursor === null) {
       indexExhausted = true;
@@ -466,6 +553,19 @@ export interface SearchResults {
   available: boolean;
 }
 
+/** Rank, merge owner claims, then filter on the category visitors will see. */
+export function rankClaimedSearchResults(
+  items: readonly AgentSummary[],
+  records: readonly ClaimRecord[],
+  category?: Category,
+): AgentSummary[] {
+  const claims = claimsByTokenId([...records]);
+  return rankAndDedupe([...items])
+    .filter((a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId)))
+    .map((a) => withClaim(a, claims))
+    .filter((a) => (category ? a.category === category : true));
+}
+
 /**
  * Search the index, then apply the same treatment the list paths apply: rank
  * and collapse duplicates, fill in owner claims, and mark endpoints a probe
@@ -490,11 +590,11 @@ export async function searchDirectory(
     // caller gets the ranked listing and the unavailable line instead of an
     // empty state it has no grounds for.
     if (found.source !== 'index') return { items: [], available: false };
-    const claims = claimsByTokenId(await storedClaims());
-    const ranked = rankAndDedupe(found.items)
-      .filter((a) => !PINNED_ID_SET.has(normalizeAgentId(a.tokenId)))
-      .filter((a) => (filters.category ? a.category === filters.category : true))
-      .map((a) => withClaim(a, claims));
+    const ranked = rankClaimedSearchResults(
+      found.items,
+      await storedClaims(),
+      filters.category,
+    );
     return { items: await withLiveness(ranked), available: true };
   } catch {
     return { items: [], available: false };

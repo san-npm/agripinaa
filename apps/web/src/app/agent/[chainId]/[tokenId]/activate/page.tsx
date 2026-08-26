@@ -11,6 +11,7 @@ import {
   ACTIVATION_BLOCKED_COPY,
   activationBlockedReason,
   agentConsumesSession,
+  agentSupportsSessionHandoff,
   endpointIsLive,
 } from "@/lib/activatable";
 import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
@@ -67,6 +68,7 @@ async function ActivateContent({
     tokenId: agent.tokenId,
     endpointLive: await endpointIsLive(agent),
     consumesSession: agentConsumesSession(agent.tokenId),
+    sessionHandoffSupported: agentSupportsSessionHandoff(),
   });
   if (blocked) {
     const copy = ACTIVATION_BLOCKED_COPY[blocked];

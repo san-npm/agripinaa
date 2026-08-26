@@ -25,20 +25,30 @@ interface TestKv extends ThrottleKv {
   writes: number;
 }
 
+function storedCount(raw: string | undefined, window: number): number {
+  try {
+    const parsed = JSON.parse(raw ?? '') as { w?: unknown; n?: unknown };
+    return parsed.w === window && typeof parsed.n === 'number' ? parsed.n : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function memoryKv(opts: { available?: boolean; throwing?: boolean } = {}): TestKv {
   const kv: TestKv = {
     store: new Map<string, string>(),
     reads: 0,
     writes: 0,
     available: () => opts.available ?? true,
-    mget: async (keys) => {
+    reserveCounterPair: async (input) => {
       kv.reads += 1;
       if (opts.throwing) throw new Error('kv unreachable');
-      return keys.map((key) => kv.store.get(key) ?? null);
-    },
-    set: async (key, value) => {
-      kv.writes += 1;
-      kv.store.set(key, value);
+      const mine = storedCount(kv.store.get(input.clientKey), input.window);
+      const all = storedCount(kv.store.get(input.globalKey), input.window);
+      if (mine >= input.perClientLimit || all >= input.globalLimit) return false;
+      kv.store.set(input.clientKey, JSON.stringify({ w: input.window, n: mine + 1 }));
+      kv.store.set(input.globalKey, JSON.stringify({ w: input.window, n: all + 1 }));
+      kv.writes += 2;
       return true;
     },
   };
@@ -96,17 +106,30 @@ test('the global budget holds when a flood arrives from many addresses', async (
   assert.equal(await take(kv, 'a-fresh-address'), false);
 });
 
-test('without a store nothing is throttled, so claims keep working', async () => {
+test('a parallel flood reserves exactly the global budget, not one shared overwrite', async () => {
+  const kv = memoryKv();
+  const allowed = await Promise.all(
+    Array.from({ length: CHAIN_READ_LIMIT_GLOBAL + 100 }, (_, i) => take(kv, `client-${i}`)),
+  );
+  assert.equal(allowed.filter(Boolean).length, CHAIN_READ_LIMIT_GLOBAL);
+  assert.equal(allowed.filter((value) => !value).length, 100);
+  assert.equal(
+    storedCount(kv.store.get(CHAIN_READ_GLOBAL_KEY), Math.floor(NOW / CHAIN_READ_WINDOW_MS)),
+    CHAIN_READ_LIMIT_GLOBAL,
+  );
+});
+
+test('without a store no unreserved chain read is allowed', async () => {
   const kv = memoryKv({ available: false });
   for (let i = 0; i < CHAIN_READ_LIMIT_PER_CLIENT + 5; i++) {
-    assert.equal(await take(kv), true);
+    assert.equal(await take(kv), false);
   }
   assert.equal(kv.reads, 0, 'an unconfigured store is never asked');
 });
 
-test('a store that cannot be read does not block a claim', async () => {
+test('a configured store that cannot reserve a slot fails closed', async () => {
   const kv = memoryKv({ throwing: true });
-  assert.equal(await take(kv), true);
+  assert.equal(await take(kv), false);
 });
 
 test('a stored bucket that is not a counter is read as an empty one', async () => {

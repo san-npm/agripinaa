@@ -1,5 +1,11 @@
-import { decideClaim, decideClaimLookup, liveClaimChain } from '@/lib/claims';
+import {
+  MAX_CLAIM_BODY_BYTES,
+  decideClaim,
+  decideClaimLookup,
+  liveClaimChain,
+} from '@/lib/claims';
 import { recordLiveness, type LivenessRecord } from '@/lib/liveness';
+import { readLimitedRequestText, RequestBodyTooLargeError } from '@/lib/request-body';
 import { clientKey } from '@/lib/throttle';
 
 /**
@@ -13,8 +19,17 @@ import { clientKey } from '@/lib/throttle';
  * text and the signature is a credential over it.
  */
 export async function POST(request: Request): Promise<Response> {
+  let body: string;
+  try {
+    body = await readLimitedRequestText(request, MAX_CLAIM_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json({ stored: false, error: 'body too large' }, { status: 413 });
+    }
+    return Response.json({ stored: false, error: 'unreadable body' }, { status: 400 });
+  }
   const decision = await decideClaim({
-    readBodyText: () => request.text(),
+    readBodyText: async () => body,
     chain: liveClaimChain,
     // The bucket this request's chain reads are counted against.
     client: clientKey(request.headers),

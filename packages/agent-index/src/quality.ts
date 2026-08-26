@@ -44,6 +44,13 @@ function isIndividuallyNotable(a: AgentSummary): boolean {
  *      evaluable data: none of them have any.
  *   3. Rank by quality descending, registration-time tiebreak.
  * Agents with any real signal are never collapsed across owners.
+ *
+ * Idempotent in the count it prints: a card that already stands for a cluster
+ * arrives carrying its `duplicateCount`, and a second pass adds those counts up
+ * rather than counting the cards. Callers do rank twice (the directory walk
+ * re-ranks reads that `listAgents` had already collapsed, so a name minted
+ * either side of a read boundary lands on one card), and counting cards there
+ * would print "2" for a card standing for sixty registrations.
  */
 export function rankAndDedupe(agents: AgentSummary[]): AgentSummary[] {
   const byKey = new Map<string, AgentSummary>();
@@ -67,7 +74,10 @@ export function rankAndDedupe(agents: AgentSummary[]): AgentSummary[] {
     const rep = group.reduce((a, b) =>
       (b.registeredAt ?? '') > (a.registeredAt ?? '') ? b : a,
     );
-    return group.length > 1 ? { ...rep, duplicateCount: group.length } : rep;
+    // Registrations, not cards: an entry that is already a collapsed card
+    // stands for `duplicateCount` of them, and a plain one stands for itself.
+    const registrations = group.reduce((n, a) => n + (a.duplicateCount ?? 1), 0);
+    return registrations > 1 ? { ...rep, duplicateCount: registrations } : rep;
   });
 
   return [...evaluable, ...collapsed].sort((x, y) => {

@@ -12,9 +12,9 @@ import type { ClaimRecord } from './claims';
  *
  * The job is the part of the site that no page render can do for itself:
  *
- * 1. Re-probe every claimed endpoint. A liveness record is evidence for 24
- *    hours (see liveness.ts) and nothing else re-runs a probe after the claim
- *    is saved, so without this the badge decays on every claimed agent.
+ * 1. Re-probe every claimed endpoint. A liveness record is evidence for 36
+ *    hours (see endpoint-probe.ts) and nothing else re-runs a probe after the
+ *    claim is saved, so without this the badge decays on every claimed agent.
  * 2. Pre-warm the cached list path once per hub, which also tells us on a fixed
  *    schedule whether the upstream index is answering at all.
  *
@@ -157,7 +157,7 @@ export async function runRefresh(deps: RefreshDeps): Promise<RefreshCounts> {
   const unfinished: string[] = [];
 
   // Probes first. Liveness is the half nothing else re-runs: a stored result is
-  // evidence for 24 hours and no page render refreshes it, so a claim that
+  // evidence for 36 hours and no page render refreshes it, so a claim that
   // misses two runs loses its badge. A hub that misses its warm costs one cold
   // page render, and a visitor warms it anyway.
   let records: ClaimRecord[] = [];

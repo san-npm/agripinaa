@@ -10,7 +10,7 @@ import {
   renameSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ReputationClient } from '@agripinaa/exec-metrics';
@@ -137,7 +137,10 @@ export function hasAgentWallet(name: string): boolean {
 export function loadAgentAccount(name: string): Account {
   const file = agentWalletPath(name);
   if (!existsSync(file)) {
-    throw new Error(`missing wallet file ${file}; run: pnpm --filter @agripinaa/agents fund -- --gen ${name}`);
+    const selector = basename(file, '.json');
+    throw new Error(
+      `missing wallet file ${file}; run: pnpm --filter @agripinaa/agents fund -- --gen --only ${selector}`,
+    );
   }
   const { privateKey } = JSON.parse(readFileSync(file, 'utf8')) as {
     privateKey: `0x${string}`;

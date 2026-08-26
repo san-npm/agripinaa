@@ -94,3 +94,56 @@ test('an empty key list costs no request', async () => {
   assert.deepEqual(values, []);
   assert.equal(sent.length, 0);
 });
+
+test('a throttle slot is reserved with one atomic EVAL command', async () => {
+  const { kvReserveCounterPair } = await loadKv();
+  const sent: Sent[] = [];
+  const result = await withFetch(
+    restStub(sent, () => Response.json({ result: 1 })),
+    () =>
+      kvReserveCounterPair({
+        clientKey: 'client',
+        globalKey: 'all',
+        window: 42,
+        perClientLimit: 20,
+        globalLimit: 300,
+        ttlMs: 120_000,
+      }),
+  );
+  assert.equal(result, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.command[0], 'EVAL');
+  assert.equal(sent[0]!.command[2], '2');
+  assert.deepEqual(sent[0]!.command.slice(3), [
+    'client',
+    'all',
+    '42',
+    '20',
+    '300',
+    '120000',
+  ]);
+});
+
+test('an authoritative atomic refusal differs from a KV failure', async () => {
+  const { kvReserveCounterPair } = await loadKv();
+  const input = {
+    clientKey: 'client',
+    globalKey: 'all',
+    window: 42,
+    perClientLimit: 20,
+    globalLimit: 300,
+    ttlMs: 120_000,
+  };
+  assert.equal(
+    await withFetch(restStub([], () => Response.json({ result: 0 })), () =>
+      kvReserveCounterPair(input),
+    ),
+    false,
+  );
+  assert.equal(
+    await withFetch(restStub([], () => new Response('down', { status: 500 })), () =>
+      kvReserveCounterPair(input),
+    ),
+    null,
+  );
+});

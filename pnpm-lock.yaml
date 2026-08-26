@@ -84,7 +84,7 @@ importers:
         version: 5.101.4(react@19.2.8)
       next:
         specifier: 16.3.0
-        version: 16.3.0(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 16.3.0(@babel/core@7.29.7)(@types/node@22.20.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -105,8 +105,8 @@ importers:
         specifier: ^4
         version: 4.3.3
       '@types/node':
-        specifier: ^20
-        version: 20.19.43
+        specifier: ^22.5.0
+        version: 22.20.1
       '@types/react':
         specifier: ^19
         version: 19.2.18
@@ -138,6 +138,9 @@ importers:
         specifier: ^2.21.0
         version: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
+      '@types/node':
+        specifier: ^22.5.0
+        version: 22.20.1
       tsx:
         specifier: ^4.19.0
         version: 4.23.11
@@ -173,6 +176,9 @@ importers:
         specifier: ^2.21.0
         version: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
+      '@types/node':
+        specifier: ^22.5.0
+        version: 22.20.1
       tsx:
         specifier: ^4.19.0
         version: 4.23.11
@@ -223,6 +229,9 @@ importers:
         specifier: ^2.21.0
         version: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     devDependencies:
+      '@types/node':
+        specifier: ^22.5.0
+        version: 22.20.1
       tsx:
         specifier: ^4.19.0
         version: 4.23.11
@@ -1075,9 +1084,6 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
-
-  '@types/node@20.19.43':
-    resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
 
   '@types/node@22.20.1':
     resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
@@ -3834,10 +3840,6 @@ snapshots:
   '@types/ms@2.1.0':
     optional: true
 
-  '@types/node@20.19.43':
-    dependencies:
-      undici-types: 6.21.0
-
   '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
@@ -5239,7 +5241,7 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
-  next@16.3.0(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  next@16.3.0(@babel/core@7.29.7)(@types/node@22.20.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       '@next/env': 16.3.0
       '@swc/helpers': 0.5.15
@@ -5258,7 +5260,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 16.3.0
       '@next/swc-win32-arm64-msvc': 16.3.0
       '@next/swc-win32-x64-msvc': 16.3.0
-      sharp: 0.35.3(@types/node@20.19.43)
+      sharp: 0.35.3(@types/node@22.20.1)
     transitivePeerDependencies:
       - '@babel/core'
       - '@types/node'
@@ -5576,7 +5578,7 @@ snapshots:
       es-errors: 1.3.0
       es-object-atoms: 1.1.2
 
-  sharp@0.35.3(@types/node@20.19.43):
+  sharp@0.35.3(@types/node@22.20.1):
     dependencies:
       '@img/colour': 1.1.0
       detect-libc: 2.1.2
@@ -5607,7 +5609,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.35.3
       '@img/sharp-win32-ia32': 0.35.3
       '@img/sharp-win32-x64': 0.35.3
-      '@types/node': 20.19.43
+      '@types/node': 22.20.1
     optional: true
 
   shebang-command@2.0.0:
