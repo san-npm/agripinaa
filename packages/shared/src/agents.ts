@@ -12,26 +12,44 @@
  *
  * Two rules for editing this file:
  *
- * 1. `manifest` is byte-sensitive. Each agent's manifest is served at
+ * 1. A REGISTERED agent's `manifest` is byte-sensitive. It is served at
  *    /manifests/<slug>.json, which is the tokenURI of an already-minted,
- *    immutable ERC-8004 identity. The served bytes must not change: not a
- *    value, not a key, not the ORDER of the keys, since the body is
- *    JSON.stringify'd in declaration order. tests/agents.test.ts pins the exact
- *    bytes of all four.
+ *    immutable ERC-8004 identity. Those bytes must not change: not a value,
+ *    not a key, not the ORDER of the keys, since the body is JSON.stringify'd
+ *    in declaration order. tests/agents.test.ts pins each registered agent's
+ *    exact bytes and checks that an unregistered one is at least whole.
  * 2. `wallet` is the agent's PUBLIC address. Signer secrets live only in
  *    wallets/*.json and are never read here.
  *
- * `tokenId` is nullable so an agent can exist in config, be funded, and be
- * tested before it is registered on-chain.
+ * `tokenId` and `wallet` are both nullable, so an agent can exist in config and
+ * be unit-tested before its key is generated and its identity minted. Such a
+ * record is inert everywhere it matters: no verified badge, no proof-feed
+ * identity, and the runner skips it rather than failing to boot.
  */
 
-export type AgentSlug = 'grid' | 'health-factor' | 'yield' | 'lp-range';
+import type { ManagedToken } from './contracts';
+
+export type AgentSlug =
+  | 'grid'
+  | 'grid-b'
+  | 'health-factor'
+  | 'venus-guardian'
+  | 'yield'
+  | 'yield-b'
+  | 'lp-range'
+  | 'weight-rebalancer';
 
 /** Marketplace category. Matches @agripinaa/agent-index's `Category`. */
 export type AgentCategory = 'grid' | 'health-factor' | 'yield' | 'rebalancing';
 
-/** `safety` mixes numeric limits with allowlists (health-factor's `actions`). */
-export type SafetyValue = number | string[];
+/**
+ * `safety` mixes numeric limits with allowlists (health-factor's `actions`) and
+ * short policy statements, for the caps a number cannot express: what happens
+ * when a limit is breached, and what the limit is measured against. Those
+ * belong in the published manifest rather than only in the code, because the
+ * manifest is what a hirer reads before trusting the agent with capital.
+ */
+export type SafetyValue = number | string | string[];
 
 /** Execution shape varies per agent; only `chainId` is common to all four. */
 export interface ManifestExecution {
@@ -77,12 +95,19 @@ export interface AgentAttestation {
   feedbackHash: string;
 }
 
-/** One-time funding transfer sizes, in whole units. */
+/**
+ * One-time funding transfer sizes, in whole units. Every optional leg here must
+ * also appear in the transfer loop of apps/agents/src/fund.ts, or the budget is
+ * planned and silently never sent; tests/agent-config.test.ts pins the plan
+ * field by field for exactly that reason.
+ */
 export interface AgentFunding {
   bnb: string;
   usdt?: string;
   usdc?: string;
   wbnb?: string;
+  /** Bitcoin BEP20, the sell-side leg of a grid quoting BTCB. */
+  btcb?: string;
 }
 
 export interface AgentRecord {
@@ -91,12 +116,27 @@ export interface AgentRecord {
   tokenId: string | null;
   name: string;
   category: AgentCategory;
-  /** The agent's public wallet: what it trades from, never a signer secret. */
-  wallet: `0x${string}`;
+  /**
+   * The agent's public wallet: what it trades from, never a signer secret.
+   * Null until `fund --gen` creates the key, since the address is not knowable
+   * before then. A record with a null wallet is configuration only: nothing
+   * funds it, nothing attributes proofs to it, and the runner skips it.
+   */
+  wallet: `0x${string}` | null;
   /** File under wallets/ holding this agent's own-capital key. */
   walletFile: string;
   /** Can manage user funds through a scoped session key on a router. */
   managed: boolean;
+  /**
+   * The PUBLIC address of the manager key each managed token's sessions are
+   * granted to, captured from the live runner's GET /<slug>/manager-key. The
+   * browser refuses a reported key that does not match this before it becomes
+   * a session grantee, which is what makes a hijacked runner base fail closed.
+   * Only a managed agent carries one; absent until the key is generated, and
+   * the browser logs and accepts a report it has no pin for. Never a secret:
+   * the private half lives only in wallets/agent-<slug>-session.json.
+   */
+  managerKeys?: Partial<Record<ManagedToken, `0x${string}`>>;
   /** Whether to backfill this wallet's Ophis settlements into the proof feed. */
   backfillOphisTrades: boolean;
   manifest: ManifestBase;
@@ -147,6 +187,69 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
+  /*
+   * Configured, not yet on-chain: no wallet, no token id, no registration, no
+   * attestation, no proofs. The owner approved the display name below before
+   * registration because register.ts mints it into a permanent tokenURI. Task
+   * 17 fills in the remaining identity fields after funding is released.
+   */
+  'grid-b': {
+    slug: 'grid-b',
+    tokenId: null,
+    name: 'Agripinaa BTC Grid',
+    category: 'grid',
+    wallet: null,
+    walletFile: 'agent-grid-b.json',
+    managed: false,
+    backfillOphisTrades: true,
+    manifest: {
+      name: 'Agripinaa BTC Grid',
+      description:
+        'Mean-reversion grid trader on the BTCB/USDT pair, running a wider and slower ladder than Agripinaa Grid: five levels each side at 2.5 percent spacing, $1.50 clips, 8 trades a day at most, and 45 minutes between fills. Every swap executes through Ophis batch auctions (MEV-protected, a receipt for every fill). Halts itself on a trend breakout and on an inventory drawdown.',
+      category: 'grid',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['trading', 'x402-status'],
+      execution: { venue: 'ophis', pair: 'BTCB/USDT', chainId: 56 },
+      /*
+       * These are the numbers the tick enforces, not a summary of them:
+       * tests/grid-b.test.ts pins each field to GRID_B_PARAMS, so a parameter
+       * change that did not reach the manifest fails the build.
+       */
+      safety: {
+        maxTradesPerDay: 8,
+        perTradeClipUsd: 1.5,
+        minTradeClipUsd: 1,
+        gridSpacingPct: 2.5,
+        levelsPerSide: 5,
+        cooldownMinutes: 45,
+        trendHaltBandPct: 6,
+        lossHaltPct: 5,
+        maxRecentersPerDay: 3,
+        lossHaltBaseline:
+          'inventory value at the first tick, never re-baselined, so the 5 percent floor is cumulative over the agent lifetime rather than daily',
+        onHalt:
+          'trading stops and stays stopped until an operator clears the agent state file; there is no automatic resume',
+      },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    /*
+     * One leg per side of the pair, since a grid spends both: the buy side
+     * sells USDT and the sell side sells BTCB, so a leg funded in any other
+     * token would leave that whole direction blocked on an empty balance while
+     * the money sat somewhere the agent never reaches. WBNB is gone from this
+     * budget because it is no longer on the pair.
+     *
+     * 0.000025 BTCB was about $1.97 at the price the fee-500 pool reported on
+     * 2026-08-25 (78,851 USDT per BTCB), so it funds one full $1.50 clip, which
+     * is the same shape the USDC/WBNB budget had. NOTE FOR THE OPERATOR: the
+     * spike-a wallet this transfers from holds no BTCB today, so this leg has to
+     * be acquired before `fund --execute` reaches it.
+     */
+    funding: { bnb: '0.0015', usdt: '2', btcb: '0.000025' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
+  },
   'health-factor': {
     slug: 'health-factor',
     tokenId: '269704',
@@ -185,6 +288,53 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
+  /*
+   * Configured, not yet on-chain, same as grid-b: Task 17 fills in the wallet,
+   * token id, registration and attestation once the owner has signed off on the
+   * display name (PROVISIONAL below) and released the funding.
+   */
+  'venus-guardian': {
+    slug: 'venus-guardian',
+    tokenId: null,
+    name: 'Agripinaa Venus Guardian',
+    category: 'health-factor',
+    wallet: null,
+    walletFile: 'agent-venus-guardian.json',
+    managed: false,
+    backfillOphisTrades: false,
+    manifest: {
+      name: 'Agripinaa Venus Guardian',
+      description:
+        'Liquidation protection for Venus borrow positions on BSC. Reads collateral, debt, and the live market collateral factor every minute, derives the health factor Venus does not publish, and repays USDT from its own budget to lift the position back to 1.6 before liquidation can trigger. Repay only: it never borrows, never withdraws collateral, and never exits a market.',
+      category: 'health-factor',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['monitoring', 'x402-status'],
+      execution: { protocol: 'venus', chainId: 56 },
+      /*
+       * The numbers the tick enforces, pinned to the module's constants by
+       * tests/venus-guardian.test.ts. The two prose entries carry what a number
+       * cannot: where the health factor comes from (Venus publishes a shortfall,
+       * not a ratio) and what happens when the repay budget runs out.
+       */
+      safety: {
+        actions: ['repay'],
+        warnHF: 1.5,
+        actHF: 1.3,
+        targetHF: 1.6,
+        maxRepaysPerDay: 6,
+        tickSeconds: 60,
+        healthFactorSource:
+          'derived from collateral value, borrow value and the collateral factor read live from Comptroller.markets on every tick, because Venus reports liquidity and shortfall rather than a ratio; the derivation is cross-checked against that shortfall each tick',
+        onBudgetExhausted:
+          'the agent keeps monitoring and keeps reporting; it never sells or withdraws collateral to fund a repay',
+      },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    funding: { bnb: '0.0015', usdt: '2', wbnb: '0.005' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
+  },
   yield: {
     slug: 'yield',
     tokenId: '269705',
@@ -193,6 +343,12 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     wallet: '0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9',
     walletFile: 'agent-yield.json',
     managed: true,
+    // Rotated 2026-08-26 after the file-permission audit: USDT is the master
+    // key, USDC the key derived from it (apps/agents/src/manager-key.ts).
+    managerKeys: {
+      USDT: '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2',
+      USDC: '0x1A06C18C97B891E4d9F89829E74b08A3e0891646',
+    },
     backfillOphisTrades: false,
     manifest: {
       name: 'Agripinaa Harvester',
@@ -221,6 +377,57 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         note: 'Read Venus 202 bps vs Aave 207 bps on-chain, supplied to the winner',
       },
     ],
+  },
+  /*
+   * Configured, not yet on-chain, same as grid-b and venus-guardian. This one
+   * carries `managed: true`, so Task 17 must also generate its master manager
+   * key (fund --gen creates wallets/agent-yield-b-session.json) before any
+   * depositor can grant it a session, then pin the addresses the runner
+   * reports for it in `managerKeys` (none yet, so the browser accepts what the
+   * runner reports for this agent with a logged warning until then).
+   */
+  'yield-b': {
+    slug: 'yield-b',
+    tokenId: null,
+    name: 'Agripinaa Steward',
+    category: 'yield',
+    wallet: null,
+    walletFile: 'agent-yield-b.json',
+    managed: true,
+    backfillOphisTrades: false,
+    manifest: {
+      name: 'Agripinaa Steward',
+      description:
+        'Stablecoin yield rotation across BSC lending venues, run patiently. Compares live Venus and Aave supply rates every twelve hours and moves a deposit only when the other venue leads by 120 bps on three consecutive checks, and never more than once every two days. The same policy applies to its own capital and to every account it manages, and funds move through a router that can only ever pay them back to their owner.',
+      category: 'yield',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['session-keys', 'x402-status'],
+      execution: { asset: 'USDT', chainId: 56 },
+      /*
+       * The numbers the tick enforces, pinned to YIELD_B_PARAMS by
+       * tests/yield-b.test.ts. Same key names as the Harvester's where they
+       * mean the same thing, so the two are comparable side by side.
+       */
+      safety: {
+        maxMovesPerDay: 1,
+        hysteresisBps: 120,
+        thresholdComparator: 'inclusive',
+        confirmations: 3,
+        minHoursBetweenMoves: 48,
+        checkEveryHours: 12,
+        venues: ['venus', 'aave'],
+        custody:
+          'funds stay in the depositor account throughout; the agent holds a session key scoped to one router whose every recipient is hardcoded to that same account, so it can never send funds anywhere else and never withdraws to itself',
+        onRevoke:
+          'revoking the session stops all further moves; the position stays where it is and the depositor withdraws it themselves',
+      },
+      recommendedScope: { spendCapUsdtPerDay: '250', expiresHours: 720 },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    funding: { bnb: '0.0015', usdt: '1' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
   },
   'lp-range': {
     slug: 'lp-range',
@@ -276,16 +483,78 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
+  /*
+   * Configured, not yet on-chain, same as grid-b: Task 17 fills in the wallet,
+   * token id, registration and attestation once the owner has signed off on the
+   * display name (PROVISIONAL below) and released the funding.
+   */
+  'weight-rebalancer': {
+    slug: 'weight-rebalancer',
+    tokenId: null,
+    name: 'Agripinaa Rebalancer',
+    category: 'rebalancing',
+    wallet: null,
+    walletFile: 'agent-weight-rebalancer.json',
+    managed: false,
+    backfillOphisTrades: true,
+    manifest: {
+      name: 'Agripinaa Rebalancer',
+      description:
+        'Portfolio-weight rebalancer holding WBNB and USDT at a 50/50 split by value. Checks the split every 10 minutes and, when drift leaves a 5 percent band, restores the target with a single Ophis batch-auction swap (MEV-protected, a receipt for every rebalance). Sized to the distance from target and no further, so it can neither overdraw a leg nor overshoot into the opposite drift.',
+      category: 'rebalancing',
+      image: 'https://agripinaa.vercel.app/agent-icon.png',
+      capabilities: ['trading', 'x402-status'],
+      execution: { venue: 'ophis', pair: 'WBNB/USDT', chainId: 56 },
+      /*
+       * The numbers the tick enforces, pinned to the module's exported
+       * constants by tests/weight-rebalancer.test.ts.
+       */
+      safety: {
+        targetWeightPct: 50,
+        driftBandPct: 5,
+        maxRebalancesPerDay: 4,
+        minTradeUsd: 1,
+        cooldownMinutes: 35,
+        tickMinutes: 10,
+        maxTradeSize:
+          'the distance from the target weight, which is at most half the overweight side, never the whole balance',
+        onHalt:
+          'no automatic halt: the agent takes no directional view, so the daily cap, the cooldown and the minimum notional are the limits',
+      },
+      x402: { priceUsdt: '0.05', note: 'pending registration' },
+    },
+    funding: { bnb: '0.0015', usdt: '2.5', wbnb: '0.004' },
+    registrationTx: null,
+    attestation: null,
+    proofs: [],
+  },
 };
 
 export const AGENT_LIST: AgentRecord[] = Object.values(AGENTS);
 
-/** Undefined for any slug that is not a first-party agent. */
+/**
+ * Undefined for any slug that is not a first-party agent.
+ *
+ * Own keys only. Callers gate on this with a slug taken off a URL or a form
+ * field, and a plain object answers `constructor`, `__proto__` and the rest of
+ * Object.prototype with something truthy, which every such gate would read as
+ * "this agent exists" and let through to a KV read and an upstream fetch.
+ */
 export function agentBySlug(slug: string): AgentRecord | undefined {
+  if (!Object.hasOwn(AGENTS, slug)) return undefined;
   return (AGENTS as Record<string, AgentRecord | undefined>)[slug];
 }
 
 /** Undefined before an agent is registered on-chain, or for a foreign id. */
 export function agentByTokenId(tokenId: string): AgentRecord | undefined {
   return AGENT_LIST.find((agent) => agent.tokenId === tokenId);
+}
+
+/**
+ * The manager-key address pinned for one agent and managed token, or undefined
+ * when nothing is pinned (an unknown agent, an unmanaged one, or a managed one
+ * whose key has not been generated and captured yet).
+ */
+export function pinnedManagerKeyAddress(agent: string, token: string): `0x${string}` | undefined {
+  return agentBySlug(agent)?.managerKeys?.[token as ManagedToken];
 }

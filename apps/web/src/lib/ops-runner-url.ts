@@ -1,9 +1,8 @@
 import 'server-only';
 
-import { createHash, timingSafeEqual } from 'node:crypto';
-
 import { assertResolvedHostPublic, type LookupFn } from '@agripinaa/shared/ssrf';
 
+import { bearerMatches } from './bearer';
 import { isSafeRunnerUrl } from './runner-url';
 
 /**
@@ -12,22 +11,9 @@ import { isSafeRunnerUrl } from './runner-url';
  */
 const MAX_BODY_BYTES = 4_096;
 
-const BEARER_PREFIX = 'Bearer ';
-
 export type RunnerUrlReport =
   | { ok: true; url: string }
   | { ok: false; status: 400 | 401 | 503; message: string };
-
-/**
- * Compare digests rather than the raw strings, so neither the token's bytes nor
- * its length can be recovered from response timing on a public endpoint.
- */
-function bearerMatches(header: string | null, token: string): boolean {
-  if (!header || !header.startsWith(BEARER_PREFIX)) return false;
-  const presented = createHash('sha256').update(header.slice(BEARER_PREFIX.length)).digest();
-  const expected = createHash('sha256').update(token).digest();
-  return timingSafeEqual(presented, expected);
-}
 
 /**
  * Everything POST /api/ops/runner-url decides before it writes, kept separate
@@ -42,7 +28,7 @@ function bearerMatches(header: string | null, token: string): boolean {
  * which leaves a public-looking hostname pointing at 169.254.169.254 or
  * RFC1918. This write path is where a candidate first enters the system and is
  * already async, so it is the place to close that. `lookup` is injectable only
- * so tests can exercise it without real DNS.
+ * so tests can exercise it without live DNS.
  */
 export async function decideRunnerUrlReport(input: {
   opsToken: string | undefined;

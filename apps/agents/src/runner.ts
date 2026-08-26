@@ -5,26 +5,42 @@
  *
  * Usage: pnpm --filter @agripinaa/agents start [-- --only grid,yield]
  */
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN } from '@agripinaa/shared';
+import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN, agentBySlug } from '@agripinaa/shared';
 
-import { buildContext } from './chassis';
+import { assertModulesRegistered, isUnprovisioned, MANAGED_AGENT_SLUGS } from './agent-config';
+import { buildContext, DATA_DIR, ensureDataDir, hasAgentWallet } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { tickManagedYield } from './managed-runner';
 import { startX402Server, type ManagerIdentity, type ManagerSet } from './x402-server';
 import type { AgentContext, AgentModule } from './types';
+import { policyForAgent } from './yield-policy';
+import type { ManagedPolicy } from './agents/yield';
 import { gridAgent } from './agents/grid';
+import { gridBAgent } from './agents/grid-b';
 import { healthFactorAgent } from './agents/health-factor';
+import { venusGuardianAgent } from './agents/venus-guardian';
 import { yieldAgent } from './agents/yield';
+import { yieldBAgent } from './agents/yield-b';
 import { lpRangeAgent } from './agents/lp-range';
+import { weightRebalancerAgent } from './agents/weight-rebalancer';
 
-const ALL: AgentModule[] = [gridAgent, healthFactorAgent, yieldAgent, lpRangeAgent];
+const ALL: AgentModule[] = [
+  gridAgent,
+  gridBAgent,
+  healthFactorAgent,
+  venusGuardianAgent,
+  yieldAgent,
+  yieldBAgent,
+  lpRangeAgent,
+  weightRebalancerAgent,
+];
 /** Agents that can manage user funds (grant a scoped session to their manager key). */
-const MANAGED_AGENTS = ['yield'] as const;
+const MANAGED_AGENTS = MANAGED_AGENT_SLUGS;
 const PORT = Number(process.env.AGENTS_PORT ?? 4410);
 /** Managed accounts are serviced faster than own-capital (6h) so deposits deploy promptly. */
 const MANAGED_TICK_MS = Number(process.env.AGENTS_MANAGED_TICK_MS ?? 5 * 60_000);
@@ -44,30 +60,61 @@ function selectedModules(): AgentModule[] {
  * reclaimed.
  */
 function acquireRunLock(): string {
-  const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
-  mkdirSync(dataDir, { recursive: true });
-  const lock = join(dataDir, 'runner.lock');
-  try {
-    const fd = openSync(lock, 'wx'); // fails if it exists
-    writeFileSync(fd, String(process.pid));
-    closeSync(fd);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-    const holder = Number.parseInt(readFileSync(lock, 'utf8').trim(), 10);
-    let alive = false;
+  ensureDataDir();
+  const lock = join(DATA_DIR, 'runner.lock');
+  let acquired = false;
+  for (let attempt = 0; attempt < 3 && !acquired; attempt += 1) {
     try {
-      process.kill(holder, 0);
-      alive = true;
-    } catch {
-      alive = false;
+      const fd = openSync(lock, 'wx'); // the only operation that wins the lease
+      try {
+        writeFileSync(fd, String(process.pid));
+      } catch (writeError) {
+        // We created this inode, so a failed PID write cannot describe a live
+        // holder. Remove it rather than leaving an unrecoverable malformed lock.
+        try {
+          unlinkSync(lock);
+        } catch {
+          /* preserve the original write failure */
+        }
+        throw writeError;
+      } finally {
+        closeSync(fd);
+      }
+      acquired = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      let holder = Number.NaN;
+      try {
+        holder = Number.parseInt(readFileSync(lock, 'utf8').trim(), 10);
+      } catch (readError) {
+        if ((readError as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw readError;
+      }
+      if (!Number.isSafeInteger(holder) || holder <= 0) {
+        throw new Error(`runner lock is malformed; refusing to remove a possibly live lease: ${lock}`);
+      }
+      let holderIsDead = false;
+      try {
+        process.kill(holder, 0);
+      } catch (probeError) {
+        if ((probeError as NodeJS.ErrnoException).code !== 'ESRCH') throw probeError;
+        holderIsDead = true;
+      }
+      if (!holderIsDead) {
+        throw new Error(
+          `another agent runner is live (pid ${holder}); refusing to start a second (would double-trade)`,
+        );
+      }
+      // Remove a dead holder, then loop back through O_EXCL. Two contenders
+      // can both observe the stale pid, but only one can win the next `wx`.
+      try {
+        unlinkSync(lock);
+      } catch (unlinkError) {
+        if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') throw unlinkError;
+      }
     }
-    if (alive) {
-      throw new Error(
-        `another agent runner is live (pid ${holder}); refusing to start a second (would double-trade)`,
-      );
-    }
-    writeFileSync(lock, String(process.pid));
   }
+  if (!acquired) throw new Error('could not acquire the agent runner lock');
   const release = () => {
     try {
       unlinkSync(lock);
@@ -82,11 +129,27 @@ function acquireRunLock(): string {
 }
 
 async function main() {
+  // Before anything acquires a lock, opens a port, or signs: a module with no
+  // registry record has no token id, no manifest, and no proof-feed identity,
+  // so it would trade with nothing on the marketplace pointing at it.
+  assertModulesRegistered(ALL);
   acquireRunLock();
   const modules = selectedModules();
   const agents = new Map<string, { module: AgentModule; ctx: AgentContext }>();
 
   for (const module of modules) {
+    // An agent may be configured before its wallet exists (the address is not
+    // knowable until the key is generated). Skip it with a line in the log
+    // rather than letting buildContext's missing-key throw take every other
+    // agent's tick loop down at boot. A record that already carries a wallet
+    // address still fails loudly, because then the key is absent.
+    const record = agentBySlug(module.name);
+    if (record && isUnprovisioned(record, hasAgentWallet(module.name))) {
+      console.log(
+        `${module.name}: skipped, no wallet yet (run fund --gen --only agent-${record.slug})`,
+      );
+      continue;
+    }
     const ctx = await buildContext(module.name);
     agents.set(module.name, { module, ctx });
     ctx.log({ event: 'boot', category: module.category, tickMs: module.tickIntervalMs });
@@ -111,9 +174,23 @@ async function main() {
   // cosmetic reorder there used to move the master key off USDT, which would
   // strand every live USDT mandate at the executor's signer check.
   const managers = new Map<string, ManagerSet>();
-  const managerKeySets = new Map<string, ManagerKeySet>();
+  const managerKeySets = new Map<string, { keySet: ManagerKeySet; policy: ManagedPolicy }>();
   for (const name of MANAGED_AGENTS) {
     if (!agents.has(name)) continue;
+    // More than one agent manages funds on the same router, and the policy is
+    // the whole difference between them. An agent with no policy of its own is
+    // left unserviced (the deposit simply stays where it is) rather than being
+    // run on another agent's, which would silently give a depositor the agent
+    // they did not choose.
+    const policy = policyForAgent(name);
+    if (!policy) {
+      agents.get(name)!.ctx.log({
+        event: 'managed-disabled',
+        level: 'warn',
+        reason: `no rotation policy registered for ${name}; add one in src/yield-policy.ts`,
+      });
+      continue;
+    }
     const keySet = buildManagerKeySet(name, MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN);
     if (!keySet) {
       agents.get(name)!.ctx.log({
@@ -128,7 +205,7 @@ async function main() {
       master: { publicKey: keySet.master.publicKey, address: keySet.master.address },
       byToken,
     });
-    managerKeySets.set(name, keySet);
+    managerKeySets.set(name, { keySet, policy });
   }
 
   startX402Server({ port: PORT, facilitatorKey: privateKey, agents, managers });
@@ -139,7 +216,7 @@ async function main() {
 
   if (managerKeySets.size > 0) {
     const client = createAltanaClient();
-    for (const [name, keySet] of managerKeySets) {
+    for (const [name, { keySet, policy }] of managerKeySets) {
       const ctx = agents.get(name)!.ctx;
       let running = false;
       const loop = async () => {
@@ -147,9 +224,14 @@ async function main() {
         if (ctx.breakers.isHalted().halted) return;
         running = true;
         try {
-          const { serviced, errors } = await tickManagedYield({ ctx, client, managerKeys: keySet });
+          const { serviced, recoveryOnly, errors } = await tickManagedYield({
+            ctx,
+            client,
+            managerKeys: keySet,
+            policy,
+          });
           if (serviced > 0 || errors > 0) {
-            ctx.log({ event: 'managed-sweep', serviced, errors });
+            ctx.log({ event: 'managed-sweep', serviced, recoveryOnly, errors });
           }
         } catch (err) {
           ctx.log({

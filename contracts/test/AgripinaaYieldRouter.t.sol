@@ -2,7 +2,14 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {AgripinaaYieldRouter, IERC20} from "../src/AgripinaaYieldRouter.sol";
+import {
+    AgripinaaYieldRouter,
+    IERC20,
+    IAaveAToken,
+    IAavePool,
+    IVToken,
+    IVenusComptroller
+} from "../src/AgripinaaYieldRouter.sol";
 
 /**
  * Fork test against real BSC mainnet Venus + Aave. Proves the router rotates a
@@ -16,6 +23,7 @@ contract AgripinaaYieldRouterForkTest is Test {
     address constant AUSDT = 0xa9251ca9DE909CB71783723713B21E4233fbf1B1;
     address constant AAVE = 0x6807dc923806fE8Fd134338EABCA509979a7e0cB;
     address constant VUSDT = 0xfD5840Cd36d94D7229439859C0112a4185BC0255;
+    address constant AUSDC = 0x00901a076785e0906d1028c7d6372d247bec7d61;
 
     uint256 constant PRINCIPAL = 1000e18;
     // Lending redemptions round down by a few wei; principal must survive within dust.
@@ -113,10 +121,185 @@ contract AgripinaaYieldRouterForkTest is Test {
     /// agent could craft to send funds elsewhere. Calling with only the user's
     /// approval, funds always return to the user.
     function test_idleOnEmptyAccountIsNoOp() public {
+        vm.recordLogs();
         vm.prank(attacker);
         router.toIdle();
         assertEq(_bal(USDT, attacker), 0);
+        assertEq(vm.getRecordedLogs().length, 0, "empty call emitted trusted-looking activity");
         _assertRouterEmpty();
+    }
+
+    function test_idleOnlyToIdleIsNoOpAndEmitsNoRotated() public {
+        vm.recordLogs();
+        vm.prank(user);
+        router.toIdle();
+
+        assertEq(_bal(USDT, user), PRINCIPAL, "idle balance changed");
+        assertEq(vm.getRecordedLogs().length, 0, "idle no-op emitted activity");
+        _assertRouterEmpty();
+    }
+
+    function test_sameTargetOnlyCallsAreNoOps() public {
+        vm.prank(user);
+        router.toAave();
+        uint256 aaveBefore = _bal(AUSDT, user);
+        vm.recordLogs();
+        vm.prank(user);
+        router.toAave();
+        assertEq(_bal(AUSDT, user), aaveBefore, "same-target Aave call churned receipts");
+        assertEq(vm.getRecordedLogs().length, 0, "same-target Aave call emitted activity");
+
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        vm.recordLogs();
+        vm.prank(user);
+        router.toVenus();
+        assertEq(_bal(VUSDT, user), venusBefore, "same-target Venus call churned receipts");
+        assertEq(vm.getRecordedLogs().length, 0, "same-target Venus call emitted activity");
+    }
+
+    function test_aaveDebtLeavesCollateralUntouchedAndProcessesIdle() public {
+        vm.prank(user);
+        router.toAave();
+        uint256 aaveBefore = _bal(AUSDT, user);
+        deal(USDT, user, 25e18);
+        vm.mockCall(
+            AAVE,
+            abi.encodeWithSelector(IAavePool.getUserAccountData.selector, user),
+            abi.encode(uint256(1000), uint256(1), uint256(0), uint256(8000), uint256(7500), uint256(1.2e18))
+        );
+
+        vm.prank(user);
+        router.toVenus();
+
+        assertEq(_bal(AUSDT, user), aaveBefore, "encumbered Aave collateral moved");
+        assertGt(_bal(VUSDT, user), 0, "safe idle balance was not processed");
+    }
+
+    function test_venusDebtLeavesCollateralUntouchedAndProcessesIdle() public {
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        deal(USDT, user, 25e18);
+        address comptroller = IVToken(VUSDT).comptroller();
+        address[] memory markets = new address[](1);
+        markets[0] = VUSDT;
+        vm.mockCall(
+            comptroller, abi.encodeWithSelector(IVenusComptroller.getAssetsIn.selector, user), abi.encode(markets)
+        );
+        vm.mockCall(VUSDT, abi.encodeWithSelector(IVToken.borrowBalanceStored.selector, user), abi.encode(uint256(1)));
+
+        vm.prank(user);
+        router.toAave();
+
+        assertEq(_bal(VUSDT, user), venusBefore, "encumbered Venus collateral moved");
+        assertApproxEqAbs(_bal(AUSDT, user), 25e18, DUST, "safe idle balance was not processed");
+    }
+
+    function test_venusVaiDebtLeavesCollateralUntouchedAndProcessesIdle() public {
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        deal(USDT, user, 25e18);
+        address comptroller = IVToken(VUSDT).comptroller();
+        vm.mockCall(
+            comptroller,
+            abi.encodeWithSelector(IVenusComptroller.mintedVAIs.selector, user),
+            abi.encode(uint256(1390e18))
+        );
+
+        vm.prank(user);
+        router.toAave();
+
+        assertEq(_bal(VUSDT, user), venusBefore, "VAI-backed Venus collateral moved");
+        assertApproxEqAbs(_bal(AUSDT, user), 25e18, DUST, "safe idle balance was not processed");
+    }
+
+    function test_venusComptrollerMigrationFailsClosed() public {
+        vm.prank(user);
+        router.toVenus();
+        address expected = IVToken(VUSDT).comptroller();
+        address migrated = makeAddr("migrated comptroller");
+        vm.mockCall(VUSDT, abi.encodeWithSelector(IVToken.comptroller.selector), abi.encode(migrated));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AgripinaaYieldRouter.ComptrollerMismatch.selector, expected, migrated)
+        );
+        vm.prank(user);
+        router.toAave();
+    }
+
+    function test_toVenusDoesNotInspectTargetVenusDebt() public {
+        vm.prank(user);
+        router.toVenus();
+        uint256 venusBefore = _bal(VUSDT, user);
+        deal(USDT, user, 25e18);
+        address comptroller = IVToken(VUSDT).comptroller();
+        vm.mockCallRevert(
+            comptroller,
+            abi.encodeWithSelector(IVenusComptroller.mintedVAIs.selector, user),
+            bytes("target debt must not be queried")
+        );
+
+        vm.prank(user);
+        router.toVenus();
+
+        assertGt(_bal(VUSDT, user), venusBefore, "idle USDT was not added to the target venue");
+        assertEq(_bal(USDT, user), 0, "idle USDT was not collected");
+    }
+
+    function test_donatedAaveReceiptCannotBlockIdleWithdrawal() public {
+        deal(USDT, attacker, 1e18);
+        vm.startPrank(attacker);
+        IERC20(USDT).approve(AAVE, type(uint256).max);
+        IAavePool(AAVE).supply(USDT, 1e18, attacker, 0);
+        IERC20(AUSDT).transfer(user, 1);
+        vm.stopPrank();
+        vm.mockCall(
+            AAVE,
+            abi.encodeWithSelector(IAavePool.getUserAccountData.selector, user),
+            abi.encode(uint256(0), uint256(1), uint256(0), uint256(0), uint256(0), uint256(0))
+        );
+
+        vm.prank(user);
+        router.toIdle();
+
+        assertEq(_bal(AUSDT, user), 1, "donated encumbered receipt moved");
+        assertEq(_bal(USDT, user), PRINCIPAL, "idle withdrawal was blocked by receipt dust");
+    }
+
+    function test_venusDustMintRevertsInsteadOfBurningUnderlying() public {
+        deal(USDT, attacker, 1);
+        vm.prank(attacker);
+        IERC20(USDT).approve(address(router), 1);
+
+        vm.expectRevert(AgripinaaYieldRouter.ZeroVenusMint.selector);
+        vm.prank(attacker);
+        router.toVenus();
+
+        assertEq(_bal(USDT, attacker), 1, "dust underlying was lost");
+        assertEq(_bal(VUSDT, attacker), 0, "unexpected vUSDT was minted");
+    }
+
+    function test_constructorRejectsInvalidOrMismatchedDependencies() public {
+        vm.expectRevert(abi.encodeWithSelector(AgripinaaYieldRouter.InvalidDependency.selector, address(0)));
+        new AgripinaaYieldRouter(address(0), AUSDT, AAVE, VUSDT);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AgripinaaYieldRouter.UnderlyingMismatch.selector,
+                AUSDC,
+                USDT,
+                address(0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d)
+            )
+        );
+        new AgripinaaYieldRouter(USDT, AUSDC, AAVE, VUSDT);
+
+        address wrongPool = address(0xBEEF);
+        vm.mockCall(AUSDT, abi.encodeWithSelector(IAaveAToken.POOL.selector), abi.encode(wrongPool));
+        vm.expectRevert(abi.encodeWithSelector(AgripinaaYieldRouter.PoolMismatch.selector, AUSDT, AAVE, wrongPool));
+        new AgripinaaYieldRouter(USDT, AUSDT, AAVE, VUSDT);
     }
 
     // --- Delta accounting: stranded funds are never distributed (audit L-1) ---
@@ -152,7 +335,7 @@ contract AgripinaaYieldRouterForkTest is Test {
         deal(USDT, attacker, 100e18);
         vm.startPrank(attacker);
         IERC20(USDT).approve(VUSDT, type(uint256).max);
-        (bool ok, ) = VUSDT.call(abi.encodeWithSignature("mint(uint256)", uint256(100e18)));
+        (bool ok,) = VUSDT.call(abi.encodeWithSignature("mint(uint256)", uint256(100e18)));
         require(ok, "seed mint failed");
         uint256 strayV = IERC20(VUSDT).balanceOf(attacker);
         IERC20(VUSDT).transfer(address(router), strayV);

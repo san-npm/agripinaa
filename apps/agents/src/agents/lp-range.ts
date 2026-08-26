@@ -4,7 +4,9 @@ import { erc20Abi, parseAbi, parseEventLogs, zeroAddress, type Log } from 'viem'
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
 
 import { ChassisOphisWallet } from '../ophis-wallet';
+import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
+import { valueGapUsd } from '../value-split';
 
 /* ------------------------------------------------------------------ */
 /* Pure decision logic (exported for tests, no I/O)                    */
@@ -70,7 +72,7 @@ export interface PositionBalances {
  * of an interrupted rebalance (liquidity removed, re-mint never completed), not
  * a healthy position. The NFT still exists and still reports its old ticks, so a
  * range-check against it happily answers "in range" forever while the capital
- * sits idle in the wallet. Treat a genuinely empty position as "no position" so
+ * sits idle in the wallet. Treat a wholly empty position as "no position" so
  * the normal recover-then-mint path takes over.
  *
  * Empty means zero liquidity AND nothing owed. Liquidity alone is not the test:
@@ -118,6 +120,11 @@ export interface RebalanceLeg {
 /**
  * One swap that moves inventory to ~50/50 by value: sell half the value gap
  * from the heavy side. Returns null when the gap leg is <= minNotionalUsd.
+ *
+ * The gap itself comes from ../value-split, shared with the weight-rebalancer
+ * agent, which is the same measurement standing alone. At a target of 0.5 that
+ * function is bit-identical to the halved difference this used to compute
+ * inline, so the sizing of this agent's live swaps is unchanged.
  */
 export function computeRebalanceLeg(
   wbnbUnits: number,
@@ -125,7 +132,7 @@ export function computeRebalanceLeg(
   usdtPerWbnb: number,
   minNotionalUsd: number = MIN_SWAP_NOTIONAL_USD,
 ): RebalanceLeg | null {
-  const excessUsd = (wbnbUnits * usdtPerWbnb - usdtUnits) / 2;
+  const excessUsd = valueGapUsd(wbnbUnits * usdtPerWbnb, usdtUnits, 0.5);
   if (!Number.isFinite(excessUsd) || Math.abs(excessUsd) <= minNotionalUsd) return null;
   if (excessUsd > 0) {
     return { sell: 'WBNB', amountUnits: excessUsd / usdtPerWbnb, notionalUsd: excessUsd };
@@ -153,7 +160,7 @@ export interface WeeklyBudget {
  * The manifest served at this agent's permanent ERC-8004 tokenURI promises
  * maxRebalancesPerWeek: 4, and a caller that checks a budget it never
  * contributes to does not bind it: the inventory-prep path read the rebalance
- * window, refused at the ceiling, and then never recorded, so its real ceiling
+ * window, refused at the ceiling, and then never recorded, so its effective ceiling
  * was the daily breaker alone (2 a day, 14 a week). Both paths now spend from
  * this budget and both record into it.
  *
@@ -261,6 +268,13 @@ const POOL_ABI = parseAbi([
 const LP_MIN_BPS = BigInt(9000); // accept >= 90% of desired per token
 const TWAP_WINDOW_SECONDS = 60;
 const TWAP_MAX_TICK_DEVIATION = 100; // ~1% price; a sandwich must exceed this
+
+export function exitMinimums(quoted: readonly [bigint, bigint]): readonly [bigint, bigint] {
+  return [
+    (quoted[0] * LP_MIN_BPS) / BigInt(10000),
+    (quoted[1] * LP_MIN_BPS) / BigInt(10000),
+  ];
+}
 
 /**
  * Reject action when the pool's spot tick has been pushed away from its
@@ -706,7 +720,12 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
     });
     const liquidity = position[7];
     if (liquidity > BigInt(0)) {
-      const decreaseHash = await ctx.walletClient.writeContract({
+      const deadline = txDeadline();
+      // Quote the exact burn against the current guarded state, then make the
+      // transaction enforce 90% of both simulated outputs. A spot/TWAP check
+      // alone can be sandwiched after the RPC read; these minima make that
+      // manipulation revert on-chain instead of changing the token mix.
+      const { result: quotedExit } = await ctx.publicClient.simulateContract({
         address: POSITION_MANAGER,
         abi: NPM_ABI,
         functionName: 'decreaseLiquidity',
@@ -716,7 +735,23 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
             liquidity,
             amount0Min: BigInt(0),
             amount1Min: BigInt(0),
-            deadline: txDeadline(),
+            deadline,
+          },
+        ],
+        account: ctx.account,
+      });
+      const [amount0Min, amount1Min] = exitMinimums(quotedExit);
+      const decreaseHash = await ctx.walletClient.writeContract({
+        address: POSITION_MANAGER,
+        abi: NPM_ABI,
+        functionName: 'decreaseLiquidity',
+        args: [
+          {
+            tokenId,
+            liquidity,
+            amount0Min,
+            amount1Min,
+            deadline,
           },
         ],
         account: ctx.account,
@@ -836,6 +871,11 @@ async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<vo
       buyToken: buyToken.address,
       sellAmount,
       slippageBps: 100,
+      minimumBuyAmount: independentMinimumBuyAmount({
+        sellAmount,
+        buyUnitsPerSellUnit: leg.sell === 'WBNB' ? price : 1 / price,
+        buyDecimals: buyToken.decimals,
+      }),
     },
     {},
   );
@@ -898,7 +938,7 @@ async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void
   if (!needsInventoryPrep(wbnbUnits, usdtUnits, inv.usdtPerWbnb)) return;
 
   /* Same leg rebalanceInventory will trade, checked here so the guards below
-   * (and the log) see the real notional before anything is submitted. */
+   * (and the log) see the resulting notional before anything is submitted. */
   const leg = computeRebalanceLeg(
     Number(fromBaseUnits(inv.wbnbBal, WBNB.decimals)),
     Number(fromBaseUnits(inv.usdtBal, USDT.decimals)),

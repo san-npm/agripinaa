@@ -13,16 +13,15 @@
  * exact granted object), so bigint spend limits round-trip through
  * session-kit's serialize/deserialize, never plain JSON.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { routerByAddress } from '@agripinaa/shared';
 import { deserializeSession, serializeSession } from '@agripinaa/session-kit/persist';
 import type { SessionPermissions } from '@altananetwork/sdk';
 import type { Address, Hex } from 'viem';
 
-const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
+import { DATA_DIR, ensureDataDir, writeStateFile } from './chassis';
 
 /** The public, storable half of an SDK Session (no signer). */
 export interface StoredSession {
@@ -41,25 +40,44 @@ export interface ManagedAccount {
   registeredAt: string;
 }
 
-function file(agent: string): string {
-  return join(DATA_DIR, `${agent}.managed.json`);
+export interface ManagedHealth {
+  at: number;
+  result: 'ready' | 'error';
+  reason?: string;
+  /** Terminal writes stay unhealthy until a later write proves recovery. */
+  requiresExecutionRecovery?: boolean;
 }
 
-/** All accounts currently managed by `agent`. Missing file => none. */
-export function loadManaged(agent: string): ManagedAccount[] {
-  const f = file(agent);
+/** A five-minute runner cadence gets three missed sweeps before status is stale. */
+export const MANAGED_HEALTH_MAX_AGE_MS = 20 * 60 * 1000;
+/** Hard admission ceiling so a public registration endpoint cannot grow sweep work without bound. */
+export const MAX_MANAGED_ENTRIES_PER_AGENT = 300;
+
+export function managedHealthKey(account: Address, router: Address): string {
+  return `managed-health:${account.toLowerCase()}:${router.toLowerCase()}`;
+}
+
+function file(agent: string, dir: string): string {
+  return join(dir, `${agent}.managed.json`);
+}
+
+/**
+ * All accounts currently managed by `agent`. Missing file => none. `dir`
+ * defaults to the chassis data dir; tests point it at a scratch dir.
+ */
+export function loadManaged(agent: string, dir: string = DATA_DIR): ManagedAccount[] {
+  const f = file(agent, dir);
   if (!existsSync(f)) return [];
   const parsed = deserializeSession(readFileSync(f, 'utf8')) as ManagedAccount[];
   return Array.isArray(parsed) ? parsed : [];
 }
 
-function save(agent: string, entries: ManagedAccount[]): void {
-  mkdirSync(DATA_DIR, { recursive: true });
-  const f = file(agent);
-  const tmp = `${f}.tmp`;
-  // Atomic write: a crash mid-write must not truncate the registry.
-  writeFileSync(tmp, serializeSession(entries), 'utf8');
-  renameSync(tmp, f);
+function save(agent: string, entries: ManagedAccount[], dir: string): void {
+  // Owner-only dir and file: this holds every managed user's account, session
+  // public key, granted permissions and expiry. Atomic through the chassis
+  // temp+rename path, so a crash mid-write cannot truncate the registry.
+  ensureDataDir(dir);
+  writeStateFile(file(agent, dir), serializeSession(entries));
 }
 
 /**
@@ -89,21 +107,51 @@ function routerKey(entry: ManagedAccount): string {
  * silently overwriting the other token's mandate. A re-grant for the SAME
  * (account, router) still supersedes the old one.
  */
-export function upsertManaged(agent: string, entry: ManagedAccount): ManagedAccount[] {
+export function upsertManaged(
+  agent: string,
+  entry: ManagedAccount,
+  dir: string = DATA_DIR,
+): ManagedAccount[] {
+  const current = loadManaged(agent, dir);
   const acct = entry.account.toLowerCase();
   const router = routerKey(entry);
-  const rest = loadManaged(agent).filter(
+  const replacesExisting = current.some(
+    (candidate) => candidate.account.toLowerCase() === acct && routerKey(candidate) === router,
+  );
+  if (!replacesExisting && current.length >= MAX_MANAGED_ENTRIES_PER_AGENT) {
+    throw new Error(`managed registry is full (${MAX_MANAGED_ENTRIES_PER_AGENT} mandates)`);
+  }
+  const rest = current.filter(
     (e) => !(e.account.toLowerCase() === acct && routerKey(e) === router),
   );
   const next = [...rest, entry];
-  save(agent, next);
+  save(agent, next, dir);
   return next;
 }
 
 /** Remove a managed account (e.g. after the user revokes). No-op if absent. */
-export function removeManaged(agent: string, account: Address): ManagedAccount[] {
+export function removeManaged(
+  agent: string,
+  account: Address,
+  dir: string = DATA_DIR,
+): ManagedAccount[] {
   const key = account.toLowerCase();
-  const next = loadManaged(agent).filter((e) => e.account.toLowerCase() !== key);
-  save(agent, next);
+  const next = loadManaged(agent, dir).filter((e) => e.account.toLowerCase() !== key);
+  save(agent, next, dir);
+  return next;
+}
+
+/** Remove one token/router mandate without deleting the account's other token. */
+export function removeManagedEntry(
+  agent: string,
+  entry: ManagedAccount,
+  dir: string = DATA_DIR,
+): ManagedAccount[] {
+  const account = entry.account.toLowerCase();
+  const router = routerKey(entry);
+  const next = loadManaged(agent, dir).filter(
+    (candidate) => !(candidate.account.toLowerCase() === account && routerKey(candidate) === router),
+  );
+  save(agent, next, dir);
   return next;
 }

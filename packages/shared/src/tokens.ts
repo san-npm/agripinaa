@@ -28,6 +28,18 @@ export const TOKENS_BSC: Record<string, TokenInfo> = {
     symbol: 'USDC',
     decimals: 18,
   },
+  /*
+   * Bitcoin BEP20, the Binance-pegged BTC on BNB Chain. Also 18 decimals, which
+   * is what lets a grid read its pool price straight off slot0 with no power of
+   * ten correction (grid-core refuses a pair whose sides disagree). Verified
+   * on-chain 2026-08-25 against https://bsc-rpc.publicnode.com: decimals() 18,
+   * symbol() "BTCB".
+   */
+  BTCB: {
+    address: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c',
+    symbol: 'BTCB',
+    decimals: 18,
+  },
 };
 
 /** "12.5" + 18 decimals → BigInt("12500000000000000000"). Throws on malformed input. */

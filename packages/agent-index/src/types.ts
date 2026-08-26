@@ -35,6 +35,14 @@ export interface TrustData {
   asOf: string;
 }
 
+/**
+ * A field an agent's on-chain owner supplied through a signed claim, because
+ * the indexed registration carried nothing for it. Per-field like
+ * `TrustData.scoreSource`, so a card can label exactly the owner-provided parts
+ * of a listing instead of tarring the whole record with one badge.
+ */
+export type ClaimedField = 'description' | 'category' | 'website' | 'endpoint';
+
 export interface AgentSummary {
   /** Stable id: `${chainId}-${tokenId}` (subgraph-shaped). */
   id: string;
@@ -57,6 +65,25 @@ export interface AgentSummary {
    * description). Collapsed for a legible directory; the count is shown.
    */
   duplicateCount?: number;
+  /**
+   * True once the identity's on-chain owner has signed a claim for this
+   * listing. Says who filled the gaps, not that anyone vouches for the agent:
+   * a claimed registry listing stays unverified.
+   */
+  claimed?: boolean;
+  /** Which fields on this record came from that claim rather than from chain. */
+  claimedFields?: ClaimedField[];
+  /** Owner-provided links, set only where the indexed record carried none. */
+  website?: string;
+  endpoint?: string;
+  /**
+   * True when a probe of `endpoint` answered inside the freshness window. Set
+   * by the site from its own stored probe results, never by the index: the
+   * registry records an endpoint, it does not say whether anything is behind
+   * it. Absent means no fresh result, which is not the same as an endpoint that
+   * was probed and did not answer.
+   */
+  endpointLive?: boolean;
 }
 
 export interface AgentDetail extends AgentSummary {

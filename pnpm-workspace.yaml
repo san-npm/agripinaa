@@ -1,3 +1,10 @@
 packages:
   - apps/*
   - packages/*
+
+# Supply-chain guardrails for future resolutions. Existing frozen-lockfile
+# installs remain reproducible, while newly introduced packages must age for a
+# week and transitive packages cannot smuggle git/tarball dependencies.
+blockExoticSubdeps: true
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade

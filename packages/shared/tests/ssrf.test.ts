@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { assertResolvedHostPublic, assertSafeUrl, BlockedUrlError } from '../src/ssrf';
+import {
+  assertResolvedHostPublic,
+  assertSafeUrl,
+  BlockedUrlError,
+  OversizedBodyError,
+  safeFetchBytes,
+  safeFetchJson,
+} from '../src/ssrf';
 
 test('https public host is allowed', () => {
   assert.equal(assertSafeUrl('https://agripinaa.vercel.app/manifests/grid.json').hostname, 'agripinaa.vercel.app');
@@ -92,4 +99,182 @@ test('a DNS name resolving only to public addresses is allowed', async () => {
   await assert.doesNotReject(() =>
     assertResolvedHostPublic(url, async () => [{ address: '93.184.216.34' }]),
   );
+});
+
+// --- streamed body cap and the byte-level fetch --------------------------
+
+/**
+ * A fetch stub whose body is a stream of `chunks` chunks of `chunkBytes` each,
+ * counting what the consumer actually pulled and whether it cancelled. Public
+ * IP literals are used as hosts throughout so no test resolves live DNS: the
+ * guard skips the resolver for a literal it has already range-checked.
+ */
+function streamingFetch(opts: { status?: number; chunks: number; chunkBytes: number; headers?: Record<string, string> }) {
+  const state = { pulled: 0, cancelled: false, calls: [] as string[] };
+  const stub: typeof fetch = async (input) => {
+    state.calls.push(String(input));
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= opts.chunks) {
+          controller.close();
+          return;
+        }
+        sent += 1;
+        state.pulled += opts.chunkBytes;
+        controller.enqueue(new Uint8Array(opts.chunkBytes).fill(0x20));
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    });
+    return new Response(body, { status: opts.status ?? 200, headers: opts.headers });
+  };
+  return { stub, state };
+}
+
+async function withFetch<T>(stub: typeof fetch, run: () => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  globalThis.fetch = stub;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test('a body past the cap is cancelled at the cap, not buffered to the end', async () => {
+  // 16 chunks of 64 KB is 1 MB against a 256 KB cap. The reader must stop at
+  // the first chunk that crosses the cap and cancel the stream. What the
+  // source sees pulled is that plus the read-ahead the stream machinery keeps
+  // queued (one chunk per layer: the source stream and the Response around
+  // it), so the bound is the cap plus three chunks, well short of the body.
+  const { stub, state } = streamingFetch({ chunks: 16, chunkBytes: 64 * 1024 });
+  const result = await withFetch(stub, () => safeFetchJson('https://8.8.8.8/x'));
+  assert.equal(result, null);
+  assert.equal(state.cancelled, true, 'the stream was not cancelled');
+  assert.ok(state.pulled <= 256 * 1024 + 3 * 64 * 1024, `pulled ${state.pulled} bytes past the cap`);
+});
+
+test('safeFetchBytes reports the cap as an OversizedBodyError with a caller-chosen cap', async () => {
+  const { stub, state } = streamingFetch({ chunks: 8, chunkBytes: 4_096 });
+  await withFetch(stub, () =>
+    assert.rejects(() => safeFetchBytes('https://8.8.8.8/x', { maxBytes: 8_192 }), OversizedBodyError),
+  );
+  assert.equal(state.cancelled, true);
+  assert.ok(state.pulled <= 8_192 + 3 * 4_096, `pulled ${state.pulled} bytes past the cap`);
+});
+
+test('safeFetchBytes returns a non-ok upstream status with its body intact', async () => {
+  // A proxy needs the runner's own 404 and its error message, which the JSON
+  // helper collapses to null on purpose.
+  const stub: typeof fetch = async () =>
+    new Response(JSON.stringify({ error: 'agent does not support managed mode' }), { status: 404 });
+  const result = await withFetch(stub, () => safeFetchBytes('https://8.8.8.8/x'));
+  assert.equal(result.status, 404);
+  assert.equal(result.ok, false);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(result.bytes)), {
+    error: 'agent does not support managed mode',
+  });
+});
+
+test('a redirect to a private address is refused and never fetched', async () => {
+  const { stub, state } = streamingFetch({
+    status: 302,
+    chunks: 0,
+    chunkBytes: 0,
+    headers: { location: 'https://169.254.169.254/latest/meta-data/' },
+  });
+  const result = await withFetch(stub, () => safeFetchJson('https://8.8.8.8/x'));
+  assert.equal(result, null);
+  assert.deepEqual(state.calls, ['https://8.8.8.8/x'], 'the private location was fetched');
+});
+
+test('a redirect on a POST is refused even when the location is public', async () => {
+  // Following would either replay the body to a host the caller never named
+  // or turn the request into a GET; a proxy does neither.
+  const { stub, state } = streamingFetch({
+    status: 307,
+    chunks: 0,
+    chunkBytes: 0,
+    headers: { location: 'https://1.1.1.1/elsewhere' },
+  });
+  await withFetch(stub, () =>
+    assert.rejects(
+      () => safeFetchBytes('https://8.8.8.8/x', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } }),
+      BlockedUrlError,
+    ),
+  );
+  assert.deepEqual(state.calls, ['https://8.8.8.8/x']);
+});
+
+test('maxRedirects: 0 refuses a redirect on a GET too', async () => {
+  const { stub, state } = streamingFetch({
+    status: 302,
+    chunks: 0,
+    chunkBytes: 0,
+    headers: { location: 'https://1.1.1.1/elsewhere' },
+  });
+  await withFetch(stub, () =>
+    assert.rejects(() => safeFetchBytes('https://8.8.8.8/x', { maxRedirects: 0 }), BlockedUrlError),
+  );
+  assert.deepEqual(state.calls, ['https://8.8.8.8/x']);
+});
+
+test('a GET still follows a public redirect and parses the final body', async () => {
+  const calls: string[] = [];
+  const stub: typeof fetch = async (input) => {
+    calls.push(String(input));
+    if (calls.length === 1) {
+      return new Response(null, { status: 302, headers: { location: 'https://1.1.1.1/final' } });
+    }
+    return new Response(JSON.stringify({ events: [] }), { status: 200 });
+  };
+  const result = await withFetch(stub, () => safeFetchJson('https://8.8.8.8/x'));
+  assert.deepEqual(result, { events: [] });
+  assert.deepEqual(calls, ['https://8.8.8.8/x', 'https://1.1.1.1/final']);
+});
+
+/**
+ * The transport seam. Callers whose own tests need to stand in for the network
+ * (the endpoint liveness probe in apps/web is the first) get a per-call option
+ * instead of swapping `globalThis.fetch`, which is process-wide and leaks into
+ * anything else running. The guard runs first either way: the injected
+ * transport is reached only after the url has been validated.
+ */
+test('the transport is injectable, and a url the guard refuses never reaches it', async () => {
+  // The short timeout is insurance: if the seam regresses the stub is bypassed,
+  // and this fails in 200 ms instead of making a request on the 5 s default.
+  const calls: string[] = [];
+  const stub: typeof fetch = async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const result = await safeFetchBytes('https://8.8.8.8/x', { fetchImpl: stub, timeoutMs: 200 });
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls, ['https://8.8.8.8/x']);
+
+  for (const refused of ['http://8.8.8.8/x', 'https://169.254.169.254/latest/meta-data', 'https://127.0.0.1/x']) {
+    await assert.rejects(
+      () => safeFetchBytes(refused, { fetchImpl: stub, timeoutMs: 200 }),
+      BlockedUrlError,
+      refused,
+    );
+  }
+  assert.equal(calls.length, 1, 'the guard refused before the transport was called');
+});
+
+test('an injected transport is revalidated on the redirect hop it is asked to follow', async () => {
+  const calls: string[] = [];
+  const stub: typeof fetch = async (input) => {
+    calls.push(String(input));
+    return new Response(null, { status: 302, headers: { location: 'https://127.0.0.1/internal' } });
+  };
+
+  await assert.rejects(
+    () => safeFetchBytes('https://8.8.8.8/x', { fetchImpl: stub, timeoutMs: 200 }),
+    BlockedUrlError,
+  );
+  assert.deepEqual(calls, ['https://8.8.8.8/x'], 'the private redirect target was never requested');
 });

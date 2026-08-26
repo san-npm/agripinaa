@@ -1,39 +1,50 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
-import { MANAGED_TOKENS, routerByAddress, routerFor } from '@agripinaa/shared/contracts';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  isDebtCompleteRouter,
+  isRetiredRouterAddress,
+  MANAGED_TOKENS,
+  recoveryRouterFromAllowlist,
+  routerFor,
+} from '@agripinaa/shared/contracts';
+import { useEffect, useState } from 'react';
 import type { Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
+import { managedServiceStatus, readManagedRunnerStatus, type ManagedRunnerStatus } from '@/lib/managed-router';
 import {
   destinationProblem,
+  managedPolicyDisplay,
   readManagedPosition,
   readRotationHistory,
   readVenueApys,
+  registerManaged,
   rotationRationale,
   sendNativeOut,
   sendTokenOut,
+  shouldOfferManagedHandoffRetry,
   withdrawToIdle,
   WITHDRAW_GAS_RESERVE_WEI,
   type ManagedPosition,
-  type RotationEvent,
+  type RotationHistory,
   type VenueApys,
 } from '@/lib/managed';
-import { forgetSession, markRevoked, reviveSession, type StoredSessionMeta } from '@/lib/session-store';
+import { forgetSession, markRegistered, markRevoked, reviveSession, type StoredSessionMeta } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
 import { TokenLogo } from './icons';
 
 type Validity = 'checking' | 'valid' | 'invalid' | 'unknown';
-type Busy = null | 'unwind' | 'usdt' | 'bnb' | 'revoke';
+type Busy = null | 'unwind' | 'usdt' | 'bnb' | 'revoke' | 'register';
 
 const VENUE_LABEL: Record<ManagedPosition['venue'], string> = {
   idle: 'Idle (not deployed)',
   venus: 'Venus',
   aave: 'Aave V3',
+  split: 'Split · attention needed',
 };
 
-/** Below this, a USDT balance is rounding dust, not a real position. */
+/** Below this, a USDT balance is rounding dust, not an actual position. */
 const USDT_DUST_WEI = 10n ** 16n; // 0.01 USDT
 
 function relTime(ms: number | null): string {
@@ -58,70 +69,99 @@ export function ManagedPositionCard({
 }) {
   const [pos, setPos] = useState<ManagedPosition | null>(null);
   const [apys, setApys] = useState<VenueApys | null>(null);
-  const [history, setHistory] = useState<RotationEvent[] | null>(null);
+  const [history, setHistory] = useState<RotationHistory | null>(null);
+  const [historyUnavailable, setHistoryUnavailable] = useState(false);
   const [validity, setValidity] = useState<Validity>('checking');
+  const [runnerStatus, setRunnerStatus] = useState<ManagedRunnerStatus>('checking');
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [dest, setDest] = useState<string>('');
 
-  // Which stablecoin this position manages, derived from the UNIQUE known router
-  // in the session's allowlist on this chain, not just allowlist[0], so a
-  // stale/extra entry can't silently mis-derive the token (e.g. render a USDC
-  // position as USDT). If it doesn't resolve to exactly one known router, the
-  // record is malformed and every managed action is disabled below.
-  const knownRouters = (meta.scope.allowlist ?? [])
-    .map((a) => routerByAddress(a))
-    .filter((r): r is NonNullable<typeof r> => !!r && r.chainId === meta.chainId);
-  const configValid = knownRouters.length === 1;
-  const token = configValid ? knownRouters[0]!.symbol : 'USDT';
+  // Resolve the UNIQUE router saved in this session, including superseded
+  // recovery-only deployments. Activation and the runner deliberately use a
+  // different active-only lookup; this path exists solely so an owner can
+  // unwind through the exact immutable contract the account already approved.
+  const scopedRouter = recoveryRouterFromAllowlist(meta.scope.allowlist ?? [], meta.chainId);
+  const scopedRouterAddress = scopedRouter?.address;
+  const configValid = scopedRouter !== undefined;
+  const token = scopedRouter?.symbol ?? 'USDT';
+  const recoveryOnly = scopedRouter
+    ? isRetiredRouterAddress(scopedRouter.address) || !isDebtCompleteRouter(scopedRouter)
+    : false;
+  const safeRecoveryRouter = routerFor(meta.chainId, token);
+  const canRecoverDeployed = isDebtCompleteRouter(safeRecoveryRouter);
+  const destinationInputId = `withdraw-destination-${meta.id}`;
 
-  const refreshPosition = useCallback(async () => {
+  async function refreshPosition() {
+    if (!scopedRouterAddress) return;
     try {
-      const p = await readManagedPosition(meta.account as `0x${string}`, meta.chainId, token);
+      const p = await readManagedPosition(
+        meta.account as `0x${string}`,
+        meta.chainId,
+        token,
+        scopedRouterAddress,
+      );
       setPos(p);
     } catch {
       /* transient RPC error; leave the last-known position */
     }
-  }, [meta.account, meta.chainId, token]);
+  }
 
   useEffect(() => {
+    if (!scopedRouterAddress) return;
     let cancelled = false;
-    readVenueApys(meta.chainId, token)
+    readVenueApys(meta.chainId, token, scopedRouterAddress)
       .then((a) => !cancelled && setApys(a))
       .catch(() => {});
     if (meta.account !== 'unknown') {
-      readRotationHistory(meta.account as Hex, meta.chainId, token)
-        .then((h) => !cancelled && setHistory(h))
-        .catch(() => !cancelled && setHistory([]));
+      readRotationHistory(meta.account as Hex, meta.chainId, token, scopedRouterAddress)
+        .then((h) => {
+          if (!cancelled) {
+            setHistory(h);
+            setHistoryUnavailable(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setHistoryUnavailable(true);
+        });
     }
     return () => {
       cancelled = true;
     };
-  }, [meta.chainId, meta.account, token]);
+  }, [meta.chainId, meta.account, scopedRouterAddress, token]);
 
   useEffect(() => {
     let cancelled = false;
-    void refreshPosition();
-    (async () => {
-      if (!meta.publicKey || meta.account === 'unknown') {
-        setValidity('unknown');
-        return;
+    const timer = window.setTimeout(() => {
+      if (scopedRouterAddress) {
+        void readManagedPosition(meta.account as `0x${string}`, meta.chainId, token, scopedRouterAddress)
+          .then((p) => !cancelled && setPos(p))
+          .catch(() => {});
       }
-      try {
-        const valid = await isSessionKeyValid({
-          chainId: meta.chainId,
-          account: meta.account as `0x${string}`,
-          sessionPublicKey: meta.publicKey as `0x${string}`,
-        });
-        if (!cancelled) setValidity(valid ? 'valid' : 'invalid');
-      } catch {
-        if (!cancelled) setValidity('unknown');
-      }
-    })();
+      void (async () => {
+        if (!meta.publicKey || meta.account === 'unknown') {
+          if (!cancelled) setValidity('unknown');
+          return;
+        }
+        try {
+          const valid = await isSessionKeyValid({
+            chainId: meta.chainId,
+            account: meta.account as `0x${string}`,
+            sessionPublicKey: meta.publicKey as `0x${string}`,
+          });
+          if (!cancelled) setValidity(valid ? 'valid' : 'invalid');
+        } catch {
+          if (!cancelled) setValidity('unknown');
+        }
+      })();
+      void readManagedRunnerStatus(meta.agent.slug, meta.account, scopedRouterAddress ?? '')
+        .then((status) => !cancelled && setRunnerStatus(status));
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [meta, refreshPosition]);
+  }, [meta.account, meta.agent.slug, meta.chainId, meta.publicKey, scopedRouterAddress, token]);
 
   async function reauth() {
     const client = altanaClient();
@@ -157,6 +197,29 @@ export function ManagedPositionCard({
     setValidity('invalid');
   }
 
+  /** Recovery must prove the scoped key is stopped now, not trust stale UI state. */
+  async function ensureSessionStopped(wallet: Awaited<ReturnType<typeof reauth>>) {
+    if (!meta.publicKey || meta.account === 'unknown') {
+      throw new Error('Cannot verify this session on-chain; recovery is disabled.');
+    }
+    let live: boolean;
+    try {
+      live = await isSessionKeyValid({
+        chainId: meta.chainId,
+        account: meta.account as Hex,
+        sessionPublicKey: meta.publicKey as Hex,
+      });
+    } catch {
+      throw new Error('Could not verify that the agent is stopped. Retry when the chain RPC is available.');
+    }
+    if (live) {
+      await doRevoke(wallet);
+    } else {
+      markRevoked(meta.id);
+      setValidity('invalid');
+    }
+  }
+
   // Full exit to an external wallet: stop the agent first (so it can't
   // re-deploy mid-withdrawal), unwind any venue position, then send all USDT.
   async function withdrawUsdtOut() {
@@ -167,20 +230,34 @@ export function ManagedPositionCard({
     setBusy('usdt');
     setError(null);
     try {
+      if (!scopedRouter) throw new Error('This saved session has no recognized recovery router.');
       const wallet = await reauth();
-      if (validity === 'valid') await doRevoke(wallet);
-      const cur = await readManagedPosition(meta.account as Hex, meta.chainId, token);
+      await ensureSessionStopped(wallet);
+      const cur = await readManagedPosition(meta.account as Hex, meta.chainId, token, scopedRouter.address);
       if (cur.deployedWei > 0n) {
-        await withdrawToIdle(wallet as never, meta.chainId, token);
+        if (canRecoverDeployed) {
+          await withdrawToIdle(wallet as never, meta.chainId, token);
+        } else if (cur.idleWei <= 0n) {
+          throw new Error(
+            `The deployed ${token} position cannot be automated safely until the debt-complete replacement router is live. No funds were moved.`,
+          );
+        }
       }
-      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token);
+      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token, scopedRouter.address);
       if (fresh.idleWei <= 0n) throw new Error(`No ${token} available to withdraw.`);
-      const router = routerFor(meta.chainId, token);
-      if (!router) throw new Error('No router on this chain.');
-      await sendTokenOut(wallet as never, meta.chainId, router.usdt, dest as Hex, fresh.idleWei, token);
+      const partial = fresh.deployedWei > USDT_DUST_WEI;
+      await sendTokenOut(wallet as never, meta.chainId, scopedRouter.usdt, dest as Hex, fresh.idleWei, token);
       await refreshPosition();
       onChange();
-      toast({ title: `${token} withdrawn`, detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
+      toast({
+        title: partial ? `Partial ${token} withdrawal` : `${token} withdrawn`,
+        detail: partial
+          ? canRecoverDeployed
+            ? `${(Number(fresh.aaveUsdt) + Number(fresh.venusUsdt)).toFixed(4)} ${token} remains as debt-protected collateral in your account.`
+            : `${(Number(fresh.aaveUsdt) + Number(fresh.venusUsdt)).toFixed(4)} ${token} remains deployed until the debt-complete replacement router is live.`
+          : `Sent to ${dest.slice(0, 10)}…`,
+        kind: 'success',
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -200,14 +277,17 @@ export function ManagedPositionCard({
     setBusy('bnb');
     setError(null);
     try {
+      if (!scopedRouter) throw new Error('This saved session has no recognized recovery router.');
       const wallet = await reauth();
+      await ensureSessionStopped(wallet);
       // Don't strand gas under ANY still-deployed stablecoin on this account,
       // not just this card's token: if a USDC position is still live, sweeping
       // BNB now could leave its exit unable to pay gas. The BNB balance is the
       // account's, identical whichever token we read it through.
       let nativeWei = 0n;
       for (const sym of MANAGED_TOKENS) {
-        const p = await readManagedPosition(meta.account as Hex, meta.chainId, sym);
+        const address = sym === token ? scopedRouter.address : undefined;
+        const p = await readManagedPosition(meta.account as Hex, meta.chainId, sym, address);
         if (p.idleWei + p.deployedWei > USDT_DUST_WEI) {
           throw new Error(`Withdraw your ${sym} first: sweeping BNB now could leave too little gas to move it.`);
         }
@@ -215,7 +295,7 @@ export function ManagedPositionCard({
       }
       const amount = nativeWei - WITHDRAW_GAS_RESERVE_WEI;
       if (amount <= 0n) throw new Error('Not enough BNB to withdraw after keeping a gas reserve.');
-      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount, token);
+      await sendNativeOut(wallet as never, meta.chainId, dest as Hex, amount);
       await refreshPosition();
       toast({ title: 'BNB withdrawn', detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
     } catch (e) {
@@ -244,22 +324,60 @@ export function ManagedPositionCard({
     }
   }
 
-  const active = validity === 'valid';
+  async function retryHandoff() {
+    if (!meta.agent.slug) return;
+    setBusy('register');
+    setError(null);
+    try {
+      await registerManaged(meta.agent.slug, {
+        account: meta.account as Hex,
+        chainId: meta.chainId,
+        session: reviveSession(meta),
+      });
+      markRegistered(meta.id);
+      setRunnerStatus('checking');
+      onChange();
+      toast({ title: 'Handoff restored', detail: 'The runner accepted the existing session; no new key was granted.', kind: 'success' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast({ title: 'Handoff failed', detail: msg.slice(0, 80), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const service = managedServiceStatus(validity, recoveryOnly, runnerStatus);
+  const sessionValid = service.sessionValid;
+  const canRetryHandoff = shouldOfferManagedHandoffRetry(
+    validity,
+    recoveryOnly,
+    runnerStatus,
+    meta.registrationStatus,
+  );
+  // Receipt tokens can be donated permissionlessly. A split is useful
+  // position telemetry, but it is not evidence that the runner stopped.
+  const active = service.active;
+  const statusLabel = service.label;
   const venueBadge =
     pos?.venue === 'idle'
       ? 'bg-surface-2 text-muted'
       : 'bg-success/15 text-success';
 
   // Live yield facts for the dashboard.
-  const rationale = pos && apys ? rotationRationale(pos.venue, apys) : null;
+  const policy = managedPolicyDisplay(meta.agent);
+  const rationale = pos && pos.venue !== 'split' && apys && policy
+    ? rotationRationale(pos.venue, apys, policy)
+    : null;
   const currentApyPct = rationale?.currentApyBps != null ? rationale.currentApyBps / 100 : null;
   const principal = meta.principalUsdt != null ? Number(meta.principalUsdt) : null;
   const positionValue = pos ? Number(pos.totalUsdt) : null;
-  const deployed = pos ? pos.venue !== 'idle' : false;
-  // Interest only accrues, so clamp tiny negative rounding to zero.
-  const earned =
-    principal != null && positionValue != null ? Math.max(0, positionValue - principal) : null;
-  const fmtEarned = (n: number) => (n >= 0.01 ? n.toFixed(2) : n.toFixed(6));
+  const deployed = pos ? pos.deployedWei > USDT_DUST_WEI : false;
+  // This is deliberately a net balance change, not an earnings claim: later
+  // deposits and withdrawals are indistinguishable from yield in balance-only
+  // data without authenticated cash-flow accounting.
+  const netChange = principal != null && positionValue != null ? positionValue - principal : null;
+  const fmtChange = (n: number) => (Math.abs(n) >= 0.01 ? n.toFixed(2) : n.toFixed(6));
 
   return (
     <li className="rounded-xl border border-border bg-surface p-5">
@@ -277,13 +395,29 @@ export function ManagedPositionCard({
         </div>
         <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs ${active ? 'bg-success/15 text-success' : 'bg-surface-2 text-muted'}`}>
           {active && <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden />}
-          {validity === 'checking' ? 'checking…' : active ? 'managing' : 'stopped'}
+          {statusLabel}
         </span>
       </div>
 
+      {recoveryOnly && (
+        <div
+          role="status"
+          className="mt-4 rounded-lg border border-primary/35 bg-primary/10 p-3 text-xs leading-relaxed"
+        >
+          <p className="font-semibold text-primary">Recovery mode · automation paused</p>
+          <p className="mt-1 text-muted">
+            New management is disabled for this router. Your position is still owned by your
+            account. Idle funds can leave directly; a deployed position will use only a current
+            debt-complete router, never this retired deployment.
+          </p>
+        </div>
+      )}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-[1.2fr_1fr]">
         <div className="rounded-lg border border-border bg-surface-2 p-3">
-          <p className="text-xs uppercase tracking-wide text-muted-2">Under management</p>
+          <p className="text-xs uppercase tracking-wide text-muted-2">
+            {active ? 'Under management' : 'Account position'}
+          </p>
           <p className="tabular mt-1 font-mono text-xl font-semibold">
             {pos ? `${Number(pos.totalUsdt).toFixed(2)} ${token}` : '…'}
           </p>
@@ -312,7 +446,7 @@ export function ManagedPositionCard({
       )}
 
       {/* Live yield: what it earns, what it has earned, and why it sits where it does. */}
-      {(earned != null || rationale) && (
+      {(netChange != null || rationale) && (
         <div className={`mt-3 rounded-lg border border-border bg-[linear-gradient(180deg,rgba(16,185,129,0.05),transparent)] p-3 ${active ? 'agp-working' : ''}`}>
           {active && (
             <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-success">
@@ -322,32 +456,48 @@ export function ManagedPositionCard({
               Agent is optimizing your yield
             </p>
           )}
-          {earned != null && deployed && (
+          {netChange != null && deployed && (
             <p className="text-sm">
-              <span className="text-muted-2">Earned so far </span>
-              <span className="tabular font-mono font-semibold text-success">+{fmtEarned(earned)} {token}</span>
+              <span className="text-muted-2">Net balance change </span>
+              <span className={`tabular font-mono font-semibold ${netChange >= 0 ? 'text-success' : 'text-danger'}`}>
+                {netChange >= 0 ? '+' : ''}{fmtChange(netChange)} {token}
+              </span>
               {principal != null && (
-                <span className="text-xs text-muted-2"> on {principal.toFixed(2)} deposited</span>
+                <span className="text-xs text-muted-2"> on {principal.toFixed(2)} held at activation</span>
               )}
+              <span className="text-xs text-muted-2"> (includes transfers and yield)</span>
             </p>
           )}
           {rationale && apys && (
             <p className="mt-1 text-xs leading-relaxed text-muted-2">
               Venus {(apys.venusApyBps / 100).toFixed(2)}% vs Aave {(apys.aaveApyBps / 100).toFixed(2)}%.{' '}
-              {pos && pos.venue === 'idle'
-                ? 'Awaiting the agent’s next sweep to deploy into the higher one.'
-                : `Holding the higher one; the agent rotates to ${rationale.otherName} only if it leads by ${(rationale.hysteresisBps / 100).toFixed(2)}% on two checks (currently ${rationale.edgeBps >= 0 ? '+' : ''}${(rationale.edgeBps / 100).toFixed(2)}%).`}
+              {!active
+                ? 'This session is not currently managing the position; live rates are shown for reference.'
+                : pos && pos.venue === 'idle'
+                  ? 'Awaiting the agent’s next sweep to deploy into the higher one.'
+                  : rationale.edgeBps <= 0
+                    ? `Holding the higher-rate venue; ${rationale.otherName} trails by ${Math.abs(rationale.edgeBps / 100).toFixed(2)}%.`
+                    : (rationale.thresholdInclusive
+                      ? rationale.edgeBps < rationale.hysteresisBps
+                      : rationale.edgeBps <= rationale.hysteresisBps)
+                      ? `${rationale.otherName} leads by ${(rationale.edgeBps / 100).toFixed(2)}%, which does not clear this agent’s ${(rationale.hysteresisBps / 100).toFixed(2)}% move threshold.`
+                      : `${rationale.otherName} leads by ${(rationale.edgeBps / 100).toFixed(2)}%. The lead must persist for ${rationale.confirmations} consecutive checks${rationale.checkEveryHours != null ? ` spaced ${rationale.checkEveryHours} hours apart` : ''}${rationale.minHoursBetweenMoves != null ? `, with at least ${rationale.minHoursBetweenMoves} hours between moves` : ''}.`}
             </p>
           )}
         </div>
       )}
 
-      {history && history.length > 0 && (
+      {historyUnavailable && (
+        <p className="mt-4 text-xs text-muted-2">
+          Account/router activity is unavailable; no empty history is being inferred.
+        </p>
+      )}
+      {history && history.events.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs uppercase tracking-wide text-muted-2">Agent activity</p>
+          <p className="text-xs uppercase tracking-wide text-muted-2">Account/router activity</p>
           <ul className="mt-2 space-y-1.5">
-            {history.slice(0, 6).map((e) => (
-              <li key={e.txHash} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
+            {history.events.slice(0, 6).map((e) => (
+              <li key={`${e.txHash}-${e.logIndex}`} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
                 <span className="flex items-center gap-2">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
                   <span className="text-foreground">{e.label}</span>
@@ -367,11 +517,22 @@ export function ManagedPositionCard({
               </li>
             ))}
           </ul>
+          <p className="mt-2 text-[11px] text-muted-2">
+            Permissionless calls by this account; the event does not identify which agent or owner action signed it.
+            {!history.complete && history.scannedFrom != null
+              ? ` Recent scan only, from block ${history.scannedFrom.toString()}.`
+              : ''}
+          </p>
         </div>
       )}
 
       <div className="mt-4 rounded-lg border border-border bg-surface-2 p-3">
-        <p className="text-xs uppercase tracking-wide text-muted-2">Withdraw to your wallet</p>
+        <label
+          htmlFor={destinationInputId}
+          className="block text-xs uppercase tracking-wide text-muted-2"
+        >
+          {recoveryOnly ? `Recover ${token} to your wallet` : 'Withdraw to your wallet'}
+        </label>
         {!configValid && (
           <p className="mt-2 text-xs text-danger">
             This saved record doesn&apos;t map to a single known router on this network, so its
@@ -379,6 +540,7 @@ export function ManagedPositionCard({
           </p>
         )}
         <input
+          id={destinationInputId}
           value={dest}
           onChange={(e) => setDest(e.target.value.trim())}
           spellCheck={false}
@@ -391,10 +553,21 @@ export function ManagedPositionCard({
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={withdrawUsdtOut}
-            disabled={!configValid || busy !== null || !destValid || (pos != null && pos.idleWei === 0n && pos.deployedWei === 0n)}
+            disabled={
+              !configValid
+              || busy !== null
+              || !destValid
+              || (pos != null && pos.idleWei === 0n && (pos.deployedWei === 0n || !canRecoverDeployed))
+            }
             className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
           >
-            {busy === 'usdt' ? 'Withdrawing…' : `Withdraw ${token}${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
+            {busy === 'usdt'
+              ? recoveryOnly ? 'Recovering…' : 'Withdrawing…'
+              : `${recoveryOnly ? 'Recover' : 'Withdraw'} ${token}${pos
+                  ? canRecoverDeployed
+                    ? ` (up to ${Number(pos.totalUsdt).toFixed(2)})`
+                    : ` (${Number(pos.idleUsdt).toFixed(2)})`
+                  : ''}`}
           </button>
           <button
             onClick={withdrawBnbOut}
@@ -406,14 +579,27 @@ export function ManagedPositionCard({
           </button>
         </div>
         <p className="mt-2 text-xs text-muted-2">
-          Withdraw {token} stops the agent, unwinds any venue position, then sends
-          everything to your address. Withdraw BNB (available once {token} is out)
-          keeps a small reserve so the transaction can pay its own gas.
+          {recoveryOnly
+            ? canRecoverDeployed
+              ? `Recover ${token} asks for your passkey, revokes the old session, approves the current debt-complete router, unwinds there, then sends the idle balance to your destination.`
+              : `Only already-idle ${token} can be sent now. Deployed funds stay in your account until a debt-complete replacement router is live.`
+            : `Withdraw ${token} stops the agent, unwinds every debt-free venue leg, then sends the available balance to your address. Debt-encumbered collateral remains in your account.`}{' '}
+          Withdraw BNB (available once {token} is out) keeps a small reserve so the
+          transaction can pay its own gas.
         </p>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {active && (
+        {canRetryHandoff && (
+          <button
+            onClick={retryHandoff}
+            disabled={busy !== null}
+            className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            {busy === 'register' ? 'Retrying handoff…' : 'Retry handoff'}
+          </button>
+        )}
+        {sessionValid && (
           <button
             onClick={revoke}
             disabled={busy !== null}
@@ -427,17 +613,18 @@ export function ManagedPositionCard({
             forgetSession(meta.id);
             onChange();
           }}
-          disabled={busy !== null}
+          disabled={busy !== null || validity !== 'invalid'}
+          title={validity !== 'invalid' ? 'Confirm the key is stopped before forgetting this recovery record' : undefined}
           className="rounded border border-border-strong px-3 py-1.5 text-xs text-muted hover:border-border-strong disabled:opacity-50"
         >
-          Forget
+          Forget record
         </button>
       </div>
       <p className="mt-2 text-xs text-muted-2">
         Funds stay in your account the whole time. Stop revokes the agent&apos;s
         key; your funds remain and can still be withdrawn above.
       </p>
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
     </li>
   );
 }

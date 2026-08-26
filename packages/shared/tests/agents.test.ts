@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { AGENT_LIST, AGENTS, agentBySlug, agentByTokenId } from '../src/agents';
+import { AGENT_LIST, AGENTS, agentBySlug, agentByTokenId, pinnedManagerKeyAddress } from '../src/agents';
+import { MANAGED_TOKENS } from '../src/contracts';
 import { PROOF_AGENTS, PROOF_AGENT_LIST } from '../src/proof';
 
 test('the four live agents are registered with their on-chain ids', () => {
@@ -12,10 +13,22 @@ test('the four live agents are registered with their on-chain ids', () => {
 });
 
 test('token ids and wallets are unique across agents', () => {
+  // Both are null until an agent is registered and its key generated, which is
+  // a legitimate state, so uniqueness is asserted over what has been assigned.
   const ids = AGENT_LIST.map((a) => a.tokenId).filter((id): id is string => id != null);
-  const wallets = AGENT_LIST.map((a) => a.wallet.toLowerCase());
+  const wallets = AGENT_LIST.map((a) => a.wallet)
+    .filter((w): w is `0x${string}` => w != null)
+    .map((w) => w.toLowerCase());
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(new Set(wallets).size, wallets.length);
+});
+
+test('an agent with a token id always has the wallet that minted it', () => {
+  // The reverse is fine (configured before funding), but an identity with no
+  // wallet would have no execution history to attribute to it.
+  for (const agent of AGENT_LIST) {
+    if (agent.tokenId != null) assert.ok(agent.wallet, `${agent.slug} has a token id but no wallet`);
+  }
 });
 
 test('every agent carries a manifest with a category matching its record', () => {
@@ -32,6 +45,19 @@ test('lookup helpers agree with the record map', () => {
 });
 
 /**
+ * The slug reaching this helper comes off a URL or a form field on the web
+ * side, and a plain object answers `constructor` and `__proto__` from its
+ * prototype. A truthy answer there reads as "this agent exists" to every
+ * caller that gates on it, so the lookup must see only own keys.
+ */
+test('a prototype key is not an agent', () => {
+  for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+    assert.equal(agentBySlug(key), undefined, key);
+    assert.equal(pinnedManagerKeyAddress(key, 'USDT'), undefined, key);
+  }
+});
+
+/**
  * Byte-for-byte lock on the served manifests.
  *
  * The bodies below are the exact responses `/manifests/<slug>.json` returned
@@ -42,6 +68,11 @@ test('lookup helpers agree with the record map', () => {
  * mirrors buildManifest (endpoint first inside x402, everything else in
  * declaration order), so this fails the moment a registry edit would change
  * what an x402 client reads back.
+ *
+ * Only REGISTERED agents are pinned here. An agent still in configuration has
+ * no minted tokenURI to hold still for, and pinning its bytes would forbid the
+ * tuning it exists to receive; the test below it checks such a body is whole
+ * instead. Its bytes get captured here when Task 17 mints it.
  */
 const SERVED: Record<string, string> = {
   grid:
@@ -54,16 +85,53 @@ const SERVED: Record<string, string> = {
     '{"name":"Agripinaa Ranger","description":"Concentrated-liquidity range management on PancakeSwap V3 (WBNB/USDT). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.","category":"rebalancing","image":"https://agripinaa.vercel.app/agent-icon.png","capabilities":["trading","lp-management","x402-status"],"execution":{"venue":"pancakeswap-v3","rebalanceVenue":"ophis","pair":"WBNB/USDT","chainId":56},"safety":{"rangePct":5,"outOfRangeMinutes":30,"maxRebalancesPerDay":2,"maxRebalancesPerWeek":4},"x402":{"endpoint":"https://parity-fixture.example.com/lp-range/status","priceUsdt":"0.05","note":"live"}}',
 };
 
+const FIXTURE_BASE = 'https://parity-fixture.example.com';
+
+/** How the route composes a served body: endpoint first inside x402. */
+function serve(agent: (typeof AGENT_LIST)[number]): string {
+  return JSON.stringify({
+    ...agent.manifest,
+    x402: { endpoint: `${FIXTURE_BASE}/${agent.slug}/status`, ...agent.manifest.x402 },
+  });
+}
+
 test('registry manifests serialize to the exact bytes the minted tokenURIs resolve to', () => {
-  const base = 'https://parity-fixture.example.com';
-  for (const agent of AGENT_LIST) {
+  const registered = AGENT_LIST.filter((a) => a.tokenId != null);
+  assert.equal(registered.length, 4, 'a newly registered agent needs its bytes captured here');
+  for (const agent of registered) {
     const expected = SERVED[agent.slug];
     assert.ok(expected, `${agent.slug}: no captured body to compare against`);
-    const served = JSON.stringify({
-      ...agent.manifest,
-      x402: { endpoint: `${base}/${agent.slug}/status`, ...agent.manifest.x402 },
-    });
-    assert.equal(served, expected, `${agent.slug} manifest body drifted`);
+    assert.equal(serve(agent), expected, `${agent.slug} manifest body drifted`);
+  }
+});
+
+test('an agent still in configuration serves a whole manifest body', () => {
+  // Nothing is minted against these yet, so there are no bytes to hold still.
+  // What must hold is that the body is complete and self-consistent before a
+  // registration turns its URL into a permanent tokenURI: register.ts matches
+  // the served name against the record, and a hirer reads the rest of it.
+  for (const agent of AGENT_LIST.filter((a) => a.tokenId == null)) {
+    const served = JSON.parse(serve(agent)) as {
+      name: string;
+      description: string;
+      category: string;
+      image: string;
+      capabilities: string[];
+      execution: { chainId: number };
+      safety: Record<string, unknown>;
+      x402: Record<string, unknown>;
+    };
+    assert.equal(served.name, agent.name, `${agent.slug} name`);
+    assert.equal(served.category, agent.category, `${agent.slug} category`);
+    assert.ok(served.description.length > 40, `${agent.slug} description`);
+    assert.ok(served.image.startsWith('https://'), `${agent.slug} image`);
+    assert.ok(served.capabilities.length > 0, `${agent.slug} capabilities`);
+    assert.equal(served.execution.chainId, 56, `${agent.slug} chain`);
+    assert.ok(Object.keys(served.safety).length > 0, `${agent.slug} safety`);
+    // Same key order the route produces, so the captured bytes at registration
+    // time will match what is served afterwards.
+    assert.equal(Object.keys(served.x402)[0], 'endpoint', `${agent.slug} x402 key order`);
+    assert.equal(served.x402['endpoint'], `${FIXTURE_BASE}/${agent.slug}/status`);
   }
 });
 
@@ -78,5 +146,52 @@ test('the proof feed is derived from the registry, registered agents only', () =
     assert.equal(proofAgent.category, agent.category);
     assert.equal(proofAgent.wallet, agent.wallet);
     assert.equal(proofAgent.backfillOphisTrades, agent.backfillOphisTrades);
+  }
+});
+
+test('manager-key pins sit only on managed agents, one distinct address per managed token', () => {
+  // A pin is what the browser checks a runner-reported manager key against
+  // before that key becomes a session grantee. Only an agent that can hold a
+  // mandate has one to pin, and two agents (or two tokens) never share a key.
+  const seen: string[] = [];
+  for (const agent of AGENT_LIST) {
+    const pins = Object.entries(agent.managerKeys ?? {});
+    if (!agent.managed) assert.equal(pins.length, 0, `${agent.slug} is not managed but pins a manager key`);
+    for (const [token, address] of pins) {
+      assert.ok((MANAGED_TOKENS as readonly string[]).includes(token), `${agent.slug} pins unmanaged token ${token}`);
+      assert.match(address, /^0x[0-9a-fA-F]{40}$/, `${agent.slug}/${token} pin is not an address`);
+      seen.push(address.toLowerCase());
+    }
+  }
+  assert.equal(new Set(seen).size, seen.length, 'two pins share one address');
+});
+
+test('the Harvester pins the manager key each managed token grants to', () => {
+  // Rotated 2026-08-26; USDT is the master key and USDC is derived.
+  assert.equal(pinnedManagerKeyAddress('yield', 'USDT'), '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2');
+  assert.equal(pinnedManagerKeyAddress('yield', 'USDC'), '0x1A06C18C97B891E4d9F89829E74b08A3e0891646');
+  // The Steward's session key is not generated yet, so it has nothing to pin;
+  // an absent pin is the documented state until Task 17 captures it.
+  assert.equal(pinnedManagerKeyAddress('yield-b', 'USDT'), undefined);
+  assert.equal(pinnedManagerKeyAddress('nope', 'USDT'), undefined);
+});
+
+test('every managed agent that is registered on chain carries its manager-key pins', () => {
+  // The gate this holds up: apps/web/src/lib/manager-key.ts refuses a runner
+  // report for a registered agent it has no pin for, because a registered
+  // agent is one a visitor can reach an activate page for. Registering a
+  // managed agent without capturing its pins here would take its activate page
+  // down rather than hand a mandate to whatever key the runner reported, and
+  // this fails first so that never ships.
+  for (const agent of AGENT_LIST) {
+    if (!agent.managed || agent.tokenId == null) continue;
+    const pins = Object.keys(agent.managerKeys ?? {});
+    assert.ok(
+      pins.length > 0,
+      `${agent.slug} is registered and managed with no pinned manager key: generate its session key and capture the addresses the runner reports`,
+    );
+    for (const token of MANAGED_TOKENS) {
+      assert.ok(pins.includes(token), `${agent.slug} pins no ${token} manager key`);
+    }
   }
 });

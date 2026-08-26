@@ -10,7 +10,7 @@
  *      or an array of stacked entries).
  */
 
-import type { CowOrder, CowTrade } from '../cow';
+import { isAuthenticOphisOrder, type CowOrder, type CowTrade } from '../cow';
 import { calcSurplusRaw } from '../surplus';
 
 /**
@@ -142,6 +142,12 @@ function calcSurplusVsQuote(order: CowOrder): number | null {
 }
 
 export function buildReceipt({ order, trade, chainId }: BuildReceiptInput): MevProofReceipt {
+  if (!isAuthenticOphisOrder(order)) {
+    throw new TypeError('receipt source is not an authentic Ophis order');
+  }
+  if (trade && trade.orderUid.toLowerCase() !== order.uid.toLowerCase()) {
+    throw new TypeError('trade.orderUid does not match receipt order');
+  }
   return {
     orderUid: order.uid,
     chainId,

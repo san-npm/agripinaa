@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -67,6 +67,12 @@ test('saveSessionFile writes the exact serializeSession bytes; loadSessionFile r
     const loaded = (await loadSessionFile(path)) as typeof sessionFixture;
     assert.equal(loaded.permissions.spend[0]?.limit, 5000000000000000000n);
     assert.equal(serializeSession(loaded), onDisk);
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(path)).mode & 0o777, 0o600);
+      await writeFile(path, 'stale', { mode: 0o644 });
+      await saveSessionFile(path, sessionFixture);
+      assert.equal((await stat(path)).mode & 0o777, 0o600);
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

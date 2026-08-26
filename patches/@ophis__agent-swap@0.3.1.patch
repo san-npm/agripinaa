@@ -11,3 +11,36 @@ index b9faae968a0e0c3827904d6e937501c60b324ef0..eef6fa3ebb3babe63ac6f02a16ee931c
          appDataHash,
          signingScheme: SigningScheme.EIP712,
      }));
+@@ -113,7 +113,18 @@ export async function executeOphisSwap(wallet, params, options) {
+     const q = (quoteRes.quote ?? quoteRes);
+     // Assemble the order to sign. appData = the bytes32 HASH (this is what is signed). Slippage lowers
+     // the buyAmount so the quoted price is a floor, not an exact requirement.
+-    const minBuyAmount = applySlippage(BigInt(String(q.buyAmount)), slippageBps).toString();
++    const quoteMinimum = applySlippage(BigInt(String(q.buyAmount)), slippageBps);
++    let independentMinimum = 0n;
++    if (params.minimumBuyAmount !== undefined) {
++        if (!/^\d+$/.test(params.minimumBuyAmount))
++            throw new Error(`minimumBuyAmount must be an unsigned base-unit integer: ${params.minimumBuyAmount}`);
++        independentMinimum = BigInt(params.minimumBuyAmount);
++        if (independentMinimum <= 0n)
++            throw new Error(`minimumBuyAmount must be > 0: ${params.minimumBuyAmount}`);
++        if (quoteMinimum < independentMinimum)
++            throw new Error(`quote minimum ${quoteMinimum} is below independent floor ${independentMinimum}; refusing to sign`);
++    }
++    const minBuyAmount = quoteMinimum.toString();
+     // The order sells the GROSS amount with a signed feeAmount of 0: Ophis/CoW orders take the fee from
+     // surplus + the appData partner fee, never a signed feeAmount (a non-zero one is unslipped extra
+     // spend and the orderbook rejects it — see apps/mcp-server assertion). For a sell quote CoW splits
+diff --git a/dist/swap.d.ts b/dist/swap.d.ts
+index 0038b20638b17017ff85e5c14ac72e486cc9631e..164142f00fc565f928a84856ed0d31b59a1c5f98 100644
+--- a/dist/swap.d.ts
++++ b/dist/swap.d.ts
+@@ -8,3 +8,8 @@ export interface OphisSwapParams {
+     /** Max slippage in basis points; default 50 (0.5%). */
+     slippageBps?: number;
++    /**
++     * Independent application-calculated buy floor in buy-token base units.
++     * The quote is rejected before approval/signing when its slipped minimum is lower.
++     */
++    minimumBuyAmount?: string;
+ }

@@ -63,6 +63,7 @@ async function main() {
       data: ('0xa0712d68' + parseUnits('10', 18).toString(16).padStart(64, '0')) as `0x${string}`,
     });
     const r = await publicClient.waitForTransactionReceipt({ hash: mintHash });
+    if (r.status !== 'success') throw new Error(`test-token mint reverted: ${mintHash}`);
     console.log(`   mint: ${r.status}`);
   } else {
     console.log(`   already funded (${Number(balance) / 1e18} USDT)`);
@@ -75,7 +76,8 @@ async function main() {
     to: facilitator.address,
     value: parseUnits('0.05', 18),
   });
-  await publicClient.waitForTransactionReceipt({ hash: fundHash });
+  const fundReceipt = await publicClient.waitForTransactionReceipt({ hash: fundHash });
+  if (fundReceipt.status !== 'success') throw new Error(`facilitator funding reverted: ${fundHash}`);
   console.log(`   facilitator: ${facilitator.address}`);
 
   console.log('2) starting local merchant (permit2-exact, 0.1 USDT/call)…');
@@ -132,7 +134,7 @@ async function main() {
     signer,
     permissions: {
       calls: [{ to: TEST_USDT }],
-      spend: [{ limit: parseUnits('1', 18), period: 'day' }],
+      spend: [{ limit: parseUnits('1', 18), period: 'day', token: TEST_USDT }],
     },
     expiry: Math.floor(Date.now() / 1000) + 60 * 60,
   });
