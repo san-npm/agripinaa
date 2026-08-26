@@ -3,6 +3,7 @@ import { CATEGORIES, type Category } from "@agripinaa/agent-index";
 import {
   listAgents,
   RegistryCursorExpiredError,
+  RegistryCursorInvalidError,
   validRegistryCursor,
 } from "@/lib/data";
 
@@ -43,6 +44,9 @@ export async function GET(request: Request): Promise<Response> {
     const page = await listAgents(category, limit, cursor);
     return Response.json(page);
   } catch (error) {
+    if (error instanceof RegistryCursorInvalidError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
     if (error instanceof RegistryCursorExpiredError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
