@@ -1,5 +1,5 @@
 /**
- * Grid B: BTCB/USDT mean-reversion grid on BSC, the second agent in the grid
+ * Agripinaa BTC Grid: BTCB/USDT mean-reversion grid on BSC, the second agent in the grid
  * category and a deliberate contrast with `grid` rather than a copy of it.
  *
  * Same strategy, same venue (every swap is an Ophis batch auction), same halts,

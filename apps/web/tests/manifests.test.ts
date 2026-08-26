@@ -23,7 +23,7 @@ test('every agent in the registry has a manifest, registered or not', () => {
 
 test('an unregistered agent is served with its own body, not a placeholder', () => {
   const m = buildManifest('grid-b', 'https://runner.example.com');
-  assert.equal(m?.name, 'Agripinaa Grid B');
+  assert.equal(m?.name, 'Agripinaa BTC Grid');
   assert.equal(m?.category, 'grid');
   // The served pair is BTCB/USDT, not a second dollar quote on grid's WBNB: the
   // manifest is what a judge reads to tell the two grid agents apart.
