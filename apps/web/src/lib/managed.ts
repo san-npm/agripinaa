@@ -1,6 +1,10 @@
 import { serializeSession } from '@agripinaa/session-kit/codec';
 import { buildSessionScope, describeScope } from '@agripinaa/session-kit/scope';
-import { ROUTER_ACTIONS, routerFor, YIELD_ROUTERS_BSC } from '@agripinaa/shared/contracts';
+import {
+  ROUTER_ACTIONS,
+  routerFor,
+  YIELD_ROUTERS_BSC,
+} from '@agripinaa/shared/contracts';
 import { fromBaseUnits } from '@agripinaa/shared/tokens';
 import {
   createPublicClient,
@@ -18,6 +22,7 @@ import {
 
 import { altanaClient } from './altana';
 import { bsc, bscTestnet } from './bsc-chain';
+import { managedUnwindCall, resolveManagedRouterDeployment } from './managed-router';
 
 const ROUTER_SIGNATURES = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
 
@@ -131,15 +136,18 @@ export async function approveRouter(wallet: WalletLike, chainId: number, token =
   return assertConfirmed(r, 'Router approval');
 }
 
-/** User-initiated unwind: pull everything back to plain USDT in the account. */
-export async function withdrawToIdle(wallet: WalletLike, chainId: number, token = 'USDT') {
-  const router = routerFor(chainId, token);
-  if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
+/** User-initiated unwind: pull everything back to plain stablecoin in the account. */
+export async function withdrawToIdle(
+  wallet: WalletLike,
+  chainId: number,
+  token = 'USDT',
+  recoveryRouterAddress?: string,
+) {
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
     chainId,
-    calls: [{ to: router.address, data: ROUTER_ACTIONS.toIdle.selector as Hex }],
+    calls: [managedUnwindCall(chainId, token, recoveryRouterAddress)],
   });
   return assertConfirmed(r, 'Unwind');
 }
@@ -229,10 +237,15 @@ export interface ManagedPosition {
   nativeBnb: string;
 }
 
-/** Read a managed account's on-chain USDT position + native BNB for the dashboard. */
-export async function readManagedPosition(account: Hex, chainId: number, token = 'USDT'): Promise<ManagedPosition> {
-  const router = routerFor(chainId, token);
-  if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
+/** Read a managed account's on-chain stablecoin position + native BNB for the dashboard. */
+export async function readManagedPosition(
+  account: Hex,
+  chainId: number,
+  token = 'USDT',
+  recoveryRouterAddress?: string,
+): Promise<ManagedPosition> {
+  const router = resolveManagedRouterDeployment(chainId, token, recoveryRouterAddress);
+  if (!router) throw new Error(`no matching YieldRouter for ${token} on chain ${chainId}`);
   const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
   const [idle, aUsdt, venusUnderlying, native] = await Promise.all([
     client.readContract({ address: router.usdt, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
@@ -282,9 +295,13 @@ export interface VenueApys {
  * APR = rate × blocks/year), Aave a RAY-scaled annual liquidity rate. BSC block
  * cadence is derived from two block timestamps, not assumed.
  */
-export async function readVenueApys(chainId: number, token = 'USDT'): Promise<VenueApys> {
-  const router = routerFor(chainId, token);
-  if (!router) throw new Error(`no YieldRouter deployed on chain ${chainId}`);
+export async function readVenueApys(
+  chainId: number,
+  token = 'USDT',
+  recoveryRouterAddress?: string,
+): Promise<VenueApys> {
+  const router = resolveManagedRouterDeployment(chainId, token, recoveryRouterAddress);
+  if (!router) throw new Error(`no matching YieldRouter for ${token} on chain ${chainId}`);
   const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
   const span = 5000n;
   const latest = await client.getBlock();
@@ -332,8 +349,13 @@ export interface RotationEvent {
  * chunks (free RPCs cap the range) filtered by the account topic, then dates
  * the few matches from their block timestamps.
  */
-export async function readRotationHistory(account: Hex, chainId: number, token = 'USDT'): Promise<RotationEvent[]> {
-  const router = routerFor(chainId, token);
+export async function readRotationHistory(
+  account: Hex,
+  chainId: number,
+  token = 'USDT',
+  recoveryRouterAddress?: string,
+): Promise<RotationEvent[]> {
+  const router = resolveManagedRouterDeployment(chainId, token, recoveryRouterAddress);
   if (!router) return [];
   const client = createPublicClient({
     chain: chainId === 97 ? bscTestnet : bsc,

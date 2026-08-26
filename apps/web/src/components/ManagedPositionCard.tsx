@@ -1,7 +1,11 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
-import { MANAGED_TOKENS, routerByAddress, routerFor } from '@agripinaa/shared/contracts';
+import {
+  isRetiredRouterAddress,
+  MANAGED_TOKENS,
+  recoveryRouterFromAllowlist,
+} from '@agripinaa/shared/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import type { Hex } from 'viem';
 
@@ -64,40 +68,46 @@ export function ManagedPositionCard({
   const [error, setError] = useState<string | null>(null);
   const [dest, setDest] = useState<string>('');
 
-  // Which stablecoin this position manages, derived from the UNIQUE known router
-  // in the session's allowlist on this chain, not just allowlist[0], so a
-  // stale/extra entry can't silently mis-derive the token (e.g. render a USDC
-  // position as USDT). If it doesn't resolve to exactly one known router, the
-  // record is malformed and every managed action is disabled below.
-  const knownRouters = (meta.scope.allowlist ?? [])
-    .map((a) => routerByAddress(a))
-    .filter((r): r is NonNullable<typeof r> => !!r && r.chainId === meta.chainId);
-  const configValid = knownRouters.length === 1;
-  const token = configValid ? knownRouters[0]!.symbol : 'USDT';
+  // Resolve the UNIQUE router saved in this session, including superseded
+  // recovery-only deployments. Activation and the runner deliberately use a
+  // different active-only lookup; this path exists solely so an owner can
+  // unwind through the exact immutable contract the account already approved.
+  const scopedRouter = recoveryRouterFromAllowlist(meta.scope.allowlist ?? [], meta.chainId);
+  const configValid = scopedRouter !== undefined;
+  const token = scopedRouter?.symbol ?? 'USDT';
+  const recoveryOnly = scopedRouter ? isRetiredRouterAddress(scopedRouter.address) : false;
+  const destinationInputId = `withdraw-destination-${meta.id}`;
 
   const refreshPosition = useCallback(async () => {
+    if (!scopedRouter) return;
     try {
-      const p = await readManagedPosition(meta.account as `0x${string}`, meta.chainId, token);
+      const p = await readManagedPosition(
+        meta.account as `0x${string}`,
+        meta.chainId,
+        token,
+        scopedRouter.address,
+      );
       setPos(p);
     } catch {
       /* transient RPC error; leave the last-known position */
     }
-  }, [meta.account, meta.chainId, token]);
+  }, [meta.account, meta.chainId, scopedRouter, token]);
 
   useEffect(() => {
+    if (!scopedRouter) return;
     let cancelled = false;
-    readVenueApys(meta.chainId, token)
+    readVenueApys(meta.chainId, token, scopedRouter.address)
       .then((a) => !cancelled && setApys(a))
       .catch(() => {});
     if (meta.account !== 'unknown') {
-      readRotationHistory(meta.account as Hex, meta.chainId, token)
+      readRotationHistory(meta.account as Hex, meta.chainId, token, scopedRouter.address)
         .then((h) => !cancelled && setHistory(h))
         .catch(() => !cancelled && setHistory([]));
     }
     return () => {
       cancelled = true;
     };
-  }, [meta.chainId, meta.account, token]);
+  }, [meta.chainId, meta.account, scopedRouter, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,17 +180,16 @@ export function ManagedPositionCard({
     setBusy('usdt');
     setError(null);
     try {
+      if (!scopedRouter) throw new Error('This saved session has no recognized recovery router.');
       const wallet = await reauth();
       if (validity === 'valid') await doRevoke(wallet);
-      const cur = await readManagedPosition(meta.account as Hex, meta.chainId, token);
+      const cur = await readManagedPosition(meta.account as Hex, meta.chainId, token, scopedRouter.address);
       if (cur.deployedWei > 0n) {
-        await withdrawToIdle(wallet as never, meta.chainId, token);
+        await withdrawToIdle(wallet as never, meta.chainId, token, scopedRouter.address);
       }
-      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token);
+      const fresh = await readManagedPosition(meta.account as Hex, meta.chainId, token, scopedRouter.address);
       if (fresh.idleWei <= 0n) throw new Error(`No ${token} available to withdraw.`);
-      const router = routerFor(meta.chainId, token);
-      if (!router) throw new Error('No router on this chain.');
-      await sendTokenOut(wallet as never, meta.chainId, router.usdt, dest as Hex, fresh.idleWei, token);
+      await sendTokenOut(wallet as never, meta.chainId, scopedRouter.usdt, dest as Hex, fresh.idleWei, token);
       await refreshPosition();
       onChange();
       toast({ title: `${token} withdrawn`, detail: `Sent to ${dest.slice(0, 10)}…`, kind: 'success' });
@@ -203,6 +212,7 @@ export function ManagedPositionCard({
     setBusy('bnb');
     setError(null);
     try {
+      if (!scopedRouter) throw new Error('This saved session has no recognized recovery router.');
       const wallet = await reauth();
       // Don't strand gas under ANY still-deployed stablecoin on this account,
       // not just this card's token: if a USDC position is still live, sweeping
@@ -210,7 +220,8 @@ export function ManagedPositionCard({
       // account's, identical whichever token we read it through.
       let nativeWei = 0n;
       for (const sym of MANAGED_TOKENS) {
-        const p = await readManagedPosition(meta.account as Hex, meta.chainId, sym);
+        const address = sym === token ? scopedRouter.address : undefined;
+        const p = await readManagedPosition(meta.account as Hex, meta.chainId, sym, address);
         if (p.idleWei + p.deployedWei > USDT_DUST_WEI) {
           throw new Error(`Withdraw your ${sym} first: sweeping BNB now could leave too little gas to move it.`);
         }
@@ -283,6 +294,19 @@ export function ManagedPositionCard({
           {validity === 'checking' ? 'checking…' : active ? 'managing' : 'stopped'}
         </span>
       </div>
+
+      {recoveryOnly && (
+        <div
+          role="status"
+          className="mt-4 rounded-lg border border-primary/35 bg-primary/10 p-3 text-xs leading-relaxed"
+        >
+          <p className="font-semibold text-primary">Recovery mode · retired router</p>
+          <p className="mt-1 text-muted">
+            New management is disabled for this router. Your position is still owned by your
+            account, and the recovery below uses this session&apos;s exact router only to unwind it.
+          </p>
+        </div>
+      )}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-[1.2fr_1fr]">
         <div className="rounded-lg border border-border bg-surface-2 p-3">
@@ -374,7 +398,12 @@ export function ManagedPositionCard({
       )}
 
       <div className="mt-4 rounded-lg border border-border bg-surface-2 p-3">
-        <p className="text-xs uppercase tracking-wide text-muted-2">Withdraw to your wallet</p>
+        <label
+          htmlFor={destinationInputId}
+          className="block text-xs uppercase tracking-wide text-muted-2"
+        >
+          {recoveryOnly ? `Recover ${token} to your wallet` : 'Withdraw to your wallet'}
+        </label>
         {!configValid && (
           <p className="mt-2 text-xs text-danger">
             This saved record doesn&apos;t map to a single known router on this network, so its
@@ -382,6 +411,7 @@ export function ManagedPositionCard({
           </p>
         )}
         <input
+          id={destinationInputId}
           value={dest}
           onChange={(e) => setDest(e.target.value.trim())}
           spellCheck={false}
@@ -397,7 +427,9 @@ export function ManagedPositionCard({
             disabled={!configValid || busy !== null || !destValid || (pos != null && pos.idleWei === 0n && pos.deployedWei === 0n)}
             className="rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
           >
-            {busy === 'usdt' ? 'Withdrawing…' : `Withdraw ${token}${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
+            {busy === 'usdt'
+              ? recoveryOnly ? 'Recovering…' : 'Withdrawing…'
+              : `${recoveryOnly ? 'Recover' : 'Withdraw'} ${token}${pos ? ` (${Number(pos.totalUsdt).toFixed(2)})` : ''}`}
           </button>
           <button
             onClick={withdrawBnbOut}
@@ -409,9 +441,11 @@ export function ManagedPositionCard({
           </button>
         </div>
         <p className="mt-2 text-xs text-muted-2">
-          Withdraw {token} stops the agent, unwinds any venue position, then sends
-          everything to your address. Withdraw BNB (available once {token} is out)
-          keeps a small reserve so the transaction can pay its own gas.
+          {recoveryOnly
+            ? `Recover ${token} asks for your passkey, unwinds the position through the retired router, then sends everything to your destination address.`
+            : `Withdraw ${token} stops the agent, unwinds any venue position, then sends everything to your address.`}{' '}
+          Withdraw BNB (available once {token} is out) keeps a small reserve so the
+          transaction can pay its own gas.
         </p>
       </div>
 
@@ -440,7 +474,7 @@ export function ManagedPositionCard({
         Funds stay in your account the whole time. Stop revokes the agent&apos;s
         key; your funds remain and can still be withdrawn above.
       </p>
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
     </li>
   );
 }

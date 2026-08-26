@@ -70,8 +70,46 @@ export const YIELD_ROUTER_BSC_USDC: RouterDeployment = {
   deployedOn: '2026-08-26',
 };
 
-/** Every managed-yield router deployment. */
+/** Every router eligible for a NEW managed-yield activation. */
 export const YIELD_ROUTERS_BSC: RouterDeployment[] = [YIELD_ROUTER_BSC, YIELD_ROUTER_BSC_USDC];
+
+/**
+ * Superseded delta-accounting routers. They are intentionally excluded from
+ * YIELD_ROUTERS_BSC, routerFor(), and routerByAddress(): no new session and no
+ * runner registration may target them after the guarded-router migration.
+ *
+ * The dashboard still needs their immutable token bindings so an owner whose
+ * funds remain in an account-held Aave/Venus position can recover through the
+ * exact router that account already approved. Keep these recovery-only.
+ */
+export const RETIRED_YIELD_ROUTER_BSC: RouterDeployment = {
+  chainId: 56,
+  symbol: 'USDT',
+  address: '0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb',
+  usdt: '0x55d398326f99059fF775485246999027B3197955',
+  aUsdt: '0xa9251ca9DE909CB71783723713B21E4233fbf1B1',
+  aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
+  vUsdt: '0xfD5840Cd36d94D7229439859C0112a4185BC0255',
+  deployBlock: BigInt(117050416),
+  deployedOn: '2026-08-20',
+};
+
+export const RETIRED_YIELD_ROUTER_BSC_USDC: RouterDeployment = {
+  chainId: 56,
+  symbol: 'USDC',
+  address: '0xb0817946B5A30A0A2a3dE1B8202749EBEb664630',
+  usdt: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+  aUsdt: '0x00901a076785e0906d1028c7d6372d247bec7d61',
+  aavePool: '0x6807dc923806fE8Fd134338EABCA509979a7e0cB',
+  vUsdt: '0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8',
+  deployBlock: BigInt(117231310),
+  deployedOn: '2026-08-21',
+};
+
+export const RETIRED_YIELD_ROUTERS_BSC: RouterDeployment[] = [
+  RETIRED_YIELD_ROUTER_BSC,
+  RETIRED_YIELD_ROUTER_BSC_USDC,
+];
 
 /**
  * Managed stablecoins, in DISPLAY order. This array decides which token button
@@ -118,8 +156,35 @@ export function routerFor(chainId: number, symbol: string = 'USDT'): RouterDeplo
   return YIELD_ROUTERS_BSC.find((r) => r.chainId === chainId && r.symbol === symbol);
 }
 
-/** Find a managed router by its deployed address (case-insensitive). */
+/** Find an ACTIVE managed router by its deployed address (case-insensitive). */
 export function routerByAddress(address: string): RouterDeployment | undefined {
   const lc = address.toLowerCase();
   return YIELD_ROUTERS_BSC.find((r) => r.address.toLowerCase() === lc);
+}
+
+/**
+ * Find a router the owner may use to recover funds. This is deliberately a
+ * separate lookup so activation and the runner cannot accidentally re-admit a
+ * retired deployment just because the dashboard can unwind through it.
+ */
+export function recoveryRouterByAddress(address: string): RouterDeployment | undefined {
+  return routerByAddress(address)
+    ?? RETIRED_YIELD_ROUTERS_BSC.find((r) => r.address.toLowerCase() === address.toLowerCase());
+}
+
+/** Resolve exactly one recovery-capable router from a saved session scope. */
+export function recoveryRouterFromAllowlist(
+  allowlist: readonly string[],
+  chainId: number,
+): RouterDeployment | undefined {
+  const matches = allowlist
+    .map(recoveryRouterByAddress)
+    .filter((router): router is RouterDeployment => router?.chainId === chainId);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** True only for a superseded deployment that is retained for owner recovery. */
+export function isRetiredRouterAddress(address: string): boolean {
+  const lc = address.toLowerCase();
+  return RETIRED_YIELD_ROUTERS_BSC.some((router) => router.address.toLowerCase() === lc);
 }
