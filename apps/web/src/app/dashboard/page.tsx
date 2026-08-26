@@ -3,16 +3,16 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
-import { routerByAddress } from '@agripinaa/shared/contracts';
+import { recoveryRouterFromAllowlist } from '@agripinaa/shared/contracts';
 
 import { ManagedPositionCard } from '@/components/ManagedPositionCard';
 import { SessionCard } from '@/components/SessionCard';
 import { ArrowIcon, CoinsIcon, LightningIcon, ShieldIcon } from '@/components/icons';
 import { listStoredSessions, type StoredSessionMeta } from '@/lib/session-store';
 
-/** A managed-yield session is scoped to one of the deployed router addresses. */
+/** Active and recovery-only managed sessions both retain their funds controls. */
 function isManaged(meta: StoredSessionMeta): boolean {
-  return meta.scope.allowlist.some((a) => routerByAddress(a) !== undefined);
+  return recoveryRouterFromAllowlist(meta.scope.allowlist, meta.chainId) !== undefined;
 }
 
 export default function DashboardPage() {
