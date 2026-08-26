@@ -343,11 +343,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     wallet: '0x344eF980A827e9FF4086Ee95b22aeD0D95d11ac9',
     walletFile: 'agent-yield.json',
     managed: true,
-    // Read 2026-08-25 from the runner through the resolved base: USDT is the
-    // master key, USDC the key derived from it (apps/agents/src/manager-key.ts).
+    // Rotated 2026-08-26 after the file-permission audit: USDT is the master
+    // key, USDC the key derived from it (apps/agents/src/manager-key.ts).
     managerKeys: {
-      USDT: '0x94Fb3dD927a7Bc17cEc1C6D8281A861Ffe76D8B6',
-      USDC: '0x38A5a310beE9C278BDAFF8E5783Dc0890ab2dfC1',
+      USDT: '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2',
+      USDC: '0x1A06C18C97B891E4d9F89829E74b08A3e0891646',
     },
     backfillOphisTrades: false,
     manifest: {

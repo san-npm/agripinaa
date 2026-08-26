@@ -167,10 +167,9 @@ test('manager-key pins sit only on managed agents, one distinct address per mana
 });
 
 test('the Harvester pins the manager key each managed token grants to', () => {
-  // Captured 2026-08-25 from GET <runnerBase>/yield/manager-key?token=<t>,
-  // the same path the web proxy reads; USDT is the master key, USDC derived.
-  assert.equal(pinnedManagerKeyAddress('yield', 'USDT'), '0x94Fb3dD927a7Bc17cEc1C6D8281A861Ffe76D8B6');
-  assert.equal(pinnedManagerKeyAddress('yield', 'USDC'), '0x38A5a310beE9C278BDAFF8E5783Dc0890ab2dfC1');
+  // Rotated 2026-08-26; USDT is the master key and USDC is derived.
+  assert.equal(pinnedManagerKeyAddress('yield', 'USDT'), '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2');
+  assert.equal(pinnedManagerKeyAddress('yield', 'USDC'), '0x1A06C18C97B891E4d9F89829E74b08A3e0891646');
   // The Steward's session key is not generated yet, so it has nothing to pin;
   // an absent pin is the documented state until Task 17 captures it.
   assert.equal(pinnedManagerKeyAddress('yield-b', 'USDT'), undefined);

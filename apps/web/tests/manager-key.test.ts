@@ -10,14 +10,14 @@ import { fetchManagerKey, validateManagerKey } from '../src/lib/manager-key';
 import { newState, recordingFetch, withFetch } from './fetch-stub';
 
 /**
- * What the live runner reported for the Harvester on 2026-08-25 (public data:
+ * What the live runner reports for the rotated Harvester key (public data:
  * the SEC1 point and its address). The address is the value pinned in the
  * shared registry, so this is the only pair the browser may accept for it.
  */
 const LIVE_YIELD_USDT = {
   publicKey:
-    '0x04fad48fa6dbb1f7cd395adad04c7ef215e2d0ccc3528159815e48f3ac99760ef347f14efc13852039768534b526b9addd573cf6bc8ad896cacf7105fc628143a7' as Hex,
-  address: '0x94Fb3dD927a7Bc17cEc1C6D8281A861Ffe76D8B6' as Hex,
+    '0x04dd62b1a4cbdcf5ccc794a295997afa130ccbe04b0cc4b9ee47bb2f4da965c0e8cade76fb13b4adc981ad580825b36e1449b4a8e43c105cccbea9fb29467869fc' as Hex,
+  address: '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2' as Hex,
 };
 
 /** A synthetic key pair that is well-formed but belongs to nobody we trust. */
