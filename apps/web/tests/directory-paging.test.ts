@@ -18,6 +18,7 @@ import {
   pageRegistryWindow,
   rankClaimedSearchResults,
   reconcileInjectedRegistryEntries,
+  reconciledDirectoryOrdinalSlots,
   validRegistryCursor,
 } from '../src/lib/data';
 
@@ -212,13 +213,16 @@ test('replacing a stale injection preserves the previously served page boundary'
     (candidate) => candidate.tokenId === stale.tokenId,
   );
   assert.equal(originalOrdinal, 0, 'the claimed signal initially ranks first');
+  const ordinalSlots = reconciledDirectoryOrdinalSlots(
+    originalListing,
+    [stale],
+    reconciled,
+  );
 
   const served = directoryPage([before], 3).items;
   const expectedContinuation = directoryPage([before], 4).items;
   const unpinnedContinuation = directoryPage([after], 4).items;
-  const continuation = directoryPage([after], 4, [
-    { agent: reconciled[0]!, ordinal: originalOrdinal },
-  ]).items;
+  const continuation = directoryPage([after], 4, ordinalSlots).items;
 
   assert.equal(before.length, after.length);
   assert.notDeepEqual(
@@ -234,6 +238,70 @@ test('replacing a stale injection preserves the previously served page boundary'
     Number(continuation[0]?.tokenId),
     Number(served.at(-1)?.tokenId) + 1,
   );
+});
+
+test('a transfer collision preserves both previously served ordinals', () => {
+  const newOwner = '0x2222222222222222222222222222222222222222';
+  const stale = {
+    ...classified(1, 1_001)[0]!,
+    name: 'Shared owner agent',
+    description: 'The old owner claim initially ranks this card first.',
+    registeredAt: '2026-08-26T00:00:00.000Z',
+  } satisfies AgentSummary;
+  const raw = classified(100);
+  const existing = {
+    ...raw[0]!,
+    name: stale.name,
+    owner: newOwner,
+    description: 'The stronger native representative survives deduplication.',
+  } satisfies AgentSummary;
+  raw[0] = existing;
+  const transferred = {
+    ...stale,
+    owner: newOwner,
+    description: '',
+    claimed: false,
+    claimedFields: [],
+  } satisfies AgentSummary;
+
+  const before = mergeRegistryWindow(raw, [stale]);
+  const firstListing = Array.from(
+    { length: Math.ceil(before.length / DIRECTORY_PAGE_SIZE) },
+    (_, page) => directoryPage([before], page).items,
+  ).flat();
+  const reconciled = reconcileInjectedRegistryEntries([stale], [transferred]);
+  const after = mergeRegistryWindow(raw, reconciled);
+  const ordinalSlots = reconciledDirectoryOrdinalSlots(
+    firstListing,
+    [stale],
+    reconciled,
+  );
+  const unpinned = directoryPage([after], 4);
+  const continuation = directoryPage([after], 4, ordinalSlots);
+  const expectedContinuation = directoryPage([before], 4);
+  const reconciledListing = Array.from(
+    { length: Math.ceil(firstListing.length / DIRECTORY_PAGE_SIZE) },
+    (_, page) => directoryPage([after], page, ordinalSlots).items,
+  ).flat();
+
+  assert.equal(ordinalSlots.length, 2, 'both previously visible slots are reserved');
+  assert.equal(reconciledListing.length, firstListing.length);
+  assert.deepEqual(
+    reconciledListing.map((a) => a.tokenId),
+    firstListing.map((a) => a.tokenId),
+  );
+  assert.equal(reconciledListing[0]?.owner, newOwner);
+  assert.equal(reconciledListing[0]?.claimed, false, 'the stale claim is not restored');
+  assert.equal(
+    unpinned.items.length,
+    expectedContinuation.items.length - 1,
+    'ordinary deduplication leaves the continuation one card short',
+  );
+  assert.deepEqual(
+    continuation.items.map((a) => a.tokenId),
+    expectedContinuation.items.map((a) => a.tokenId),
+  );
+  assert.equal(continuation.hasMore, expectedContinuation.hasMore);
 });
 
 test('registry cursors can retain a position inside a complete upstream window', () => {
