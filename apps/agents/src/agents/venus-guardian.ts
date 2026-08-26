@@ -7,11 +7,10 @@
  * venue, and Venus is BSC native.
  *
  * All of the decision logic is reused, not re-derived. `planRepair`,
- * `scaleRepayToToken`, `classifyHf`, `evaluateThresholds` and `planRepayAmounts`
- * in ./health-factor are pure, integer-only, unit-tested, and protocol-agnostic
- * the moment you hand them a 1e18-scaled health factor. A second, float-based
- * planner living beside them would be a weaker copy that drifts the first time
- * one of the two is fixed.
+ * `classifyHf`, `evaluateThresholds`, and `planRepair` in ./health-factor are
+ * pure, integer-only, unit-tested, and protocol-agnostic the moment you hand
+ * them a 1e18-scaled health factor. The Venus-specific boundary only converts
+ * that shared USD repair target into the one debt token this guardian can repay.
  *
  * So the only new arithmetic here is that health factor, because Venus does not
  * publish one. `getAccountLiquidity` answers whether an account is underwater
@@ -50,8 +49,9 @@ import {
   WARN_AT,
   evaluateThresholds,
   hfWadToNumber,
-  planRepayAmounts,
+  planRepair,
   type HfZone,
+  type RepayPlan,
 } from './health-factor';
 
 export const VENUS_COMPTROLLER = '0xfD36E2c2a6789Db23113685031d7F16329158384' as const;
@@ -84,6 +84,7 @@ const RECORDED_MARKETS: readonly { vToken: `0x${string}`; collateralFactorMantis
 const comptrollerAbi = parseAbi([
   'function getAssetsIn(address account) view returns (address[])',
   'function getAccountLiquidity(address account) view returns (uint256, uint256, uint256)',
+  'function mintedVAIs(address account) view returns (uint256)',
   'function markets(address vToken) view returns (bool isListed, uint256 collateralFactorMantissa, bool isVenus)',
   'function oracle() view returns (address)',
 ]);
@@ -168,9 +169,13 @@ export interface VenusAggregate {
  * off the mantissa, which moves the health factor by about 1e-18 and always
  * downward, i.e. toward acting sooner.
  */
-export function aggregateVenusPosition(legs: readonly VenusMarketLeg[]): VenusAggregate {
+export function aggregateVenusPosition(
+  legs: readonly VenusMarketLeg[],
+  /** VAI is an 18-decimal USD debt kept outside every vToken market. */
+  vaiDebtWei: bigint = BigInt(0),
+): VenusAggregate {
   let collateralUsdWad = BigInt(0);
-  let borrowUsdWad = BigInt(0);
+  let borrowUsdWad = vaiDebtWei;
   let borrowingPower = BigInt(0);
   for (const leg of legs) {
     collateralUsdWad += leg.suppliedUsdWad;
@@ -226,6 +231,10 @@ interface VenusPosition extends VenusAggregate {
   hfWad: bigint;
   /** Borrowed USDT in token units, which is what a repay is denominated in. */
   usdtDebtWei: bigint;
+  /** That USDT debt valued by Venus's live oracle, in 1e18 USD. */
+  usdtDebtUsdWad: bigint;
+  /** Minted VAI, denominated in the same 1e18 USD scale as the aggregate. */
+  vaiDebtWei: bigint;
   liquidityWad: bigint;
   shortfallWad: bigint;
 }
@@ -277,7 +286,7 @@ async function auditRecordedMarkets(ctx: AgentContext): Promise<void> {
 
 async function readVenusPosition(ctx: AgentContext): Promise<VenusPosition> {
   const self = ctx.account.address;
-  const [entered, oracle, liquidity] = await Promise.all([
+  const [entered, oracle, liquidity, vaiDebtWei] = await Promise.all([
     ctx.publicClient.readContract({
       address: VENUS_COMPTROLLER,
       abi: comptrollerAbi,
@@ -293,6 +302,15 @@ async function readVenusPosition(ctx: AgentContext): Promise<VenusPosition> {
       address: VENUS_COMPTROLLER,
       abi: comptrollerAbi,
       functionName: 'getAccountLiquidity',
+      args: [self],
+    }),
+    // Venus stores synthetic VAI debt in a Comptroller mapping, not in an
+    // entered vToken. getAccountLiquidity includes it, so our independently
+    // derived health factor must include it too.
+    ctx.publicClient.readContract({
+      address: VENUS_COMPTROLLER,
+      abi: comptrollerAbi,
+      functionName: 'mintedVAIs',
       args: [self],
     }),
   ]);
@@ -311,6 +329,7 @@ async function readVenusPosition(ctx: AgentContext): Promise<VenusPosition> {
 
   const legs: VenusMarketLeg[] = [];
   let usdtDebtWei = BigInt(0);
+  let usdtDebtUsdWad = BigInt(0);
   for (const vToken of entered) {
     const [market, price, supplied, borrowed] = await Promise.all([
       readMarket(ctx, vToken),
@@ -343,7 +362,10 @@ async function readVenusPosition(ctx: AgentContext): Promise<VenusPosition> {
       // do we. Its debt still counts.
       ctx.log({ event: 'venus-market-unlisted', level: 'warn', vToken });
     }
-    if (vToken.toLowerCase() === VENUS_VUSDT.toLowerCase()) usdtDebtWei = borrowed;
+    if (vToken.toLowerCase() === VENUS_VUSDT.toLowerCase()) {
+      usdtDebtWei = borrowed;
+      usdtDebtUsdWad = (borrowed * price) / WAD;
+    }
     legs.push({
       vToken,
       suppliedUsdWad: (supplied * price) / WAD,
@@ -352,12 +374,14 @@ async function readVenusPosition(ctx: AgentContext): Promise<VenusPosition> {
     });
   }
 
-  const aggregate = aggregateVenusPosition(legs);
+  const aggregate = aggregateVenusPosition(legs, vaiDebtWei);
   return {
     ...aggregate,
     legs,
     hfWad: venusHfWad(aggregate),
     usdtDebtWei,
+    usdtDebtUsdWad,
+    vaiDebtWei,
     liquidityWad,
     shortfallWad,
   };
@@ -397,16 +421,46 @@ async function ensureAllowance(ctx: AgentContext, amount: bigint): Promise<void>
 // Repair: repay USDT to lift the derived health factor back to TARGET_HF
 // ---------------------------------------------------------------------------
 
+/**
+ * Size the one asset this guardian can repay against the total repair needed.
+ * The shared proportional planner assumes every debt leg is repaid in the same
+ * proportion. Here only USDT is acted on, so that would under-repair whenever
+ * VAI or another borrow exists. Convert the full USD repair into USDT through
+ * Venus's live USDT valuation, then cap it to the debt and wallet budget.
+ */
+export function planVenusUsdtRepair(input: {
+  hfWad: bigint;
+  totalDebtUsdWad: bigint;
+  usdtDebtWei: bigint;
+  usdtDebtUsdWad: bigint;
+  usdtBalance: bigint;
+  targetHf: number;
+}): RepayPlan {
+  const repayBase = planRepair(input.hfWad, input.totalDebtUsdWad, input.targetHf);
+  let wanted = BigInt(0);
+  if (repayBase > BigInt(0) && input.usdtDebtUsdWad > BigInt(0)) {
+    // Round upward at the USD/token boundary: being one wei over the target is
+    // safer than leaving the position one wei short of it.
+    wanted =
+      (repayBase * input.usdtDebtWei + input.usdtDebtUsdWad - BigInt(1)) /
+      input.usdtDebtUsdWad;
+    if (wanted > input.usdtDebtWei) wanted = input.usdtDebtWei;
+  }
+  const cappedByBudget = wanted > input.usdtBalance;
+  return {
+    repayBase,
+    repayUsdt: cappedByBudget ? input.usdtBalance : wanted,
+    cappedByBudget,
+  };
+}
+
 async function runRepair(ctx: AgentContext, position: VenusPosition): Promise<void> {
   const usdtBalance = await readUsdtBalance(ctx);
-  // planRepayAmounts is the Aave guardian's sizing, unchanged: target math,
-  // proportional token scaling, wallet-budget cap. totalDebtBase is USD in
-  // 1e18 here rather than Aave's 8-decimal base currency, which the function
-  // does not care about: it only ever uses the debt figures as a ratio.
-  const plan = planRepayAmounts({
+  const plan = planVenusUsdtRepair({
     hfWad: position.hfWad,
-    totalDebtBase: position.borrowUsdWad,
-    usdtDebt: position.usdtDebtWei,
+    totalDebtUsdWad: position.borrowUsdWad,
+    usdtDebtWei: position.usdtDebtWei,
+    usdtDebtUsdWad: position.usdtDebtUsdWad,
     usdtBalance,
     targetHf: TARGET_HF,
   });
@@ -497,6 +551,7 @@ export const venusGuardianAgent: AgentModule = {
       markets: position.legs.length,
       collateralUsd: fromBaseUnits(position.collateralUsdWad, 18),
       debtUsd: fromBaseUnits(position.borrowUsdWad, 18),
+      vaiDebt: fromBaseUnits(position.vaiDebtWei, 18),
       collateralFactor: position.collateralFactorMantissa.toString(),
       shortfallUsd: fromBaseUnits(position.shortfallWad, 18),
     });
@@ -532,6 +587,7 @@ export const venusGuardianAgent: AgentModule = {
       collateralUsd: fromBaseUnits(position.collateralUsdWad, 18),
       debtUsd: fromBaseUnits(position.borrowUsdWad, 18),
       usdtDebt: fromBaseUnits(position.usdtDebtWei, USDT.decimals),
+      vaiDebt: fromBaseUnits(position.vaiDebtWei, 18),
       collateralFactor: position.collateralFactorMantissa.toString(),
       marketsEntered: position.legs.length,
       shortfallUsd: fromBaseUnits(position.shortfallWad, 18),

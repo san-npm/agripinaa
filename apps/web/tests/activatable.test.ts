@@ -9,8 +9,13 @@ import {
 } from '../src/lib/activatable';
 
 /** The input both pages build: liveness probed, session consumption from the registry. */
-function inputFor(tokenId: string, endpointLive = false) {
-  return { tokenId, endpointLive, consumesSession: agentConsumesSession(tokenId) };
+function inputFor(tokenId: string, endpointLive = false, sessionHandoffSupported = false) {
+  return {
+    tokenId,
+    endpointLive,
+    consumesSession: agentConsumesSession(tokenId),
+    sessionHandoffSupported,
+  };
 }
 
 test('a first-party agent with a managed path is activatable', () => {
@@ -34,25 +39,34 @@ test('owning the agent is not what makes it activatable', () => {
   // The earlier gate asked "is this one of ours?", which is true for all four
   // first-party agents, three of which consume nothing.
   assert.equal(
-    isActivatable({ tokenId: '269703', endpointLive: false, consumesSession: false }),
+    isActivatable({
+      tokenId: '269703',
+      endpointLive: false,
+      consumesSession: false,
+      sessionHandoffSupported: false,
+    }),
     false,
   );
 });
 
-test('a third-party agent needs an endpoint that answered the probe', () => {
+test('a third-party agent needs both a live endpoint and a supported handoff', () => {
   assert.equal(isActivatable(inputFor('999999')), false);
   assert.equal(activationBlockedReason(inputFor('999999')), 'no-live-endpoint');
   // 297380 is a skeletal record from the live index.
   assert.equal(activationBlockedReason(inputFor('297380')), 'no-live-endpoint');
-  assert.equal(isActivatable(inputFor('999999', true)), true);
-  assert.equal(activationBlockedReason(inputFor('999999', true)), null);
+  assert.equal(isActivatable(inputFor('999999', true)), false);
+  assert.equal(activationBlockedReason(inputFor('999999', true)), 'no-session-handoff');
+  assert.equal(isActivatable(inputFor('999999', true, true)), true);
+  assert.equal(activationBlockedReason(inputFor('999999', true, true)), null);
 });
 
 test('each blocked reason has copy for what the gate actually checked', () => {
   const ownCapital = ACTIVATION_BLOCKED_COPY['own-capital-only'];
   const noEndpoint = ACTIVATION_BLOCKED_COPY['no-live-endpoint'];
+  const noHandoff = ACTIVATION_BLOCKED_COPY['no-session-handoff'];
   assert.match(ownCapital.body, /own capital/);
   assert.match(noEndpoint.body, /probe/);
+  assert.match(noHandoff.body, /protocol/);
   for (const copy of Object.values(ACTIVATION_BLOCKED_COPY)) {
     assert.ok(copy.headline.length > 0 && copy.ctaLabel.length > 0);
     // isActivatable reads no claim record, so no branch may assert one.

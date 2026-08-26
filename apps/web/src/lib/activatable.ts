@@ -22,13 +22,24 @@ export interface ActivationInput {
   endpointLive: boolean;
   /** Whether a runner consumes the grant. Derive it with `agentConsumesSession`. */
   consumesSession: boolean;
+  /** Whether this site can deliver the resulting session to that endpoint. */
+  sessionHandoffSupported: boolean;
+}
+
+/**
+ * Third-party handoff is deliberately explicit. Endpoint liveness proves only
+ * that a server answered; until a versioned handoff is implemented, nothing in
+ * this app transfers the signer that SessionWizard removes from local storage.
+ */
+export function agentSupportsSessionHandoff(): boolean {
+  return false;
 }
 
 /**
  * Activation moves live funds and asks for a passkey account, gas, and a signed
  * grant, so it is offered only where something will consume that grant: an
- * agent with a managed path of ours, or a third-party agent whose own endpoint
- * answered a liveness probe.
+ * agent with a managed path of ours, or a third-party endpoint that both
+ * answered a liveness probe and implements a handoff this site supports.
  *
  * Ownership deliberately does NOT appear here. Asking "is this one of ours?"
  * passes all four first-party agents, three of which run on their own capital
@@ -37,21 +48,24 @@ export interface ActivationInput {
  * is whether the grant gets consumed.
  */
 export function isActivatable(input: ActivationInput): boolean {
-  return input.consumesSession || input.endpointLive;
+  return input.consumesSession || (input.endpointLive && input.sessionHandoffSupported);
 }
 
 /** Why activation is withheld, or null when it is offered. */
-export type ActivationBlockedReason = 'own-capital-only' | 'no-live-endpoint';
+export type ActivationBlockedReason =
+  | 'own-capital-only'
+  | 'no-live-endpoint'
+  | 'no-session-handoff';
 
 /**
- * Both blocked branches fail closed for the same reason (no consumer for the
- * grant) but they are different situations, so they get different copy: one of
- * ours running unmanaged is a scope statement, an indexed registry row with no
- * answering endpoint is a dead end.
+ * All blocked branches fail closed for the same reason (no consumer for the
+ * grant) but distinguish an own-capital runner, a dead endpoint, and an
+ * answering endpoint for which no safe handoff has been implemented.
  */
 export function activationBlockedReason(input: ActivationInput): ActivationBlockedReason | null {
   if (isActivatable(input)) return null;
-  return agentByTokenId(input.tokenId) ? 'own-capital-only' : 'no-live-endpoint';
+  if (agentByTokenId(input.tokenId)) return 'own-capital-only';
+  return input.endpointLive ? 'no-session-handoff' : 'no-live-endpoint';
 }
 
 export interface ActivationBlockedCopy {
@@ -79,6 +93,11 @@ export const ACTIVATION_BLOCKED_COPY: Record<ActivationBlockedReason, Activation
   'no-live-endpoint': {
     headline: 'Nothing to activate here',
     body: 'This agent is an on-chain registration we index, not one we run, and no endpoint of its own answered our liveness probe. A session granted here would have nothing behind it to act on. You can still inspect its identity, owner, and on-chain feedback.',
+    ctaLabel: 'Inspect on-chain identity',
+  },
+  'no-session-handoff': {
+    headline: 'Session handoff is not supported',
+    body: 'This third-party endpoint answers, but Agripinaa does not yet implement a protocol that can deliver the session key to it. Activation stays disabled so you are not charged grant gas for a key the agent cannot receive.',
     ctaLabel: 'Inspect on-chain identity',
   },
 };

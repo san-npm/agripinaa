@@ -234,11 +234,12 @@ test('a probe result is stored under the agent key and read back', async () => {
 
 test('a stored result stops counting once it is past the freshness window', async () => {
   const { LIVENESS_TTL_MS, countsAsLive } = await loadLiveness();
-  assert.equal(LIVENESS_TTL_MS, 24 * HOUR);
+  assert.equal(LIVENESS_TTL_MS, 36 * HOUR);
   const record = { url: ENDPOINT, live: true, checkedAt: new Date(NOW).toISOString(), status: 200 };
 
   assert.equal(countsAsLive(record, ENDPOINT, NOW + 23 * HOUR), true);
-  assert.equal(countsAsLive(record, ENDPOINT, NOW + 25 * HOUR), false);
+  assert.equal(countsAsLive(record, ENDPOINT, NOW + 25 * HOUR), true);
+  assert.equal(countsAsLive(record, ENDPOINT, NOW + 37 * HOUR), false);
   assert.equal(countsAsLive(null, ENDPOINT, NOW), false);
   assert.equal(countsAsLive({ ...record, live: false }, ENDPOINT, NOW), false);
   assert.equal(countsAsLive({ ...record, checkedAt: 'never' }, ENDPOINT, NOW), false);
@@ -356,7 +357,7 @@ test('the gate refuses a stale record, a mismatched url, and a missing endpoint'
   const stale = JSON.stringify({
     url: ENDPOINT,
     live: true,
-    checkedAt: new Date(Date.now() - 25 * HOUR).toISOString(),
+    checkedAt: new Date(Date.now() - 37 * HOUR).toISOString(),
     status: 200,
   });
   const store = new Map([['agripinaa:liveness:56:297380', stale]]);

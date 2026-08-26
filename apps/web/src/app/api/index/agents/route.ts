@@ -1,6 +1,10 @@
 import { CATEGORIES, type Category } from "@agripinaa/agent-index";
 
-import { listAgents } from "@/lib/data";
+import {
+  listAgents,
+  RegistryCursorExpiredError,
+  validRegistryCursor,
+} from "@/lib/data";
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -21,19 +25,27 @@ export async function GET(request: Request): Promise<Response> {
     ? Math.min(Math.max(limitRaw, 1), 100)
     : 24;
 
-  // cursor is an opaque numeric offset/page; reject anything else so it can't
-  // mint unbounded cache entries or reach upstream as a "NaN" offset.
+  // The cursor is either an upstream numeric offset/page or our bounded
+  // position inside one 100-row upstream window. Reject anything else so it
+  // cannot mint unbounded cache entries or reach upstream as a NaN offset.
   const rawCursor = url.searchParams.get("cursor") ?? undefined;
   const cursor =
     rawCursor === undefined
       ? undefined
-      : /^\d{1,9}$/.test(rawCursor)
+      : validRegistryCursor(rawCursor)
         ? rawCursor
         : null;
   if (cursor === null) {
     return Response.json({ error: "invalid cursor" }, { status: 400 });
   }
 
-  const page = await listAgents(category, limit, cursor);
-  return Response.json(page);
+  try {
+    const page = await listAgents(category, limit, cursor);
+    return Response.json(page);
+  } catch (error) {
+    if (error instanceof RegistryCursorExpiredError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
 }

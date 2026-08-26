@@ -22,8 +22,8 @@ import {
   sanitizeFields,
   type ClaimFields,
 } from './claim-message';
-import { kvAvailable, kvGet, kvMGet, kvSet } from './kv';
-import { UNATTRIBUTED_CLIENT, takeChainRead } from './throttle';
+import { kvAvailable, kvGet, kvMGet, kvReserveCounterPair, kvSet } from './kv';
+import { UNATTRIBUTED_CLIENT, takeChainRead, type ThrottleKv } from './throttle';
 
 /**
  * The server half of the claim flow: who owns an agent, whether a signature
@@ -68,6 +68,8 @@ export const CLAIM_INDEX_LIMIT = 5_000;
 
 /** A claim body is about 1 KB. Anything past this is not one. */
 const MAX_BODY_CHARS = 16 * 1_024;
+/** Byte ceiling enforced while the public route streams an untrusted body. */
+export const MAX_CLAIM_BODY_BYTES = 16 * 1_024;
 
 const SIGNATURE = /^0x[0-9a-fA-F]{130}$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -99,8 +101,7 @@ export interface ClaimRecord {
 }
 
 /** The KV commands this module needs, injectable so tests store in memory. */
-export interface ClaimKv {
-  available(): boolean;
+export interface ClaimKv extends ThrottleKv {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<boolean>;
   mget(keys: string[]): Promise<(string | null)[]>;
@@ -111,6 +112,7 @@ export const liveClaimKv: ClaimKv = {
   get: kvGet,
   set: kvSet,
   mget: kvMGet,
+  reserveCounterPair: kvReserveCounterPair,
 };
 
 /**

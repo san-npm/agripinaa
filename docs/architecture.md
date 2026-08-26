@@ -172,19 +172,21 @@ link someone can share, and the list pages forward on an opaque cursor instead
 of stopping at a fixed card count.
 
 Category hubs at `/c/<category>` cover the four mandated categories and take a
-page of 24 from `listAgents`. A hub is the only listing a stored claim can pull
-an agent onto, since a claimed agent is absent from the upstream ranked list:
-those entries lead the hub's first page, capped at a third of it by
-`claimedHubSlots` (`apps/web/src/lib/claim-merge.ts`) and at
-`CLAIMED_PER_HUB_LIMIT` resolves, so a category that collects many claims cannot
-push the ranked registrations off its own hub. Past the first page a claim only
-annotates a card that was already there.
+page of 24 from `listDirectory`. A hub is the only listing a stored claim can
+pull an agent onto, since a claimed agent can be absent from the upstream ranked
+list: those entries lead the hub, capped at a third of it by `claimedHubSlots`
+(`apps/web/src/lib/claim-merge.ts`) and at `CLAIMED_PER_HUB_LIMIT` resolves, so a
+category that collects many claims cannot push the ranked registrations off its
+own hub.
 
-The same function answers `/api/index/agents`, which takes a category, a limit
-clamped to 1 to 100 and an opaque numeric cursor, so the index paginates even
-where a page renders a single slice of it. The proof feed renders server-side at
-first paint from the Ophis settlement backfill, then swaps in the runner's live
-tail, so the page is never empty while it waits.
+`listAgents` answers `/api/index/agents`, which takes a category, a limit
+clamped to 1 to 100 and a bounded opaque cursor. The cursor can retain a local
+position inside the indexer's 100-row read window, so no unread tail is skipped
+when the API caller asks for a smaller page. That cursor carries a fingerprint
+of the ranked window: if a platform cache loses the snapshot, the API expires
+the cursor instead of silently duplicating or omitting registrations. The proof
+feed renders server-side at first paint from the Ophis settlement backfill, then
+swaps in the runner's live tail, so the page is never empty while it waits.
 
 **Understand.** `/agent/56/<tokenId>` merges the registry read, the indexer
 record, any owner claim, the on-chain ERC-8004 attestation, and the settlement
@@ -193,8 +195,10 @@ runner's own 402 challenge, decoded, fetched by a Server Function
 (`apps/web/src/lib/x402-status.ts`) so the tunnel's missing CORS policy never
 becomes a dead panel.
 
-**Act.** Agents with a reachable endpoint offer activation; agents without one
-offer inspection instead, so no button leads anywhere dead
+**Act.** Activation is offered only when the resulting session has a consumer:
+the managed Harvester runner today. Endpoint liveness remains a discovery badge,
+not proof of a session-handoff protocol, so third-party registrations offer
+inspection until Agripinaa implements such a protocol
 (`apps/web/src/lib/activatable.ts`, `apps/web/src/lib/liveness.ts`). Activation
 grants a scoped, revocable session key from a passkey smart account; managed
 yield additionally posts the public half of that session to the runner, which
@@ -221,11 +225,12 @@ rather than an empty page.
 **Liveness decay.** A claimed endpoint is probed once, when its claim is stored
 (`apps/web/src/app/api/claim/route.ts`), and the result goes to KV with the
 instant it was taken. Readers apply the window themselves: past
-`LIVENESS_TTL_MS` (24 hours, `apps/web/src/lib/liveness.ts`) a record stops
+`LIVENESS_TTL_MS` (36 hours, `apps/web/src/lib/endpoint-probe.ts`) a record stops
 counting as evidence, and `endpointIsLive` in `apps/web/src/lib/activatable.ts`
-answers false. The daily refresh normally replaces that evidence before it
-expires; if the job fails, decay is still the answer, so an endpoint that went
-away loses its badge on its own—the safe direction to fail in.
+answers false. The daily refresh has twelve hours of scheduling slack before
+that evidence expires; if the job fails long enough, decay is still the answer,
+so an endpoint that went away loses its badge on its own—the safe direction to
+fail in.
 
 ## Repository layout
 

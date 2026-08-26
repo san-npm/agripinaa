@@ -31,6 +31,7 @@ import {
   VENUS_VUSDC,
   VENUS_VUSDT,
   aggregateVenusPosition,
+  planVenusUsdtRepair,
   shortfallAgreesWithHf,
   venusGuardianAgent,
   venusHfWad,
@@ -203,6 +204,19 @@ test('an empty position aggregates to no risk rather than a division by zero', (
   assert.equal(venusHfWad(agg), MAX_UINT256);
 });
 
+test('one repayable debt leg covers the full repair instead of a proportional fraction', () => {
+  const plan = planVenusUsdtRepair({
+    hfWad: cf(1.2),
+    totalDebtUsdWad: usd(4),
+    usdtDebtWei: toBaseUnits('2', USDT.decimals),
+    usdtDebtUsdWad: usd(2),
+    usdtBalance: toBaseUnits('2', USDT.decimals),
+    targetHf: 1.6,
+  });
+  assert.equal(plan.repayBase, usd(1));
+  assert.equal(plan.repayUsdt, toBaseUnits('1', USDT.decimals));
+});
+
 /* ------------------- cross-check against what venus says ----------------- */
 
 test('the derived health factor agrees with the comptroller shortfall', () => {
@@ -280,6 +294,7 @@ interface FakeOpts {
   liquidityWad?: bigint;
   shortfallWad?: bigint;
   liquidityError?: bigint;
+  vaiDebtWei?: bigint;
   oracle?: string;
   allowance?: bigint;
   allowAction?: boolean;
@@ -320,6 +335,8 @@ function fakeCtx(opts: FakeOpts): {
             opts.liquidityWad ?? BigInt(0),
             opts.shortfallWad ?? BigInt(0),
           ];
+        case 'mintedVAIs':
+          return opts.vaiDebtWei ?? BigInt(0);
         case 'markets': {
           const target = String(args![0]);
           const m = market(target);
@@ -459,6 +476,25 @@ test('the act zone repays usdt sized to land back on target', async () => {
   assert.equal(writes[1]!.address.toLowerCase(), VENUS_VUSDT.toLowerCase());
   assert.equal(writes[1]!.args![0], toBaseUnits('1', USDT.decimals));
   assert.ok(logs.some((l) => l.event === 'repair-done'));
+});
+
+test('separate VAI debt is included in health and full repair sizing', async () => {
+  // $4.80 of borrowing power against $2 USDT + $2 VAI is 1.20. Reaching 1.6
+  // requires $1 total repayment. USDT is the leg this guardian can act on, so
+  // it repays the full $1 rather than only USDT's proportional half.
+  const { ctx, logs, writes } = fakeCtx(
+    position('2', { vaiDebtWei: toBaseUnits('2', 18) }),
+  );
+  await venusGuardianAgent.tick(ctx);
+
+  const health = logs.find((l) => l.event === 'hf')!;
+  assert.equal(health['debtUsd'], '4');
+  assert.equal(health['vaiDebt'], '2');
+  approx(health['hf'] as number, 1.2, 1e-6);
+
+  const plan = logs.find((l) => l.event === 'repair-plan')!;
+  assert.equal(plan['repayUsdt'], '1');
+  assert.equal(writes.at(-1)?.args?.[0], toBaseUnits('1', USDT.decimals));
 });
 
 test('the repay is capped by the wallet, and says so', async () => {
