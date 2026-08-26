@@ -460,6 +460,10 @@ function registryOwner(agent: AgentSummary): string {
   return agent.owner.trim().toLowerCase();
 }
 
+function registryOwnedName(agent: AgentSummary): string {
+  return JSON.stringify([agent.name.trim().toLowerCase(), registryOwner(agent)]);
+}
+
 /**
  * Prepend locally resolved cards without letting a stale injected owner replace
  * a fresher occurrence of the same token in the active source window.
@@ -498,30 +502,41 @@ export function excludeInjectedRegistryEntries(
   raw: readonly AgentSummary[],
   injected: readonly AgentSummary[],
 ): AgentSummary[] {
-  const injectedOwners = new Map(
-    injected.map((a) => [normalizeAgentId(a.tokenId), registryOwner(a)]),
+  const injectedIdentities = new Set(
+    injected.map((a) => `${normalizeAgentId(a.tokenId)}:${registryOwner(a)}`),
   );
+  const injectedOwnedNames = new Set(injected.map(registryOwnedName));
   return raw.filter(
     (a) =>
-      injectedOwners.get(normalizeAgentId(a.tokenId)) !== registryOwner(a),
+      !injectedIdentities.has(
+        `${normalizeAgentId(a.tokenId)}:${registryOwner(a)}`,
+      ) && !injectedOwnedNames.has(registryOwnedName(a)),
   );
 }
 
 /**
- * Drop an earlier injection when a later source window proves that token has a
- * different owner. The caller can then rebuild its accumulated listing so the
- * stale owner-provided card disappears instead of sitting beside the transfer.
+ * Replace an earlier injection in place when a raw later source window proves
+ * that token has a different owner. Keeping the slot preserves every page
+ * offset already issued; replacing its contents removes the stale claim. The
+ * later representative is then removed by `excludeInjectedRegistryEntries`.
  */
 export function reconcileInjectedRegistryEntries(
   injected: readonly AgentSummary[],
-  later: readonly AgentSummary[],
+  laterRaw: readonly AgentSummary[],
+  laterRanked: readonly AgentSummary[] = laterRaw,
 ): AgentSummary[] {
-  const laterOwners = new Map(
-    later.map((a) => [normalizeAgentId(a.tokenId), registryOwner(a)]),
+  const laterByTokenId = new Map(
+    laterRaw.map((a) => [normalizeAgentId(a.tokenId), a]),
   );
-  return injected.filter((a) => {
-    const laterOwner = laterOwners.get(normalizeAgentId(a.tokenId));
-    return laterOwner === undefined || laterOwner === registryOwner(a);
+  return injected.map((a) => {
+    const found = laterByTokenId.get(normalizeAgentId(a.tokenId));
+    if (!found || registryOwner(found) === registryOwner(a)) return a;
+    // Ranking may collapse the transferred token into another registration
+    // with the same name and new owner. Put that chosen representative in the
+    // stable injection slot while using the raw token as ownership evidence.
+    return laterRanked.find((candidate) =>
+      registryOwnedName(candidate) === registryOwnedName(found)
+    ) ?? found;
   });
 }
 
@@ -650,11 +665,11 @@ export async function listRegistryPage(
   let injected: AgentSummary[] = [];
 
   for (let read = 0; read < MAX_INDEX_READS; read++) {
-    // listAgentWindow returns ranked representatives. Keep the raw first
-    // window alongside it so a claimed token collapsed into another card is
-    // still known to exist in the active listing source.
-    const rawFirst =
-      read === 0 && category && claims
+    // listAgentWindow returns ranked representatives. Keep every raw window
+    // alongside it so a claimed token collapsed into another card still counts
+    // as first-window presence or later transfer evidence.
+    const rawWindow =
+      category && claims
         ? await readRegistryWindow(category, at)
         : null;
     const batch = await listAgentWindow(category, INDEX_WINDOW_SIZE, at, false);
@@ -667,23 +682,27 @@ export async function listRegistryPage(
     // may catch up to a native-category record the detail endpoint resolved
     // earlier; filtering the same-owner identity below keeps that card
     // singular, while a changed owner remains as fresher transfer evidence.
-    if (read === 0 && category && claims && rawFirst) {
+    if (read === 0 && category && claims && rawWindow) {
       injected = await withLiveness(
         await claimedInCategory(
           category,
           claims,
-          new Set([...PINNED_ID_SET, ...tokenIdSet(rawFirst.items)]),
+          new Set([...PINNED_ID_SET, ...tokenIdSet(rawWindow.items)]),
           claimedHubSlots(DIRECTORY_PAGE_SIZE),
         ),
       );
     }
-    if (read > 0) {
-      injected = reconcileInjectedRegistryEntries(injected, indexed);
+    if (read > 0 && rawWindow && claims) {
+      const rawWithClaims = rawWindow.items.map((a) => withClaim(a, claims));
+      injected = await withLiveness(
+        reconcileInjectedRegistryEntries(injected, rawWithClaims, indexed),
+      );
     }
     sourceReads.push(indexed);
-    // Rebuild from the reconciled set. If this window revealed a transfer,
-    // the stale injection is removed from the accumulated first window as the
-    // fresh owner is retained here; the two can never survive together.
+    // Rebuild from the reconciled set. If this window revealed a transfer, the
+    // first-window slot now carries the fresh source record. Its cardinality
+    // and every previously issued page offset stay fixed, while the matching
+    // later representative is suppressed so the card remains singular.
     const reads = sourceReads.map((items, index) =>
       index === 0
         ? mergeRegistryWindow(items, injected)
