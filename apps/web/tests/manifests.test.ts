@@ -29,6 +29,13 @@ test('the second registered grid is served with its own body, not a placeholder'
   // manifest is what a judge reads to tell the two grid agents apart.
   assert.equal(m?.execution.pair, 'BTCB/USDT');
   assert.equal(m?.x402.endpoint, 'https://runner.example.com/grid-b/status');
+  assert.equal(m?.x402.note, 'live');
+});
+
+test('every registered manifest is served as live', () => {
+  for (const slug of MANIFEST_SLUGS) {
+    assert.equal(buildManifest(slug, 'https://runner.example.com')?.x402.note, 'live', slug);
+  }
 });
 
 test('injects the runner base into the x402 endpoint', () => {

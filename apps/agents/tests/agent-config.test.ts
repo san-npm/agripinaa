@@ -4,7 +4,7 @@
  * does not know, and minting a permanent tokenURI against a manifest that does
  * not serve that agent.
  *
- * The funding and URI assertions below are deliberately literal. Four agents
+ * The funding and URI assertions below are deliberately literal. Eight agents
  * are live on BSC mainnet with live balances and already-minted identities, so
  * a refactor that changed an amount or a URL by a character would be an actual
  * loss, not a failing expectation.
@@ -22,6 +22,7 @@ import {
   manifestUrl,
   preflightManifest,
   preflightManifests,
+  requiredRunnerWalletFiles,
   selectFundingEntries,
 } from '../src/agent-config';
 
@@ -34,17 +35,16 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
     FUNDING_PLAN.map((e) => [e.name, e.bnb, e.usdt, e.wbnb, e.usdc, e.btcb]),
     [
       ['agent-grid', '0.0011', '5', '0.004', '0', '0'],
-      // Budgeted, not yet sent: grid-b holds no wallet to send to. One leg per
-      // side of BTCB/USDT, because a grid spends both: the buys sell USDT and
-      // the sells sell BTCB.
+      // One leg per side of BTCB/USDT, because a grid spends both: the buys
+      // sell USDT and the sells sell BTCB.
       ['agent-grid-b', '0.0015', '2', '0', '0', '0.000025'],
       ['agent-health-factor', '0.0011', '2', '0.005', '0', '0'],
-      // Budgeted, not yet sent: the Venus guardian repays from a USDT budget,
-      // and the WBNB leg is what a demo borrow position would be opened against.
+      // The Venus guardian repays from a USDT budget, and the WBNB leg backs
+      // the live borrow position it monitors.
       ['agent-venus-guardian', '0.0015', '2', '0.005', '0', '0'],
       ['agent-yield', '0.0009', '2.5', '0', '0', '0'],
-      // Budgeted, not yet sent: yield-b manages user deposits, so its own
-      // capital is a token position that gives it a track record of its own.
+      // yield-b manages user deposits, so its own capital is a token position
+      // that gives it a track record of its own.
       ['agent-yield-b', '0.0015', '1', '0', '0', '0'],
       ['agent-lp-range', '0.0011', '1.5', '0.003', '0', '0'],
       ['agent-weight-rebalancer', '0.0015', '2.5', '0.004', '0', '0'],
@@ -63,6 +63,38 @@ test('every managed agent gets its own companion session key, and only those', (
     ['agent-yield-session', 'agent-yield-b-session'],
   );
   assert.deepEqual(MANAGED_AGENT_SLUGS, ['yield', 'yield-b']);
+});
+
+test('the runner wallet inventory includes every live agent, manager, and facilitator', () => {
+  assert.deepEqual(requiredRunnerWalletFiles(), [
+    'facilitator.json',
+    'agent-grid.json',
+    'agent-grid-b.json',
+    'agent-health-factor.json',
+    'agent-venus-guardian.json',
+    'agent-yield.json',
+    'agent-yield-session.json',
+    'agent-yield-b.json',
+    'agent-yield-b-session.json',
+    'agent-lp-range.json',
+    'agent-weight-rebalancer.json',
+  ]);
+});
+
+test('the runner wallet inventory follows the selected registry revision', () => {
+  assert.deepEqual(
+    requiredRunnerWalletFiles([
+      AGENTS.grid,
+      AGENTS.yield,
+      { ...AGENTS['grid-b'], wallet: null },
+    ]),
+    [
+      'facilitator.json',
+      'agent-grid.json',
+      'agent-yield.json',
+      'agent-yield-session.json',
+    ],
+  );
 });
 
 test('no --only means the whole plan', () => {
