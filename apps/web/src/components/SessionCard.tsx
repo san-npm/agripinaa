@@ -62,12 +62,19 @@ export function SessionCard({
         );
       }
       const session = reviveSession(meta);
-      await client.revokeSession({
+      const result = await client.revokeSession({
         wallet,
         signer: wallet.signer,
         chainId: meta.chainId,
         session: session as Parameters<typeof client.revokeSession>[0]['session'],
       });
+      if (result.status !== 'CONFIRMED') {
+        throw new Error(
+          result.status === 'PENDING'
+            ? 'Stopping the agent is still pending on-chain. Retry shortly.'
+            : 'Stopping the agent did not go through (reverted on-chain).',
+        );
+      }
       markRevoked(meta.id);
       setValidity('invalid');
       onChange();

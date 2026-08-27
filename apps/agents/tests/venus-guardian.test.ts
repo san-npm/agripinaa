@@ -272,7 +272,8 @@ test('the registry record pins its registered identity, wallet, and first live r
   assert.equal(record.attestation?.feedbackHash, '0x244903446100c31d00763a40478eb52ec4407b346b46f2183bee7718117197f8');
   assert.equal(record.proofs[0]?.ref, '0xd9817ea31984019038303cbcb1aeea46bc44ae98bd6fe0ef0bdc83a1a80f5808');
   assert.match(record.proofs[0]?.note ?? '', /restoring HF from 1\.27 to 1\.60/);
-  assert.equal(record.managed, false);
+  assert.equal(record.managed, true);
+  assert.ok(record.managerKeys?.USDT);
   assert.equal(record.category, 'health-factor');
   assert.equal(record.category, venusGuardianAgent.category);
   assert.deepEqual(record.funding, { bnb: '0.0015', usdt: '2', wbnb: '0.005' });

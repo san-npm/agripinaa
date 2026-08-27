@@ -10,6 +10,7 @@
     "./agents": "./src/agents.ts",
     "./chains": "./src/chains.ts",
     "./contracts": "./src/contracts.ts",
+    "./managed-strategies": "./src/managed-strategies.ts",
     "./proof": "./src/proof.ts",
     "./ssrf": "./src/ssrf.ts",
     "./ssrf-url": "./src/ssrf-url.ts",

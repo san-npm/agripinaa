@@ -7,10 +7,9 @@ import { countsAsLive, getLiveness, type LivenessRecord } from './liveness';
  * Whether anything on our side will read a session granted to this agent.
  *
  * The registry's `managed` flag is the only thing that answers that. A managed
- * agent's runner loads granted mandates and signs router calls with its manager
- * key; every other agent ticks on its own capital and never looks at the
- * session store (nothing under apps/agents/src reads it). So `managed: false`
- * means a grant would sit unread for its whole expiry window.
+ * agent's runner loads granted mandates and executes only its canonical calls
+ * with its pinned manager key. `managed: false` therefore means a grant would
+ * sit unread for its whole expiry window.
  */
 export function agentConsumesSession(tokenId: string): boolean {
   return agentByTokenId(tokenId)?.managed ?? false;
@@ -42,10 +41,8 @@ export function agentSupportsSessionHandoff(): boolean {
  * answered a liveness probe and implements a handoff this site supports.
  *
  * Ownership deliberately does NOT appear here. Asking "is this one of ours?"
- * passes all four first-party agents, three of which run on their own capital
- * and read no session at all, so that question sent visitors through the whole
- * wallet flow for a key nothing would ever pick up. The question that matters
- * is whether the grant gets consumed.
+ * can still be wrong for a future first-party agent with no public mandate.
+ * The question that matters is whether the grant gets consumed.
  */
 export function isActivatable(input: ActivationInput): boolean {
   return input.consumesSession || (input.endpointLive && input.sessionHandoffSupported);
@@ -86,9 +83,9 @@ export interface ActivationBlockedCopy {
  */
 export const ACTIVATION_BLOCKED_COPY: Record<ActivationBlockedReason, ActivationBlockedCopy> = {
   'own-capital-only': {
-    headline: 'Runs on its own capital',
-    body: 'This is one of our agents and it runs on its own capital on BNB Smart Chain. It does not take deposits under management yet, so no runner would pick up a session key granted here. Its execution record, its x402 status endpoint, and its rows in the proof feed are all open to inspect in the meantime.',
-    ctaLabel: 'See its execution record',
+    headline: 'Live autonomous agent',
+    body: 'This agent is already running its strategy with its own capital on BNB Smart Chain. Use its live x402 status below and inspect its on-chain executions during the demo. It does not accept a user deposit, so no unused session grant is created.',
+    ctaLabel: 'Use live agent',
   },
   'no-live-endpoint': {
     headline: 'Nothing to activate here',

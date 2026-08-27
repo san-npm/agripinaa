@@ -36,6 +36,14 @@ const REQUEST_TIMEOUT_MS = (() => {
   return Number.isFinite(configured) && configured > 0 ? configured : 15_000;
 })();
 
+/**
+ * Feedback needs two sequential keyed requests (agent UUID, then rows). Keep
+ * their combined wall-clock below a profile prerender's cache-fill deadline.
+ * The panel is enrichment only, so an upstream that cannot answer promptly is
+ * treated the same as unavailable and the merged source serves [] or stale.
+ */
+const FEEDBACK_TIMEOUT_MS = Math.min(REQUEST_TIMEOUT_MS, 5_000);
+
 export class Scan8004Error extends Error {
   constructor(
     message: string,
@@ -164,12 +172,13 @@ function toDetail(a: ScanAgent, expectedChainId: number, asOf: string): AgentDet
 async function keyedFetch<T>(
   path: string,
   params: Record<string, string | number>,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const url = new URL(`${KEYED_BASE_URL}${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   const res = await fetch(url, {
     headers: { accept: 'application/json', [KEY_HEADER]: API_KEY! },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
   });
   if (!res.ok) {
     throw new Scan8004Error(`8004scan keyed ${path} responded ${res.status}`, res.status);
@@ -294,9 +303,15 @@ export class Scan8004Source implements AgentIndexSource {
     // keyed detail endpoint first and query the keyed feedbacks by UUID. No
     // key, or no UUID, means we return nothing rather than someone else's data.
     if (!API_KEY) return [];
+    const deadline = Date.now() + FEEDBACK_TIMEOUT_MS;
+    const remaining = () => Math.max(1, deadline - Date.now());
     let uuid: string | null = null;
     try {
-      const detail = await keyedFetch<ScanAgent & { id?: string }>(`/agents/${chainId}/${tokenId}`, {});
+      const detail = await keyedFetch<ScanAgent & { id?: string }>(
+        `/agents/${chainId}/${tokenId}`,
+        {},
+        remaining(),
+      );
       uuid = detail.id ?? null;
     } catch {
       return [];
@@ -306,6 +321,7 @@ export class Scan8004Source implements AgentIndexSource {
     const rows = await keyedFetch<Record<string, unknown>[] | { items?: Record<string, unknown>[]; data?: Record<string, unknown>[] }>(
       '/feedbacks',
       { agent_id: uuid, limit: 20 },
+      remaining(),
     );
     const list = Array.isArray(rows) ? rows : (rows.items ?? rows.data ?? []);
     return list.map((f) => ({

@@ -141,6 +141,8 @@ export interface ExpectedAccountSessionPermissions {
     period: keyof typeof SPEND_PERIOD;
     limit: bigint;
   }[];
+  /** Exact ERC-1271 callers approved for this key (empty/omitted means none). */
+  signatureCheckers?: readonly Address[];
 }
 
 interface AccountSpendInfo {
@@ -190,9 +192,10 @@ function sameStringSet(actual: readonly string[], expected: readonly string[]): 
 /**
  * Exact account-local permission comparison. Mutable counters/timestamps in a
  * SpendInfo are deliberately excluded; token, period and ceiling are the
- * authorization. Global execute grants, call checkers, and signature-checker
- * approvals expand a key beyond its local list, so any of them makes the
- * descriptor non-canonical.
+ * authorization. Global execute/checker grants and argument call checkers
+ * expand a key beyond its local list, so any of them makes the descriptor
+ * non-canonical. Session-local ERC-1271 checkers are accepted only when the
+ * caller names their exact canonical set (Ophis uses the CoW settlement).
  */
 export function accountSessionPermissionsMatch(args: {
   expected: ExpectedAccountSessionPermissions;
@@ -206,13 +209,13 @@ export function accountSessionPermissionsMatch(args: {
 }): boolean {
   if (
     args.callCheckers.length !== 0
-    || args.signatureCheckers.length !== 0
     || args.globalExecutes.length !== 0
     || args.globalCallCheckers.length !== 0
     || args.globalSignatureCheckers.length !== 0
   ) {
     return false;
   }
+  if (!sameStringSet(args.signatureCheckers, args.expected.signatureCheckers ?? [])) return false;
   const expectedExecutes = args.expected.calls.map((call) => packedCall(call.to, call.signature));
   if (!sameStringSet(args.executes, expectedExecutes)) return false;
 

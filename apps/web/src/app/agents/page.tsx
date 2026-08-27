@@ -86,8 +86,10 @@ async function Directory({
         <section className="mb-12">
           <h2 className="font-display text-lg font-semibold">Agripinaa agents</h2>
           <p className="mb-4 mt-1 text-sm text-muted-2">
-            Built and run by Agripinaa. Agents with a qualifying on-chain
-            execution attestation are marked Verified.
+            Eight live strategies built and run by Agripinaa, all open to public
+            managed mandates. Harvester and Steward use deliberately different
+            yield policies; the other six expose their own grid, protection, LP,
+            and rebalancing workflows.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {firstParty.map((agent) => (

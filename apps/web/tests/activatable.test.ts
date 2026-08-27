@@ -18,20 +18,11 @@ function inputFor(tokenId: string, endpointLive = false, sessionHandoffSupported
   };
 }
 
-test('a first-party agent with a managed path is activatable', () => {
-  // 269705 is Agripinaa Harvester, the one registry record with managed: true.
-  assert.equal(agentConsumesSession('269705'), true);
-  assert.equal(isActivatable(inputFor('269705')), true);
-  assert.equal(activationBlockedReason(inputFor('269705')), null);
-});
-
-test('a first-party agent with no managed path is not activatable', () => {
-  // Grid, Guardian, Ranger. Nothing in apps/agents reads a stored session, so a
-  // grant made here would sit unread for its whole expiry window.
-  for (const tokenId of ['269703', '269704', '269706']) {
-    assert.equal(agentConsumesSession(tokenId), false, tokenId);
-    assert.equal(isActivatable(inputFor(tokenId)), false, tokenId);
-    assert.equal(activationBlockedReason(inputFor(tokenId)), 'own-capital-only', tokenId);
+test('all eight first-party policies are activatable', () => {
+  for (const tokenId of ['269703', '307485', '269704', '307486', '269705', '307487', '269706', '307488']) {
+    assert.equal(agentConsumesSession(tokenId), true, tokenId);
+    assert.equal(isActivatable(inputFor(tokenId)), true, tokenId);
+    assert.equal(activationBlockedReason(inputFor(tokenId)), null, tokenId);
   }
 });
 
@@ -40,7 +31,7 @@ test('owning the agent is not what makes it activatable', () => {
   // first-party agents, three of which consume nothing.
   assert.equal(
     isActivatable({
-      tokenId: '269703',
+      tokenId: '999999',
       endpointLive: false,
       consumesSession: false,
       sessionHandoffSupported: false,
@@ -64,7 +55,8 @@ test('each blocked reason has copy for what the gate actually checked', () => {
   const ownCapital = ACTIVATION_BLOCKED_COPY['own-capital-only'];
   const noEndpoint = ACTIVATION_BLOCKED_COPY['no-live-endpoint'];
   const noHandoff = ACTIVATION_BLOCKED_COPY['no-session-handoff'];
-  assert.match(ownCapital.body, /own capital/);
+  assert.match(ownCapital.body, /live x402 status/);
+  assert.equal(ownCapital.ctaLabel, 'Use live agent');
   assert.match(noEndpoint.body, /probe/);
   assert.match(noHandoff.body, /protocol/);
   for (const copy of Object.values(ACTIVATION_BLOCKED_COPY)) {

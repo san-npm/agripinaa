@@ -15,7 +15,7 @@ patchedDependencies:
     hash: 7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb
     path: patches/@altananetwork__x402-server@0.2.0.patch
   '@ophis/agent-swap@0.3.1':
-    hash: 9c6b618eb321a06cd83f5dda98d4f1c9010f23852565775d7c3a5e8857b895df
+    hash: afcb3ed74a295c6309ed8a870629b761f4c00f4fd1c8d02e4ee12d647a655c62
     path: patches/@ophis__agent-swap@0.3.1.patch
 
 importers:
@@ -41,7 +41,7 @@ importers:
         version: 0.2.0(patch_hash=7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
       '@ophis/agent-swap':
         specifier: ^0.3.1
-        version: 0.3.1(patch_hash=9c6b618eb321a06cd83f5dda98d4f1c9010f23852565775d7c3a5e8857b895df)(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
+        version: 0.3.1(patch_hash=afcb3ed74a295c6309ed8a870629b761f4c00f4fd1c8d02e4ee12d647a655c62)(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
       '@ophis/sdk':
         specifier: 0.3.0
         version: 0.3.0(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
@@ -218,7 +218,7 @@ importers:
         version: 0.2.0(patch_hash=7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
       '@ophis/agent-swap':
         specifier: ^0.3.1
-        version: 0.3.1(patch_hash=9c6b618eb321a06cd83f5dda98d4f1c9010f23852565775d7c3a5e8857b895df)(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
+        version: 0.3.1(patch_hash=afcb3ed74a295c6309ed8a870629b761f4c00f4fd1c8d02e4ee12d647a655c62)(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)
       '@ophis/sdk':
         specifier: 0.3.0
         version: 0.3.0(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
@@ -3688,7 +3688,7 @@ snapshots:
       - supports-color
     optional: true
 
-  '@ophis/agent-swap@0.3.1(patch_hash=9c6b618eb321a06cd83f5dda98d4f1c9010f23852565775d7c3a5e8857b895df)(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)':
+  '@ophis/agent-swap@0.3.1(patch_hash=afcb3ed74a295c6309ed8a870629b761f4c00f4fd1c8d02e4ee12d647a655c62)(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)(typescript@5.9.3)(zod@4.4.3)':
     dependencies:
       '@cowprotocol/app-data': '@cowprotocol/sdk-app-data@5.3.3(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)'
       '@cowprotocol/cow-sdk': 9.2.6(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@3.2.0)(multiformats@9.9.0)

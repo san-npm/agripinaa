@@ -21,6 +21,11 @@ export class ChassisOphisWallet implements OphisAgentWallet {
     return this.chainId;
   }
 
+  getSigningScheme(): 'eip712' | 'eip1271' {
+    return (this.walletClient as WalletClient & { __ophisSigningScheme?: 'eip712' | 'eip1271' })
+      .__ophisSigningScheme ?? 'eip712';
+  }
+
   async readErc20Decimals(token: `0x${string}`): Promise<number> {
     return this.publicClient.readContract({
       address: token,

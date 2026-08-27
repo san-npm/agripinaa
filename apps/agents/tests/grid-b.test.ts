@@ -175,7 +175,8 @@ test('the registry record pins its registered identity and wallet', () => {
   assert.equal(record.registrationTx, '0xbb75b0bb6620b85ae53d38235b410a85c507b161ea0ad673167fc0a7d40d85eb');
   assert.equal(record.attestation, null);
   assert.deepEqual(record.proofs, []);
-  assert.equal(record.managed, false);
+  assert.equal(record.managed, true);
+  assert.ok(record.managerKeys?.USDT);
 });
 
 test('the funding plan holds both legs of the pair and nothing else', () => {

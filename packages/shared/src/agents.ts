@@ -158,7 +158,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     category: 'grid',
     wallet: '0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A',
     walletFile: 'agent-grid.json',
-    managed: false,
+    managed: true,
+    managerKeys: {
+      USDT: '0xBc0A7d0cDC8a34E156ebc6EaD364505ACcaf94E7',
+      USDC: '0xC99474c1d7729AcFdd36f11f2Eb6751F226f0Cea',
+    },
     backfillOphisTrades: true,
     manifest: {
       name: 'Agripinaa Grid',
@@ -196,7 +200,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     category: 'grid',
     wallet: '0x4A66d9f68CA6be7A44fDb891C0346c2381BF0D6d',
     walletFile: 'agent-grid-b.json',
-    managed: false,
+    managed: true,
+    managerKeys: {
+      USDT: '0x543d444982A7724e88FEC3F64CCAF02aeBA9943F',
+      USDC: '0x581042b60B92689A338A40B3E729A5a8304CD56e',
+    },
     backfillOphisTrades: true,
     manifest: {
       name: 'Agripinaa BTC Grid',
@@ -253,7 +261,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     category: 'health-factor',
     wallet: '0x7d2dCB4eD1a90B992B34C114C924c5643B461DFF',
     walletFile: 'agent-health-factor.json',
-    managed: false,
+    managed: true,
+    managerKeys: {
+      USDT: '0xf8DF9275EdE30Ba0cb15B877Ba33933c052c67b7',
+      USDC: '0xBF423Db88990fF4edDE2F2AF81FB31855634CDF0',
+    },
     backfillOphisTrades: false,
     manifest: {
       name: 'Agripinaa Guardian',
@@ -292,7 +304,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     category: 'health-factor',
     wallet: '0x94bD6175e45f5b1054700bbb4CaBcA1Ab4c15173',
     walletFile: 'agent-venus-guardian.json',
-    managed: false,
+    managed: true,
+    managerKeys: {
+      USDT: '0xBcC1d18f31AbA3d9A1047F27811491Bc6673440f',
+      USDC: '0x0de69E207633ECD26cf964e7f85e43A7E85EC306',
+    },
     backfillOphisTrades: false,
     manifest: {
       name: 'Agripinaa Venus Guardian',
@@ -451,7 +467,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     category: 'rebalancing',
     wallet: '0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6',
     walletFile: 'agent-lp-range.json',
-    managed: false,
+    managed: true,
+    managerKeys: {
+      USDT: '0xC00EEBc7D6cB9Db3249B24d8f6F92E207e494EdF',
+      USDC: '0xE589E8c654D139bBC2063cD706EDD0F11a0e1092',
+    },
     backfillOphisTrades: true,
     manifest: {
       name: 'Agripinaa Ranger',
@@ -504,7 +524,11 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     category: 'rebalancing',
     wallet: '0x2516deB9E76995fd7eb0911AacEA441c12ccc98C',
     walletFile: 'agent-weight-rebalancer.json',
-    managed: false,
+    managed: true,
+    managerKeys: {
+      USDT: '0x04239f71234F4e994DCa9fFACe4b2A327f76113d',
+      USDC: '0xaF21D4449CBd33B40AfC451cC7C8759915A4B24f',
+    },
     backfillOphisTrades: true,
     manifest: {
       name: 'Agripinaa Rebalancer',

@@ -181,10 +181,10 @@ test('the manager key file is the one fund --gen would create', () => {
   assert.equal(managerKeyFile('yield-b').endsWith('agent-yield-b-session.json'), true);
 });
 
-test('every managed agent in the registry has a rotation policy of its own', () => {
+test('every managed yield agent in the registry has a rotation policy of its own', () => {
   // The runner refuses to service a managed agent with no policy rather than
   // falling back to another agent's. This is what keeps that from happening.
-  const managed = AGENT_LIST.filter((record) => record.managed);
+  const managed = AGENT_LIST.filter((record) => record.managed && record.category === 'yield');
   assert.ok(managed.length >= 2, 'managed funds is a single-agent feature again');
   const policies = new Set(managed.map((record) => policyForAgent(record.slug)));
   for (const record of managed) {

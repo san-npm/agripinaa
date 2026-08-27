@@ -19,6 +19,7 @@ import {
   agentSupportsSessionHandoff,
   endpointStatus,
 } from "@/lib/activatable";
+import { agentExperience } from "@/lib/agent-experience";
 import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
 import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
@@ -155,6 +156,7 @@ async function AgentContent({
   // indexed `agentWallet` is metadata its own owner sets. An indexed third
   // party matches nothing here and simply gets no track record panel.
   const registryRecord = agentByTokenId(agent.tokenId);
+  const experience = registryRecord ? agentExperience(registryRecord.slug) : null;
   const registryWallet = registryRecord?.wallet ?? null;
   // Only a third-party listing can be claimed. Whether one already has been is
   // read off the merged record: `getAgent` applies the claim for every surface
@@ -239,16 +241,16 @@ async function AgentContent({
             href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
           >
-            Activate agent <ArrowIcon className="h-4 w-4" />
+            {experience?.profileCta ?? "Activate agent"} <ArrowIcon className="h-4 w-4" />
           </Link>
         ) : blocked === "own-capital-only" ? (
-          // Not hireable, but observable: the execution panel below is the
-          // agent's on-chain record of what it did with its own funds.
+          // Autonomous agents are usable through the live x402 interaction;
+          // this does not pretend they consume a user session grant.
           <a
-            href="#execution"
+            href="#live-agent"
             className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
           >
-            {blockedCopy.ctaLabel} <ArrowIcon className="h-4 w-4" />
+            {experience?.profileCta ?? blockedCopy.ctaLabel} <ArrowIcon className="h-4 w-4" />
           </a>
         ) : (
           <a
@@ -380,7 +382,7 @@ async function AgentContent({
       )}
 
       {registryRecord && (
-        <div className="mt-4">
+        <div id="live-agent" className="mt-4 scroll-mt-20">
           <Suspense
             fallback={
               <Panel title="x402 status endpoint">
@@ -393,7 +395,7 @@ async function AgentContent({
         </div>
       )}
 
-      {/* Anchor target for the "See its execution record" CTA above. */}
+      {/* Execution remains directly linkable from proof and track-record surfaces. */}
       <div id="execution" className="mt-4 scroll-mt-20">
         <Suspense
           fallback={

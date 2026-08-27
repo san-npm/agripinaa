@@ -84,7 +84,7 @@ function EmptyState() {
             The agent can call only the contracts you allowlist.
           </Point>
           <Point icon={<CoinsIcon className="h-5 w-5" />} title="Capped">
-            A hard daily stablecoin limit, enforced on-chain.
+            Published call limits and account isolation bound the authority you grant.
           </Point>
           <Point icon={<LightningIcon className="h-5 w-5" />} title="Revocable">
             Self-expires, and one passkey tap ends it early.

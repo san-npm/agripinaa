@@ -1,6 +1,8 @@
 import type { AgentSummary } from "@agripinaa/agent-index";
+import { agentByTokenId } from "@agripinaa/shared/agents";
 import Link from "next/link";
 
+import { agentExperience } from "@/lib/agent-experience";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { claimProvenanceLabel } from "@/lib/claim-merge";
 import { isVerified } from "@/lib/verified";
@@ -11,6 +13,8 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
   const cat = agent.category ? CATEGORY_INFO[agent.category] : null;
   const Icon = agent.category ? CATEGORY_ICON[agent.category] : null;
   const verified = isVerified(agent.tokenId);
+  const registryRecord = agentByTokenId(agent.tokenId);
+  const experience = registryRecord ? agentExperience(registryRecord.slug) : null;
   // Names the fields this agent's owner filled in, so owner-written text is
   // never mistaken for indexed metadata. Unrelated to the verified treatment:
   // a claim says who wrote the copy, not that anyone vouches for the agent.
@@ -67,6 +71,12 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
       <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-sm text-muted">
         {agent.description || "No description provided by this agent."}
       </p>
+
+      {experience && (
+        <p className="mt-2 text-xs font-medium text-primary">
+          {experience.directoryLabel}
+        </p>
+      )}
 
       {ownerProvided && (
         <p className="mt-1.5 font-mono text-[10px] text-muted-2">{ownerProvided}</p>
