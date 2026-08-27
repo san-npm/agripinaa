@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { boundedLegacyFees } from '../src/guarded-wallet-client';
+import { keccak256 } from 'viem';
+
+import { boundedLegacyFees, knownRawTransactionHash } from '../src/guarded-wallet-client';
 
 test('wallet fee guard supplies an explicit gas limit and bounded price', () => {
   assert.deepEqual(
@@ -18,5 +20,36 @@ test('wallet fee guard rejects excessive gas and maximum transaction cost', () =
   assert.throws(
     () => boundedLegacyFees({ gasPrice: 6_000_000_000n }),
     /fee ceiling exceeded/,
+  );
+});
+
+test('an already-known raw transaction recovers its deterministic hash', () => {
+  const serialized = '0xdeadbeef' as const;
+  assert.equal(
+    knownRawTransactionHash(
+      'eth_sendRawTransaction',
+      [serialized],
+      new Error('nonce too low; Details: already known'),
+    ),
+    keccak256(serialized),
+  );
+});
+
+test('hash recovery refuses generic nonce errors and non-write RPCs', () => {
+  assert.equal(
+    knownRawTransactionHash(
+      'eth_sendRawTransaction',
+      ['0xdeadbeef'],
+      new Error('nonce too low'),
+    ),
+    undefined,
+  );
+  assert.equal(
+    knownRawTransactionHash('eth_call', ['0xdeadbeef'], new Error('already known')),
+    undefined,
+  );
+  assert.equal(
+    knownRawTransactionHash('eth_sendRawTransaction', ['0x'], new Error('already known')),
+    undefined,
   );
 });

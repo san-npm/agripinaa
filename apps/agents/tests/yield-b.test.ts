@@ -155,14 +155,20 @@ test('the machine and the predicate cannot drift apart', () => {
 
 /* ------------------------------ registry ---------------------------------- */
 
-test('the registry record is a managed agent, configuration only until registered', () => {
+test('the registry record pins its registered identity, wallet and manager identities', () => {
   const record = AGENTS['yield-b'];
-  assert.equal(record.tokenId, null);
-  assert.equal(record.wallet, null);
-  assert.equal(record.registrationTx, null);
-  assert.equal(record.attestation, null);
-  assert.deepEqual(record.proofs, []);
+  assert.equal(record.tokenId, '307487');
+  assert.equal(record.wallet, '0x454aC9bae8cC6eA1067F7422992A9Ab2e8DCEdF3');
+  assert.equal(record.registrationTx, '0x4d3d55f3c17290a7e3dc04349f6e2ad5422b1cfb3aea46a3110500c07dc5a85e');
+  assert.equal(record.attestation?.txHash, '0xec7cf7f7b13bdd4607d0cef66e0a6bc2ce70d78e0851bbd40b1f615ce09f95f3');
+  assert.equal(record.attestation?.feedbackHash, '0xebf6999d9f572a91a835f849ae304cfa41f007a68a21c5b0b50e9bd5f129ba28');
+  assert.equal(record.proofs[0]?.ref, '0xbf543e86567cbfd26e2d9cfbbc9136076d71070a7814dbdffa23655da028d40b');
+  assert.equal(record.proofs[0]?.label, 'supply');
   assert.equal(record.managed, true);
+  assert.deepEqual(record.managerKeys, {
+    USDT: '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01',
+    USDC: '0x66641f1c347bc9D4310166890636531CCbFcEF70',
+  });
   assert.equal(record.category, 'yield');
   assert.equal(record.category, yieldBAgent.category);
   assert.deepEqual(record.funding, { bnb: '0.0015', usdt: '1' });

@@ -41,7 +41,7 @@ import {
   parseAbi,
   toBytes,
 } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { nonceManager, privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { parseFlags, type FlagSpec, type Flags } from './cli-flags';
@@ -225,7 +225,7 @@ function loadVerifier() {
     throw new Error(`missing ${verifierFile}; run: pnpm --filter @agripinaa/agents fund -- --gen (add "verifier")`);
   }
   const { privateKey } = JSON.parse(readFileSync(verifierFile, 'utf8')) as { privateKey: `0x${string}` };
-  return privateKeyToAccount(privateKey);
+  return privateKeyToAccount(privateKey, { nonceManager });
 }
 
 // Only when invoked directly: importing this module must never sign anything.

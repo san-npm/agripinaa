@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { ReputationClient } from '@agripinaa/exec-metrics';
 import { BSC_MAINNET } from '@agripinaa/shared';
 import { type Account } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { nonceManager, privateKeyToAccount } from 'viem/accounts';
 
 import type { AgentContext, AgentState, Breakers } from './types';
 import { createGuardedWalletClient } from './guarded-wallet-client';
@@ -145,7 +145,7 @@ export function loadAgentAccount(name: string): Account {
   const { privateKey } = JSON.parse(readFileSync(file, 'utf8')) as {
     privateKey: `0x${string}`;
   };
-  return privateKeyToAccount(privateKey);
+  return privateKeyToAccount(privateKey, { nonceManager });
 }
 
 /**
