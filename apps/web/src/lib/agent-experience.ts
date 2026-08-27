@@ -29,7 +29,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate WBNB grid',
     managed: {
       heading: 'Run the WBNB mean-reversion grid',
-      intro: 'Assign WBNB and USDT to a dedicated passkey account. Grid trades $2 ladder clips through Ophis and enforces its cooldown, daily action cap, breakout halt, and drawdown floor per account.',
+      intro: 'Assign WBNB or USDT to a dedicated passkey account. Grid trades $2 ladder clips through Ophis and enforces its cooldown, daily action cap, breakout halt, and drawdown floor per account.',
       submitLabel: 'Start WBNB grid',
       activeSummary: 'Grid is now watching the WBNB/USDT ladder and will submit bounded Ophis orders when a level crosses.',
     },
@@ -39,7 +39,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate BTC grid',
     managed: {
       heading: 'Run the patient BTCB grid',
-      intro: 'Assign BTCB and USDT to a dedicated passkey account. BTC Grid uses its wider 2.5% ladder, $1.50 clips, and slower cooldown through Ophis.',
+      intro: 'Assign BTCB or USDT to a dedicated passkey account. BTC Grid uses its wider 2.5% ladder, $1.50 clips, and slower cooldown through Ophis.',
       submitLabel: 'Start BTCB grid',
       activeSummary: 'BTC Grid is now watching its wider BTCB/USDT ladder and will trade bounded clips through Ophis.',
     },
@@ -93,7 +93,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate LP Ranger',
     managed: {
       heading: 'Run a managed Pancake V3 range',
-      intro: 'Assign WBNB and USDT to a dedicated passkey account. LP Ranger mints a ±5% position, waits through its out-of-range timer, and uses Ophis when inventory needs balancing.',
+      intro: 'Assign WBNB or USDT to a dedicated passkey account. LP Ranger mints a ±5% position, waits through its out-of-range timer, and uses Ophis when inventory needs balancing.',
       submitLabel: 'Start LP Ranger',
       activeSummary: 'LP Ranger now owns the range lifecycle for this dedicated account under its weekly rebalance and daily action limits.',
     },
@@ -103,7 +103,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate 50/50 rebalancer',
     managed: {
       heading: 'Keep WBNB and USDT near 50/50',
-      intro: 'Assign WBNB and USDT to a dedicated passkey account. Rebalancer acts only outside its five-point drift band and submits one bounded Ophis order toward the target.',
+      intro: 'Assign WBNB or USDT to a dedicated passkey account. Rebalancer acts only outside its five-point drift band and submits one bounded Ophis order toward the target.',
       submitLabel: 'Start 50/50 rebalancing',
       activeSummary: 'Rebalancer is now monitoring this account’s WBNB/USDT weights and will act only outside the published drift band.',
     },

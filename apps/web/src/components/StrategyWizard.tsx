@@ -13,6 +13,7 @@ import {
   buildStrategyScope,
   describeScope,
 } from '@/lib/managed-strategy';
+import { hasStrategyAssetFunding } from '@/lib/strategy-scope';
 import { markRegistered, storeSession } from '@/lib/session-store';
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
@@ -171,7 +172,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
 
   const fmt = (value: bigint | null | undefined) => value == null ? '…' : (Number(value) / 1e18).toFixed(6);
   const gasReady = nativeBal != null && nativeBal >= MIN_NATIVE;
-  const assetsReady = strategy.depositTokens.every((symbol) => (balances[symbol] ?? 0n) > 0n);
+  const assetsReady = hasStrategyAssetFunding(strategy.depositTokens, balances);
   const primaryBtn = 'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
   return (
@@ -202,7 +203,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
           <section className="space-y-4">
             <div>
               <h2 className="font-display text-lg font-semibold">Fund the strategy account</h2>
-              <p className="mt-1 text-sm text-muted">Send the listed assets and a little BNB for execution gas to:</p>
+              <p className="mt-1 text-sm text-muted">Send at least one listed strategy asset and a little BNB for execution gas to:</p>
               <code className="mt-2 block break-all rounded-lg border border-border bg-surface-2 p-3 text-xs text-primary">{wallet.address}</code>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -217,6 +218,9 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
                 <span className={gasReady ? 'font-mono text-sm text-success' : 'font-mono text-sm text-muted-2'}>{fmt(nativeBal)}</span>
               </div>
             </div>
+            <p className="rounded-lg border border-border bg-surface-2 p-3 text-xs leading-relaxed text-muted-2">
+              {strategy.fundingNote} BNB is kept separately for gas; pools and swaps use ERC-20 assets such as WBNB.
+            </p>
             <label className="block text-xs text-muted-2">
               Session lifetime
               <select value={hours} onChange={(event) => setHours(Number(event.target.value))} className="ml-2 rounded border border-border-strong bg-surface-2 px-2 py-1 text-foreground">

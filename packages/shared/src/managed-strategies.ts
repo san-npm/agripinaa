@@ -33,8 +33,10 @@ export interface ManagedSpendCap {
 
 export interface ManagedStrategyDefinition {
   slug: ManagedStrategySlug;
-  /** Assets the activation account must hold before the runner can do useful work. */
+  /** Accepted strategy assets. Funding any one is enough to activate. */
   depositTokens: readonly (keyof typeof TOKENS_BSC)[];
+  /** Explains how this strategy behaves when only one accepted asset is funded. */
+  fundingNote: string;
   callScopes: readonly ManagedCallScope[];
   approvals: readonly ManagedApproval[];
   /** Direct-call token outflows beyond the canonical USDT ceiling. */
@@ -73,6 +75,7 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   grid: {
     slug: 'grid',
     depositTokens: ['WBNB', 'USDT'],
+    fundingNote: 'One asset is enough to activate. The grid acquires the missing side only when an eligible price crossing spends the funded side; it does not place a bootstrap trade.',
     callScopes: BALANCE_ONLY_SCOPE,
     approvals: OPHIS_WBNB_USDT_APPROVALS,
     additionalSpendCaps: [],
@@ -84,6 +87,7 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   'grid-b': {
     slug: 'grid-b',
     depositTokens: ['BTCB', 'USDT'],
+    fundingNote: 'One asset is enough to activate. The grid acquires the missing side only when an eligible price crossing spends the funded side; it does not place a bootstrap trade.',
     callScopes: BALANCE_ONLY_SCOPE,
     approvals: [
       { token: 'BTCB', spender: OPHIS_VAULT_RELAYER_BSC },
@@ -98,6 +102,7 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   'health-factor': {
     slug: 'health-factor',
     depositTokens: ['USDT'],
+    fundingNote: 'Fund the repair reserve with USDT. The Aave collateral and debt must already exist; Guardian never sells collateral or opens debt.',
     callScopes: [{
       to: AAVE_V3_BSC_POOL,
       signatures: ['repay(address,uint256,uint256,address)'],
@@ -112,6 +117,7 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   'venus-guardian': {
     slug: 'venus-guardian',
     depositTokens: ['USDT'],
+    fundingNote: 'Fund the repair reserve with USDT. The Venus collateral and debt must already exist; Venus Guardian never sells collateral or opens debt.',
     callScopes: [{ to: VENUS_VUSDT, signatures: ['repayBorrow(uint256)'] }],
     approvals: [{ token: 'USDT', spender: VENUS_VUSDT }],
     additionalSpendCaps: [],
@@ -123,6 +129,7 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   'lp-range': {
     slug: 'lp-range',
     depositTokens: ['WBNB', 'USDT'],
+    fundingNote: 'One of WBNB or USDT is enough. Ranger swaps one-sided inventory toward 50/50 before it mints the range.',
     callScopes: [{
       to: PANCAKE_V3_POSITION_MANAGER,
       signatures: [
@@ -148,6 +155,7 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   'weight-rebalancer': {
     slug: 'weight-rebalancer',
     depositTokens: ['WBNB', 'USDT'],
+    fundingNote: 'One of WBNB or USDT is enough. Rebalancer trades the one-sided inventory toward its 50/50 target.',
     callScopes: BALANCE_ONLY_SCOPE,
     approvals: OPHIS_WBNB_USDT_APPROVALS,
     additionalSpendCaps: [],

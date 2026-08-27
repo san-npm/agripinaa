@@ -12,6 +12,14 @@ import { TOKENS_BSC, toBaseUnits } from '@agripinaa/shared/tokens';
 
 export { describeScope };
 
+/** A public strategy can start from either listed inventory leg. */
+export function hasStrategyAssetFunding(
+  depositTokens: readonly string[],
+  balances: Readonly<Record<string, bigint>>,
+): boolean {
+  return depositTokens.some((symbol) => (balances[symbol] ?? 0n) > 0n);
+}
+
 /** Pure canonical scope builder shared by the browser flow and unit tests. */
 export function buildStrategyScope(slug: ManagedStrategySlug, hours: number) {
   const strategy = managedStrategyFor(slug);
