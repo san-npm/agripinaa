@@ -3,7 +3,12 @@ import { test } from 'node:test';
 
 import { AGENTS } from '@agripinaa/shared/agents';
 
-import { VERIFIED_AGENTS, VERIFIED_IDS, isVerified } from '../src/lib/verified';
+import {
+  VERIFIED_AGENTS,
+  VERIFIED_IDS,
+  filterVerified,
+  isVerified,
+} from '../src/lib/verified';
 
 /**
  * The verified listing is now projected from the shared registry instead of
@@ -41,6 +46,20 @@ test('registration without execution attestation earns no verified badge', () =>
       `${record.slug} appears in the verified listing`,
     );
   }
+});
+
+test('verified surfaces exclude registered first-party agents without an attestation', () => {
+  const firstParty = [
+    { tokenId: '269703', name: 'Agripinaa Grid' },
+    { tokenId: '307485', name: 'Agripinaa BTC Grid' },
+    { tokenId: '307486', name: 'Agripinaa Venus Guardian' },
+    { tokenId: '307488', name: 'Agripinaa Rebalancer' },
+  ];
+
+  assert.deepEqual(
+    filterVerified(firstParty).map((agent) => agent.tokenId),
+    ['269703', '307486'],
+  );
 });
 
 test('isVerified is true only for our registered agents', () => {
