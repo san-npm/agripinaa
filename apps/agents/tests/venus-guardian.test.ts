@@ -263,13 +263,15 @@ test('the manifest says where the health factor comes from', () => {
   assert.match(String(safety['onBudgetExhausted']), /monitor/i);
 });
 
-test('the registry record is configuration only until it is registered', () => {
+test('the registry record pins its registered identity, wallet, and first live repair', () => {
   const record = AGENTS['venus-guardian'];
-  assert.equal(record.tokenId, null);
-  assert.equal(record.wallet, null);
-  assert.equal(record.registrationTx, null);
-  assert.equal(record.attestation, null);
-  assert.deepEqual(record.proofs, []);
+  assert.equal(record.tokenId, '307486');
+  assert.equal(record.wallet, '0x94bD6175e45f5b1054700bbb4CaBcA1Ab4c15173');
+  assert.equal(record.registrationTx, '0xf0c59a0aae6a8f94e7aa899488de869515ec93743c0c850df5d425cdd21e40a0');
+  assert.equal(record.attestation?.txHash, '0xdd938692c2c3f6eb1f6813171e177e1d9af20882ad0324871ba3d1cc954eb450');
+  assert.equal(record.attestation?.feedbackHash, '0x244903446100c31d00763a40478eb52ec4407b346b46f2183bee7718117197f8');
+  assert.equal(record.proofs[0]?.ref, '0xd9817ea31984019038303cbcb1aeea46bc44ae98bd6fe0ef0bdc83a1a80f5808');
+  assert.match(record.proofs[0]?.note ?? '', /restoring HF from 1\.27 to 1\.60/);
   assert.equal(record.managed, false);
   assert.equal(record.category, 'health-factor');
   assert.equal(record.category, venusGuardianAgent.category);

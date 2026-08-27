@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { CowOrder, CowTrade } from '@agripinaa/exec-metrics';
-import { AGENTS, PROOF_AGENTS, type ProofAgent, type ProofAgentSlug } from '@agripinaa/shared';
+import { PROOF_AGENTS } from '@agripinaa/shared';
 
 import { enrichOphisTrades, mapProofLogEntries } from '../src/proof';
 
@@ -275,33 +275,12 @@ test('bounds total order verification work when the upstream remains unavailable
 /* ------------------- the agents registered after the first four ----------- */
 
 /*
- * The four agents this expansion adds carry no tokenId yet, so PROOF_AGENTS
- * (which projects only registered records) does not admit them, and the feed
- * cannot be exercised through it. Registration fills in exactly two fields, so
- * this roster is the shipped record with those two supplied: the same
- * projection toProofAgent will make the day register.ts runs. Without a mapped
- * event each of them would appear on the marketplace with an empty track
- * record, and venus-guardian and yield-b have no chain-backfill path at all.
+ * Registration now admits all four expansion agents to PROOF_AGENTS. Without
+ * a mapped event each would have an identity but an empty track record, and
+ * venus-guardian and yield-b have no chain-backfill path at all.
  */
 const NEW_SLUGS = ['grid-b', 'venus-guardian', 'weight-rebalancer', 'yield-b'] as const;
-const AFTER_REGISTRATION: Partial<Record<ProofAgentSlug, ProofAgent>> = {
-  ...PROOF_AGENTS,
-  ...Object.fromEntries(
-    NEW_SLUGS.map((slug, index) => [
-      slug,
-      {
-        slug,
-        tokenId: String(269_710 + index),
-        name: AGENTS[slug].name,
-        category: AGENTS[slug].category,
-        wallet: `0x${String(index + 1).repeat(40)}` as `0x${string}`,
-        backfillOphisTrades: AGENTS[slug].backfillOphisTrades,
-      } satisfies ProofAgent,
-    ]),
-  ),
-};
-
-const tokenIdOf = (slug: (typeof NEW_SLUGS)[number]) => AFTER_REGISTRATION[slug]!.tokenId;
+const tokenIdOf = (slug: (typeof NEW_SLUGS)[number]) => PROOF_AGENTS[slug]!.tokenId;
 
 test('grid-b Ophis submissions map to trade candidates on its own pair', () => {
   const uid = orderUid(21);
@@ -318,7 +297,7 @@ test('grid-b Ophis submissions map to trade candidates on its own pair', () => {
         clipAmount: '0.0000186',
       },
     ],
-    AFTER_REGISTRATION,
+    PROOF_AGENTS,
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.agent, tokenIdOf('grid-b'));
@@ -342,7 +321,7 @@ test('a grid-b buy names the legs the other way round', () => {
         clipAmount: '1.5',
       },
     ],
-    AFTER_REGISTRATION,
+    PROOF_AGENTS,
   );
   assert.match(events[0]?.summary ?? '', /1\.5 USDT → BTCB/);
 });
@@ -361,7 +340,7 @@ test('venus-guardian repairs map, with its own health factor beside them', () =>
       { at: '2026-08-25T09:11:00.000Z', agent: 'venus-guardian', event: 'hf', hf: 1.71 },
       { at: '2026-08-25T09:11:30.000Z', agent: 'health-factor', event: 'hf', hf: 1.05 },
     ],
-    AFTER_REGISTRATION,
+    PROOF_AGENTS,
   );
   const repair = events.find((event) => event.agent === tokenIdOf('venus-guardian'));
   assert.ok(repair, 'the guardian repair reached the feed');
@@ -383,7 +362,7 @@ test('the Aave guardian still reads its own health factor, not the Venus one', (
       { at: '2026-08-25T09:10:30.000Z', agent: 'venus-guardian', event: 'hf', hf: 3.33 },
       { at: '2026-08-25T09:11:00.000Z', agent: 'health-factor', event: 'hf', hf: 1.44 },
     ],
-    AFTER_REGISTRATION,
+    PROOF_AGENTS,
   );
   assert.equal(events[0]?.hf, 1.44);
 });
@@ -404,7 +383,7 @@ test('weight-rebalancer submissions map like the other Ophis rebalances', () => 
         notionalUsd: 2.6,
       },
     ],
-    AFTER_REGISTRATION,
+    PROOF_AGENTS,
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.agent, tokenIdOf('weight-rebalancer'));
@@ -432,7 +411,7 @@ test('yield-b supplies and withdrawals map like the incumbent harvester', () => 
         txHash: `0x${'5'.repeat(64)}`,
       },
     ],
-    AFTER_REGISTRATION,
+    PROOF_AGENTS,
   );
   assert.equal(events.length, 2);
   assert.equal(events.every((event) => event.agent === tokenIdOf('yield-b')), true);
@@ -441,8 +420,7 @@ test('yield-b supplies and withdrawals map like the incumbent harvester', () => 
   assert.match(events[0]?.summary ?? '', /Withdrew USDT from Aave/);
 });
 
-test('an unregistered agent stays out of the feed until it has an identity', () => {
-  // The default roster is PROOF_AGENTS, which admits registered records only.
+test('a newly registered agent enters the feed under its pinned identity', () => {
   const events = mapProofLogEntries([
     {
       at: '2026-08-25T09:30:00.000Z',
@@ -453,7 +431,8 @@ test('an unregistered agent stays out of the feed until it has an identity', () 
       txHash: `0x${'6'.repeat(64)}`,
     },
   ]);
-  assert.deepEqual(events, []);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.agent, tokenIdOf('yield-b'));
 });
 
 test('ignores heartbeats, malformed receipts, and unknown agents', () => {

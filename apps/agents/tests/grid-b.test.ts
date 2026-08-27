@@ -168,11 +168,11 @@ test('the manifest says what a breach actually does, not just where it sits', ()
   assert.equal(execution.chainId, 56);
 });
 
-test('the registry record is configuration only until it is registered', () => {
+test('the registry record pins its registered identity and wallet', () => {
   const record = AGENTS['grid-b'];
-  assert.equal(record.tokenId, null);
-  assert.equal(record.wallet, null);
-  assert.equal(record.registrationTx, null);
+  assert.equal(record.tokenId, '307485');
+  assert.equal(record.wallet, '0x4A66d9f68CA6be7A44fDb891C0346c2381BF0D6d');
+  assert.equal(record.registrationTx, '0xbb75b0bb6620b85ae53d38235b410a85c507b161ea0ad673167fc0a7d40d85eb');
   assert.equal(record.attestation, null);
   assert.deepEqual(record.proofs, []);
   assert.equal(record.managed, false);

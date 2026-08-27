@@ -15,7 +15,7 @@ import { ATTEST_FLAGS, anchorFor } from '../src/attest';
 import { parseFlags } from '../src/cli-flags';
 
 const registered = agentBySlug('lp-range')!;
-const unregistered = agentBySlug('grid-b')!;
+const newlyRegistered = agentBySlug('grid-b')!;
 
 /** The same parse main() runs, so a test can never hand anchorFor raw argv. */
 function flags(args: readonly string[]) {
@@ -61,13 +61,13 @@ test('an agent with no pinned proof falls back to its newest logged execution', 
     { agent: 'grid-b', event: 'repay', at: '2026-08-24T10:00:00.000Z', txHash: '0x' + 'a'.repeat(64) },
     { agent: 'grid-b', event: 'supply', at: '2026-08-24T12:00:00.000Z', txHash: '0x' + 'b'.repeat(64) },
   ]);
-  assert.deepEqual(unregistered.proofs, []);
-  const anchor = anchorFor(unregistered, flags([]), dir);
+  assert.deepEqual(newlyRegistered.proofs, []);
+  const anchor = anchorFor(newlyRegistered, flags([]), dir);
   assert.deepEqual(anchor, { label: 'supply', ref: '0x' + 'b'.repeat(64), source: 'log' });
 });
 
 test('no proof anywhere yields no anchor, so nothing can be attested blind', () => {
-  assert.equal(anchorFor(unregistered, flags([]), emptyDir()), null);
+  assert.equal(anchorFor(newlyRegistered, flags([]), emptyDir()), null);
 });
 
 test('a value-less --ref stops the run instead of anchoring to a stale proof', () => {

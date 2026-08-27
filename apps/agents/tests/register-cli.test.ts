@@ -8,7 +8,7 @@
  * at the first. It cannot be undone. Idempotency used to rest on
  * data/registry.json alone, which is gitignored and therefore exists only on
  * the machine that ran the original registration, so a fresh checkout (or the
- * VM) would have re-minted the four live agents.
+ * VM) would have re-minted the live agents.
  *
  * Nothing here touches the chain: the flag parsing and the plan are pure, and
  * the one chain read is exercised through a stub.
@@ -32,10 +32,15 @@ const REGISTRY = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432' as const;
 const WALLET = '0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A' as const;
 const only = (argv: string[]) => parseFlags(argv, REGISTER_FLAGS).value('--only');
 
-/** A record the way it looks before registration: no id, no tx. */
-const unregistered = AGENT_LIST.find((record) => record.tokenId === null);
-/** A record the way it looks after: the four live agents are in this shape. */
-const registered = AGENT_LIST.find((record) => record.tokenId !== null);
+/** Production is fully registered; derive a pre-registration fixture explicitly. */
+const registered = AGENT_LIST[0]!;
+const unregistered: AgentRecord = {
+  ...AGENT_LIST[4]!,
+  tokenId: null,
+  registrationTx: null,
+  attestation: null,
+  proofs: [],
+};
 
 /* --------------------------------- flags --------------------------------- */
 
@@ -69,14 +74,13 @@ test('a record that carries a token id is never minted again, ledger or no ledge
 test('a registration tx with no token id yet also counts as registered', () => {
   // The window between the mint landing and the id being written back.
   const halfWritten = {
-    ...(unregistered as AgentRecord),
+    ...unregistered,
     registrationTx: `0x${'a'.repeat(64)}`,
   };
   assert.match(alreadyRegistered(halfWritten, {}) ?? '', /registration tx/);
 });
 
 test('the local ledger still skips an agent the shared registry has not caught up with', () => {
-  assert.ok(unregistered, 'every agent is registered; nothing left to plan');
   const ledger: RegistryLedger = {
     [unregistered.slug]: { agentId: '269707', txHash: `0x${'b'.repeat(64)}` },
   };
@@ -85,21 +89,15 @@ test('the local ledger still skips an agent the shared registry has not caught u
 });
 
 test('an agent with no id, no tx and no ledger entry is the only kind that mints', () => {
-  assert.ok(unregistered);
   assert.equal(alreadyRegistered(unregistered, {}), null);
   assert.deepEqual(pendingRegistrations([unregistered], {}), [unregistered]);
 });
 
-test('a bare run mints only the agents that have no identity', () => {
+test('a bare run mints nothing once every production agent has an identity', () => {
   // What `pnpm register` with no flags would do from a fresh checkout: the
   // live agents are excluded, so they are neither preflighted nor signed for.
   const pending = pendingRegistrations(selectRecords(AGENT_LIST, undefined), {});
-  assert.ok(pending.length > 0, 'nothing to register at all');
-  assert.equal(
-    pending.some((record) => record.tokenId !== null),
-    false,
-    'a registered agent reached the mint queue',
-  );
+  assert.deepEqual(pending, []);
 });
 
 /* ---------------------------- the chain check ---------------------------- */
