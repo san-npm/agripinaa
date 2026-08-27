@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { TOKENS_BSC, toBaseUnits } from '@agripinaa/shared/tokens';
 
-import { buildStrategyScope } from '../src/lib/strategy-scope';
+import { buildStrategyScope, hasStrategyAssetFunding } from '../src/lib/strategy-scope';
 
 test('Ranger activation grants USDT, WBNB and native spend ceilings in canonical order', () => {
   const scope = buildStrategyScope('lp-range', 24);
@@ -28,4 +28,15 @@ test('Ophis-only strategies do not gain a direct WBNB spend permission', () => {
     scope.permissions.spend.map((spend) => spend.token),
     [TOKENS_BSC.USDT!.address, undefined],
   );
+});
+
+test('a multi-asset strategy can activate from either inventory leg', () => {
+  assert.equal(hasStrategyAssetFunding(['WBNB', 'USDT'], { WBNB: 1n, USDT: 0n }), true);
+  assert.equal(hasStrategyAssetFunding(['WBNB', 'USDT'], { WBNB: 0n, USDT: 1n }), true);
+  assert.equal(hasStrategyAssetFunding(['WBNB', 'USDT'], { WBNB: 0n, USDT: 0n }), false);
+});
+
+test('Guardian remains USDT-only', () => {
+  assert.equal(hasStrategyAssetFunding(['USDT'], { WBNB: 1n, USDT: 0n }), false);
+  assert.equal(hasStrategyAssetFunding(['USDT'], { USDT: 1n }), true);
 });

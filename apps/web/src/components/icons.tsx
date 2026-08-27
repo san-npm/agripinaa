@@ -83,11 +83,41 @@ export const BNBLogo = ({ className }: IconProps) => {
   );
 };
 
-/** Pick the logo for a token symbol (USDT/USDC/BNB/tBNB). */
-export function TokenLogo({ symbol, className }: { symbol: string; className?: string }) {
+/** BTCB: Binance-Peg Bitcoin uses Bitcoin's orange coin mark. */
+export const BTCBLogo = ({ className }: IconProps) => (
+  <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
+    <circle cx="16" cy="16" r="16" fill="#F7931A" />
+    <text
+      x="16"
+      y="16.8"
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontFamily="Arial, Helvetica, sans-serif"
+      fontSize="21"
+      fontWeight="700"
+      fill="#fff"
+    >
+      ₿
+    </text>
+  </svg>
+);
+
+/** Pure mapping kept testable so a listed asset never silently gets a generic mark. */
+export function tokenLogoKind(symbol: string): 'usdt' | 'usdc' | 'bnb' | 'btcb' | 'generic' {
   const s = symbol.toUpperCase();
-  if (s === "USDT") return <USDTLogo className={className} />;
-  if (s === "USDC") return <USDCLogo className={className} />;
-  if (s === "BNB" || s === "TBNB" || s === "WBNB") return <BNBLogo className={className} />;
+  if (s === "USDT") return 'usdt';
+  if (s === "USDC") return 'usdc';
+  if (s === "BNB" || s === "TBNB" || s === "WBNB") return 'bnb';
+  if (s === "BTCB") return 'btcb';
+  return 'generic';
+}
+
+/** Pick the logo for a token symbol. */
+export function TokenLogo({ symbol, className }: { symbol: string; className?: string }) {
+  const kind = tokenLogoKind(symbol);
+  if (kind === 'usdt') return <USDTLogo className={className} />;
+  if (kind === 'usdc') return <USDCLogo className={className} />;
+  if (kind === 'bnb') return <BNBLogo className={className} />;
+  if (kind === 'btcb') return <BTCBLogo className={className} />;
   return <CoinsIcon className={className} />;
 }
