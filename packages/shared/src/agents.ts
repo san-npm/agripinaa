@@ -14,10 +14,11 @@
  *
  * 1. A REGISTERED agent's `manifest` is byte-sensitive. It is served at
  *    /manifests/<slug>.json, which is the tokenURI of an already-minted,
- *    immutable ERC-8004 identity. Those bytes must not change: not a value,
- *    not a key, not the ORDER of the keys, since the body is JSON.stringify'd
- *    in declaration order. tests/agents.test.ts pins each registered agent's
- *    exact bytes.
+ *    immutable ERC-8004 identity. Switch `x402.note` from pending registration
+ *    to live when the token id is captured, then pin the resulting body. After
+ *    that transition, no value, key, or key ORDER may drift: the body is
+ *    JSON.stringify'd in declaration order and tests/agents.test.ts captures
+ *    each registered agent's exact bytes.
  * 2. `wallet` is the agent's PUBLIC address. Signer secrets live only in
  *    wallets/*.json and are never read here.
  *
@@ -76,7 +77,7 @@ export interface ManifestBase {
   safety: Record<string, SafetyValue>;
   /** Present only on the session-key agents; omitted elsewhere. */
   recommendedScope?: { spendCapUsdtPerDay: string; expiresHours: number };
-  x402: { priceUsdt: string; note: string };
+  x402: { priceUsdt: string; note: 'live' | 'pending registration' };
 }
 
 export interface ExecutionProof {
@@ -225,7 +226,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         onHalt:
           'trading stops and stays stopped until an operator clears the agent state file; there is no automatic resume',
       },
-      x402: { priceUsdt: '0.05', note: 'pending registration' },
+      x402: { priceUsdt: '0.05', note: 'live' },
     },
     /*
      * One leg per side of the pair, since a grid spends both: the buy side
@@ -319,7 +320,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         onBudgetExhausted:
           'the agent keeps monitoring and keeps reporting; it never sells or withdraws collateral to fund a repay',
       },
-      x402: { priceUsdt: '0.05', note: 'pending registration' },
+      x402: { priceUsdt: '0.05', note: 'live' },
     },
     funding: { bnb: '0.0015', usdt: '2', wbnb: '0.005' },
     registrationTx: '0xf0c59a0aae6a8f94e7aa899488de869515ec93743c0c850df5d425cdd21e40a0',
@@ -422,7 +423,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
           'revoking the session stops all further moves; the position stays where it is and the depositor withdraws it themselves',
       },
       recommendedScope: { spendCapUsdtPerDay: '250', expiresHours: 720 },
-      x402: { priceUsdt: '0.05', note: 'pending registration' },
+      x402: { priceUsdt: '0.05', note: 'live' },
     },
     funding: { bnb: '0.0015', usdt: '1' },
     registrationTx: '0x4d3d55f3c17290a7e3dc04349f6e2ad5422b1cfb3aea46a3110500c07dc5a85e',
@@ -529,7 +530,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         onHalt:
           'no automatic halt: the agent takes no directional view, so the daily cap, the cooldown and the minimum notional are the limits',
       },
-      x402: { priceUsdt: '0.05', note: 'pending registration' },
+      x402: { priceUsdt: '0.05', note: 'live' },
     },
     funding: { bnb: '0.0015', usdt: '2.5', wbnb: '0.004' },
     registrationTx: '0xcf6a2d2c86cc72e8c4c02e772ada6be228abaae2136d7f4d5b5a0e69ffbbc77c',
