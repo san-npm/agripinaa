@@ -27,7 +27,7 @@ async function StatsStrip() {
         : "ERC-8004 agents registered",
     },
     {
-      value: String(dir.verified.length),
+      value: String(dir.firstParty.length),
       label: "live Agripinaa agents on mainnet",
     },
     {

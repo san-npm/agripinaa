@@ -58,4 +58,11 @@ export function isVerified(tokenId: string): boolean {
   return tokenId in VERIFIED_AGENTS;
 }
 
+/** Keep only records whose first-party identity carries our attestation. */
+export function filterVerified<T extends { tokenId: string }>(
+  agents: readonly T[],
+): T[] {
+  return agents.filter((agent) => isVerified(agent.tokenId));
+}
+
 export const VERIFIED_IDS = Object.keys(VERIFIED_AGENTS);
