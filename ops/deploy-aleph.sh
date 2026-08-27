@@ -73,22 +73,26 @@ S "cd ~/agripinaa && git fetch -q origin && git cat-file -e '$DEPLOY_COMMIT^{com
 # rsync splits -e on spaces and honours quotes, so the key and host-key paths
 # are quoted for it, not for this shell.
 rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --ignore-times "$OPS_DIR/../wallets/" "$HOST:$APPDIR/wallets/"
-# Check every key the runner loads before restarting it. A single legacy wallet
-# is not proof that a newly provisioned one landed at the checkout the systemd
-# unit actually uses.
-REQUIRED_WALLETS=(
-  agent-grid.json
-  agent-grid-b.json
-  agent-health-factor.json
-  agent-venus-guardian.json
-  agent-yield.json
-  agent-yield-session.json
-  agent-yield-b.json
-  agent-yield-b-session.json
-  agent-lp-range.json
-  agent-weight-rebalancer.json
-)
+# Ask the selected checkout which keys its runner needs. This keeps both a
+# forward deploy and DEPLOY_COMMIT rollback aligned with the code systemd will
+# start. Revisions before required-wallets.ts derive the same inventory from
+# their own shared registry, which keeps older four-agent rollbacks usable.
+if S "test -f '$APPDIR/apps/agents/src/required-wallets.ts'"; then
+  REQUIRED_WALLET_OUTPUT=$(S "cd '$APPDIR' && pnpm --filter @agripinaa/agents exec tsx src/required-wallets.ts")
+else
+  LEGACY_WALLET_INVENTORY='import { AGENT_LIST } from "@agripinaa/shared/agents"; console.log(["facilitator.json", ...AGENT_LIST.filter((agent) => agent.wallet !== null).flatMap((agent) => [agent.walletFile, ...(agent.managed ? ["agent-" + agent.slug + "-session.json"] : [])])].join("\n"))'
+  REQUIRED_WALLET_OUTPUT=$(S "cd '$APPDIR' && pnpm --filter @agripinaa/agents exec tsx -e '$LEGACY_WALLET_INVENTORY'")
+fi
+REQUIRED_WALLETS=("${(@f)REQUIRED_WALLET_OUTPUT}")
+(( ${#REQUIRED_WALLETS[@]} > 0 )) || {
+  echo "FATAL: selected commit declared no runner wallets"
+  exit 1
+}
 for WALLET in "${REQUIRED_WALLETS[@]}"; do
+  echo "$WALLET" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*\.json$' || {
+    echo "FATAL: selected commit declared an invalid wallet filename"
+    exit 1
+  }
   S "test -f '$APPDIR/wallets/$WALLET'" || {
     echo "FATAL: wallet sync did not land at $APPDIR/wallets/$WALLET"
     exit 1

@@ -33,6 +33,25 @@ export const MANAGED_AGENT_SLUGS: string[] = AGENT_LIST.filter((agent) => agent.
 );
 
 /**
+ * Secret files the long-lived runner needs for this exact registry revision.
+ * Configuration-only agents with no public wallet are skipped at boot, so
+ * their not-yet-created files are not deployment prerequisites.
+ */
+export function requiredRunnerWalletFiles(
+  agents: readonly AgentRecord[] = AGENT_LIST,
+): string[] {
+  return [
+    'facilitator.json',
+    ...agents
+      .filter((agent) => agent.wallet !== null)
+      .flatMap((agent) => [
+        agent.walletFile,
+        ...(agent.managed ? [`agent-${agent.slug}-session.json`] : []),
+      ]),
+  ];
+}
+
+/**
  * Boot guard: every strategy module the runner hosts must have a registry
  * record. Fail loudly here rather than ticking an agent that has no identity.
  */
