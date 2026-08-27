@@ -25,13 +25,14 @@ import { collectProofEvents } from './proof';
 import { RequestGate } from './request-gate';
 import {
   loadManaged,
+  managedAccountStateKey,
   managedHealthKey,
   MANAGED_HEALTH_MAX_AGE_MS,
   upsertManaged,
   type ManagedAccount,
   type ManagedHealth,
 } from './managed';
-import type { AgentContext, AgentModule } from './types';
+import { isGlobalHalt, type AgentContext, type AgentModule } from './types';
 
 /** Public identity of an agent's manager session key (private half stays on the VM). */
 export interface ManagerIdentity {
@@ -54,6 +55,22 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ROUTER_SIGNATURE_LIST = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
 const manageGate = new RequestGate(20, 60_000, 8);
 const SESSION_EXPIRY_CLOCK_SKEW_SECONDS = 5 * 60;
+
+export function managedServiceHalt(
+  agent: string,
+  account: Hex,
+  ctx: AgentContext,
+): { halted: boolean; reason?: string } {
+  const baseHalt = ctx.breakers.isHalted();
+  if (!managedStrategyFor(agent) || isGlobalHalt(baseHalt)) return baseHalt;
+  const accountHalt = ctx.state.get<{ reason: string } | null>(
+    managedAccountStateKey(account, 'halted'),
+    null,
+  );
+  return accountHalt
+    ? { halted: true, reason: accountHalt.reason }
+    : { halted: false };
+}
 
 export function managedExpiryProblem(expiry: unknown, nowSeconds = Math.floor(Date.now() / 1000)): string | null {
   if (typeof expiry !== 'number' || !Number.isInteger(expiry) || expiry <= nowSeconds) {
@@ -447,7 +464,7 @@ export function startX402Server(opts: {
         return firstScopedTarget(candidate)?.toLowerCase() === targetAddress.toLowerCase();
       });
       const registered = registeredEntry != null;
-      const halted = runtime.ctx.breakers.isHalted();
+      const halted = managedServiceHalt(agent, account as Hex, runtime.ctx);
       const health = registered
         ? runtime.ctx.state.get<ManagedHealth | null>(
             managedHealthKey(account as Hex, targetAddress as Hex),
@@ -459,8 +476,10 @@ export function startX402Server(opts: {
       res.writeHead(200, { 'cache-control': 'no-store', 'content-type': 'application/json' });
       res.end(JSON.stringify({
         registered,
-        service: halted.halted ? 'halted' : !registered ? 'not-registered' : ready ? 'ready' : 'unavailable',
-        reason: halted.reason ?? (!fresh ? 'managed sweep heartbeat is stale or not yet available' : health?.reason ?? null),
+        service: !registered ? 'not-registered' : halted.halted ? 'halted' : ready ? 'ready' : 'unavailable',
+        reason: !registered
+          ? null
+          : halted.reason ?? (!fresh ? 'managed sweep heartbeat is stale or not yet available' : health?.reason ?? null),
         lastSweepAt: health?.at ?? null,
       }));
       return;

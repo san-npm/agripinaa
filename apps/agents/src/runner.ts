@@ -15,10 +15,14 @@ import { assertModulesRegistered, isUnprovisioned, MANAGED_AGENT_SLUGS } from '.
 import { buildContext, DATA_DIR, ensureDataDir, hasAgentWallet } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
+import { loadManaged } from './managed';
 import { tickManagedYield } from './managed-runner';
-import { tickManagedStrategy } from './managed-strategy-runner';
+import {
+  managedStrategyNextDelayMs,
+  tickManagedStrategy,
+} from './managed-strategy-runner';
 import { startX402Server, type ManagerIdentity, type ManagerSet } from './x402-server';
-import type { AgentContext, AgentModule } from './types';
+import { isGlobalHalt, type AgentContext, type AgentModule } from './types';
 import { policyForAgent } from './yield-policy';
 import type { ManagedPolicy } from './agents/yield';
 import { gridAgent } from './agents/grid';
@@ -261,6 +265,7 @@ async function main() {
         // that demo wallet must not disable unrelated public mandates; each
         // managed account is checked against its namespaced breaker below.
         if (running) return;
+        if (isGlobalHalt(ctx.breakers.isHalted())) return;
         running = true;
         try {
           const result = await tickManagedStrategy({ ctx, module, client, managerKey });
@@ -276,8 +281,33 @@ async function main() {
           running = false;
         }
       };
-      void loop();
-      setInterval(loop, MANAGED_TICK_MS);
+      const scheduleNext = (elapsedMs: number) => {
+        let managedEntries = 0;
+        try {
+          managedEntries = loadManaged(name).length;
+        } catch (err) {
+          // A damaged registry must not silently stop a safety loop. Schedule
+          // at the full-registry rate while the next sweep reports the error.
+          managedEntries = 300;
+          ctx.log({
+            event: 'managed-strategy-schedule-error',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        const delayMs = managedStrategyNextDelayMs(
+          module.tickIntervalMs,
+          managedEntries,
+          elapsedMs,
+        );
+        setTimeout(() => {
+          const startedAt = Date.now();
+          void loop().finally(() => scheduleNext(Date.now() - startedAt));
+        }, delayMs);
+      };
+      // The first sweep is immediate; later sweeps adapt to registry size so
+      // every bounded batch completes within the module's declared cadence.
+      const startedAt = Date.now();
+      void loop().finally(() => scheduleNext(Date.now() - startedAt));
     }
   }
 

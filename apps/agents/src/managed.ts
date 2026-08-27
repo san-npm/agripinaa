@@ -57,6 +57,11 @@ export function managedHealthKey(account: Address, router: Address): string {
   return `managed-health:${account.toLowerCase()}:${router.toLowerCase()}`;
 }
 
+/** Durable state owned by one public mandate, isolated from demo-wallet state. */
+export function managedAccountStateKey(account: Address, key: string): string {
+  return `managed:${account.toLowerCase()}:${key}`;
+}
+
 function file(agent: string, dir: string): string {
   return join(dir, `${agent}.managed.json`);
 }

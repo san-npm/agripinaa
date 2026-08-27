@@ -18,7 +18,7 @@ import { BSC_MAINNET } from '@agripinaa/shared';
 import { type Account } from 'viem';
 import { nonceManager, privateKeyToAccount } from 'viem/accounts';
 
-import type { AgentContext, AgentState, Breakers } from './types';
+import { haltIsGlobal, type AgentContext, type AgentState, type Breakers } from './types';
 import { createGuardedWalletClient } from './guarded-wallet-client';
 import { createQuorumPublicClient } from './quorum-client';
 
@@ -91,7 +91,7 @@ export function appendLogLine(file: string, line: string): void {
 }
 
 interface DiskState {
-  halted?: { reason: string; at: string };
+  halted?: { reason: string; at: string; global?: boolean };
   actions?: Record<string, number[]>;
   kv?: Record<string, unknown>;
 }
@@ -115,7 +115,7 @@ function loadDisk(name: string): DiskState {
     } catch {
       /* best-effort preservation */
     }
-    return { halted: { reason: 'state-file-corrupt', at: new Date().toISOString() } };
+    return { halted: { reason: 'state-file-corrupt', at: new Date().toISOString(), global: true } };
   }
 }
 
@@ -181,15 +181,21 @@ export async function buildContext(name: string): Promise<AgentContext> {
   };
 
   const breakers: Breakers = {
-    halt(reason: string): void {
-      disk.halted = { reason, at: new Date().toISOString() };
+    halt(reason: string, scope?: { global?: boolean }): void {
+      // Expected portfolio-risk halts protect only this agent's own account.
+      // Unknown integrity failures fail closed across managed accounts unless
+      // a caller deliberately supplies a narrower scope.
+      const global = haltIsGlobal(reason, scope);
+      disk.halted = { reason, at: new Date().toISOString(), global };
       saveDisk(name, disk);
-      log({ event: 'halt', reason });
+      log({ event: 'halt', reason, global });
     },
     isHalted() {
-      return disk.halted
-        ? { halted: true, reason: disk.halted.reason }
-        : { halted: false };
+      if (!disk.halted) return { halted: false };
+      // Older state files predate the scope bit. Migrate known strategy-owned
+      // halts as account-only; unknown/operator reasons remain global.
+      const global = disk.halted.global ?? haltIsGlobal(disk.halted.reason);
+      return { halted: true, reason: disk.halted.reason, global };
     },
     allowAction(kind: string, maxPerDay: number): boolean {
       const now = Date.now();
