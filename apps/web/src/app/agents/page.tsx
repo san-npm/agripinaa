@@ -5,8 +5,7 @@ import { Suspense } from "react";
 
 import { AgentCard } from "@/components/AgentCard";
 import { AgentFilters } from "@/components/AgentFilters";
-import { VerifiedIcon } from "@/components/icons";
-import { listRegistryPage, listVerified, searchDirectory } from "@/lib/data";
+import { listFirstParty, listRegistryPage, searchDirectory } from "@/lib/data";
 import {
   applyLocalFilters,
   directoryHref,
@@ -17,7 +16,7 @@ import {
 export const metadata: Metadata = {
   title: "All agents · Agripinaa",
   description:
-    "Every AI agent registered in the ERC-8004 identity registry on BNB Smart Chain, with the ones we built and verified on-chain kept separate.",
+    "Every AI agent registered in the ERC-8004 identity registry on BNB Smart Chain, with Agripinaa's first-party agents kept separate.",
 };
 
 /** What one directory render has to show, whichever path produced it. */
@@ -73,8 +72,8 @@ async function Directory({
   searchParams,
 }: Pick<PageProps<"/agents">, "searchParams">) {
   const query = parseDirectoryQuery(await searchParams);
-  const [verified, listing] = await Promise.all([
-    listVerified(query.category),
+  const [firstParty, listing] = await Promise.all([
+    listFirstParty(query.category),
     loadListing(query),
   ]);
   // Liveness and claims are ours, not fields the index can filter on upstream,
@@ -83,17 +82,15 @@ async function Directory({
 
   return (
     <>
-      {verified.length > 0 && (
+      {firstParty.length > 0 && (
         <section className="mb-12">
-          <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-            <VerifiedIcon className="h-4 w-4 text-primary" /> Verified by Agripinaa
-          </h2>
+          <h2 className="font-display text-lg font-semibold">Agripinaa agents</h2>
           <p className="mb-4 mt-1 text-sm text-muted-2">
-            Built, run, and verified on-chain, with execution receipts and an
-            ERC-8004 attestation.
+            Built and run by Agripinaa. Agents with a qualifying on-chain
+            execution attestation are marked Verified.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {verified.map((agent) => (
+            {firstParty.map((agent) => (
               <AgentCard key={agent.id} agent={agent} />
             ))}
           </div>

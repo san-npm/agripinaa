@@ -38,7 +38,7 @@ export async function generateMetadata(
 
 async function CategoryAgents({ category }: { category: Category }) {
   const directory = await listDirectory(category);
-  const items = [...directory.verified, ...directory.registry].slice(0, 24);
+  const items = [...directory.firstParty, ...directory.registry].slice(0, 24);
   if (items.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border-strong bg-surface p-8 text-center">

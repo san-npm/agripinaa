@@ -27,6 +27,7 @@ import {
 import { normalizeQuery } from './directory-query';
 import { withLiveness } from './liveness';
 import { getOnchainAttestation } from './onchain-rep';
+import { filterVerified } from './verified';
 
 /** The marketplace currently serves BNB Smart Chain mainnet. */
 export const CHAIN_ID = 56;
@@ -239,12 +240,12 @@ async function claimedApiWindow(category: Category): Promise<AgentSummary[]> {
 }
 
 /**
- * Our own agents: resolved from the chain and reflected against the on-chain
- * attestation. Split out of `listDirectory` so a page that walks the registry
- * itself can render the verified section without pulling a registry sample it
- * will not use.
+ * Our own agents, whether or not they have an execution attestation: resolved
+ * from the chain and reflected against any on-chain feedback. Split out of
+ * `listDirectory` so a page that walks the registry itself can render the
+ * first-party section without pulling a registry sample it will not use.
  */
-export async function listVerified(category?: Category): Promise<AgentSummary[]> {
+export async function listFirstParty(category?: Category): Promise<AgentSummary[]> {
   'use cache';
   cacheLife('minutes');
   const resolved = (
@@ -257,7 +258,15 @@ export async function listVerified(category?: Category): Promise<AgentSummary[]>
   return withOnchainAttestation(resolved);
 }
 
+/** The first-party agents whose execution earned an ERC-8004 attestation. */
+export async function listVerified(category?: Category): Promise<AgentSummary[]> {
+  'use cache';
+  cacheLife('minutes');
+  return filterVerified(await listFirstParty(category));
+}
+
 export interface Directory {
+  firstParty: AgentSummary[];
   verified: AgentSummary[];
   registry: AgentSummary[];
   registrySource: string;
@@ -265,20 +274,22 @@ export interface Directory {
 }
 
 /**
- * The marketplace split: our proven agents ("verified", with on-chain
- * execution + attestation) kept separate from the unverified ERC-8004
- * registry long tail. We list the registry for discovery (the brief is a
- * front door for every agent) but never imply we vouch for it.
+ * The marketplace split: our first-party agents kept separate from the
+ * permissionless ERC-8004 registry long tail, with the execution-attested
+ * subset exposed independently for verified surfaces. We list the registry
+ * for discovery (the brief is a front door for every agent) but never imply we
+ * vouch for it.
  */
 export async function listDirectory(category?: Category): Promise<Directory> {
   'use cache';
   cacheLife('minutes');
   const raw = await source.listAgents({ chainId: CHAIN_ID, category, limit: 100 });
-  const enriched = await listVerified(category);
-  const verifiedIds = new Set(enriched.map((a) => a.tokenId));
+  const firstParty = await listFirstParty(category);
+  const verified = filterVerified(firstParty);
+  const firstPartyIds = tokenIdSet(firstParty);
   const claims = claimsByTokenId(await storedClaims());
   const indexed = rankAndDedupe(raw.items)
-    .filter((a) => !verifiedIds.has(a.tokenId))
+    .filter((a) => !firstPartyIds.has(normalizeAgentId(a.tokenId)))
     .map((a) => withClaim(a, claims));
   // Only a hub injects: the unfiltered directory already lists everything the
   // index knows, so there a claim can only annotate what is on the page.
@@ -286,14 +297,20 @@ export async function listDirectory(category?: Category): Promise<Directory> {
     ? await claimedInCategory(
         category,
         claims,
-        new Set([...tokenIdSet(raw.items), ...tokenIdSet(enriched)]),
+        new Set([...tokenIdSet(raw.items), ...firstPartyIds]),
         claimedHubSlots(DIRECTORY_PAGE_SIZE),
       )
     : [];
   // Claimed entries lead the unverified list so the page's slice reaches them,
   // bounded to a share of that page so the ranked registrations keep most of it.
   const registry = await withLiveness([...claimed, ...indexed]);
-  return { verified: enriched, registry, registrySource: raw.source, asOf: new Date().toISOString() };
+  return {
+    firstParty,
+    verified,
+    registry,
+    registrySource: raw.source,
+    asOf: new Date().toISOString(),
+  };
 }
 
 /**
@@ -806,7 +823,7 @@ export interface RegistryPage {
  * cannot make more reads than that.
  *
  * Our own agents are dropped here because the directory renders them in its
- * verified section instead.
+ * first-party section instead.
  */
 export async function listRegistryPage(
   category?: Category,
@@ -931,7 +948,7 @@ export function rankClaimedSearchResults(
  * Search the index, then apply the same treatment the list paths apply: rank
  * and collapse duplicates, fill in owner claims, and mark endpoints a probe
  * found answering. Our own agents are dropped for the same reason as in
- * `listRegistryPage`, since a directory lists them in its verified section.
+ * `listRegistryPage`, since a directory lists them in its first-party section.
  *
  * The term is part of this entry's cache key, so it is normalised and capped
  * here rather than trusted from the caller.
