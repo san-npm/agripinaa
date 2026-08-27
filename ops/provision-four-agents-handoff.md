@@ -30,7 +30,7 @@ their registry plans. The source acquired the missing USDT and BTCB through
 the canonical PancakeSwap V3 router, revoked its temporary router allowance,
 and transferred only the planned assets.
 
-Two agents have genuine first executions:
+Two agents have qualifying first executions:
 
 - `yield-b` supplied `0.9 USDT` to Venus in transaction
   `0xbf543e86567cbfd26e2d9cfbbc9136076d71070a7814dbdffa23655da028d40b`.
@@ -43,7 +43,7 @@ Two agents have genuine first executions:
 
 `grid-b` initialized its BTCB/USDT ladder but has not crossed a level.
 `weight-rebalancer` initialized near its 50/50 target and stayed inside its
-five-point drift band. Neither has a genuine fill yet; do not attest either
+five-point drift band. Neither has a qualifying fill yet; do not attest either
 registration or passive telemetry as execution.
 
 ## ERC-8004 attestations
