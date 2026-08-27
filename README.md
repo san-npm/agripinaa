@@ -20,30 +20,34 @@ Agents that trade do so through [Ophis](https://ophis.fi) batch auctions
    was signed at, aggregated bps, and a downloadable receipt JSON carrying the
    settlement transaction and block. Not self-reported, not vanity counts.
 
-## Four reference agents on BSC mainnet, running on their own capital
+## Eight reference agents on BSC mainnet
 
 | Agent | agentId | What it does |
 |---|---|---|
 | Agripinaa Grid | [269703](https://agripinaa.vercel.app/agent/56/269703) | WBNB/USDT mean-reversion grid via Ophis; trend + loss breakers |
+| Agripinaa BTC Grid | [307485](https://agripinaa.vercel.app/agent/56/307485) | Wider BTCB/USDT mean-reversion grid via Ophis |
 | Agripinaa Guardian | [269704](https://agripinaa.vercel.app/agent/56/269704) | Aave V3 liquidation protection; repay-only, budget-capped. Live drill: HF 2.26 degraded to 1.25, autonomously repaired to 1.60 in ~62s |
+| Agripinaa Venus Guardian | [307486](https://agripinaa.vercel.app/agent/56/307486) | Venus liquidation protection with a USDT repair reserve |
 | Agripinaa Harvester | [269705](https://agripinaa.vercel.app/agent/56/269705) | USDT venue rotation Venus vs Aave, 50 bps hysteresis |
+| Agripinaa Steward | [307487](https://agripinaa.vercel.app/agent/56/307487) | Conservative venue rotation with 120 bps hysteresis and three confirmations |
 | Agripinaa Ranger | [269706](https://agripinaa.vercel.app/agent/56/269706) | Pancake V3 range management, rebalanced 50/50 through Ophis |
+| Agripinaa Rebalancer | [307488](https://agripinaa.vercel.app/agent/56/307488) | Maintains a 50/50 WBNB/USDT value split through Ophis |
 
 Each serves a paid `GET /:agent/status` over x402 (permit2-exact, USDT, 0.05
 USDT a call). Their meaningful actions also appear in the public
 [`/proof`](https://agripinaa.vercel.app/proof) feed, backed by the runners'
 bounded JSONL tails and Ophis on-chain settlement history.
 
-Four more agents (Agripinaa BTC Grid, a Venus-side guardian, a conservative rotator,
-a weight rebalancer) are built and unit-tested under `apps/agents/src/agents/`
-and declared in `packages/shared/src/agents.ts`. Their names are settled, but
-their on-chain registrations and production runner rollout are still pending.
+All eight are registered and run their public status service and own-capital
+demonstration loop. Each also accepts a public, revocable managed mandate: the
+two yield agents through recipient-bound routers, and the other six through a
+dedicated passkey strategy account with agent-specific venue and selector policy.
 
 ## What a judge is scoring, and where to look
 
 | Criterion | Where it is answered |
 |---|---|
-| **Functionality**: land, browse, understand, activate, no dead ends | `/` to `/agents` to `/c/<category>` to a profile to activation to `/dashboard`. Endpoint liveness is probed rather than assumed. Activation is offered only where Agripinaa has a real session handoff: the managed Harvester today; third-party registrations remain inspectable until a versioned handoff is implemented. |
+| **Functionality**: land, browse, understand, activate, no dead ends | `/` to `/agents` to `/c/<category>` to a profile to activation to `/dashboard`. All eight first-party agents have a real runner handoff; third-party registrations remain inspectable until a versioned handoff is implemented. |
 | **Data quality**: live data beyond counts | One score per agent with per-field provenance and a freshness stamp; execution quality computed from Ophis settlement; [`/leaderboard`](https://agripinaa.vercel.app/leaderboard) ranked on settlement-derived surplus with a squared sample-depth discount; [`/funds`](https://agripinaa.vercel.app/funds) with live router custody and bounded recent permissionless activity; a proof feed that is populated at first paint. |
 | **Agent diversity**: the four mandated categories | Grid, health-factor, yield and rebalancing hubs, each with a first-party agent live on mainnet, plus the indexed BSC population sorted into the same taxonomy by the shared classifier. |
 | **Agent advantage**: the TermiX rubric | [`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md): eight settlements, a live liquidation drill, a managed rotation, receipts and transactions attached, dispersion and downtime reported alongside the wins. |
@@ -52,7 +56,8 @@ their on-chain registrations and production runner rollout are still pending.
 
 No wallet needed to browse. Activation: a passkey-secured smart account
 (Altana; no seed phrase) → one gas top-up → a fail-closed scope (explicit
-contract allowlist, daily USDT cap, expiry) → one signature. The dashboard
+contract and selector policy, token/gas ceilings, expiry) → two or three
+passkey confirmations, depending on the venues. The dashboard
 reads session validity live from the KeyStore registry and revokes with one
 passkey confirmation.
 
@@ -67,6 +72,14 @@ separate VAI debt ledger, and their runtime hashes are pinned and checked live
 before activation or execution. Superseded routers remain recovery-only. The
 threat model, fuzz invariants, finding, and deployment state are in
 [`docs/security-router.md`](docs/security-router.md).
+
+The other six agents use separate, dedicated smart accounts. Their sessions
+cannot grant token approvals or select new venues, and the runner accepts a
+handoff only after the exact policy is verified against the account on-chain.
+Trading and LP venue permissions can nevertheless control the strategy assets
+already approved from that account, so these mandates do not claim the
+recipient-bound guarantee of the yield routers. The exact boundaries are in
+[`docs/security-strategy-sessions.md`](docs/security-strategy-sessions.md).
 
 ## Quickstart
 

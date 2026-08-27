@@ -9,13 +9,14 @@ import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'no
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN, agentBySlug } from '@agripinaa/shared';
+import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN, agentBySlug, managedStrategyFor } from '@agripinaa/shared';
 
 import { assertModulesRegistered, isUnprovisioned, MANAGED_AGENT_SLUGS } from './agent-config';
 import { buildContext, DATA_DIR, ensureDataDir, hasAgentWallet } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { tickManagedYield } from './managed-runner';
+import { tickManagedStrategy } from './managed-strategy-runner';
 import { startX402Server, type ManagerIdentity, type ManagerSet } from './x402-server';
 import type { AgentContext, AgentModule } from './types';
 import { policyForAgent } from './yield-policy';
@@ -175,19 +176,16 @@ async function main() {
   // strand every live USDT mandate at the executor's signer check.
   const managers = new Map<string, ManagerSet>();
   const managerKeySets = new Map<string, { keySet: ManagerKeySet; policy: ManagedPolicy }>();
+  const strategyKeySets = new Map<string, { keySet: ManagerKeySet; module: AgentModule }>();
   for (const name of MANAGED_AGENTS) {
     if (!agents.has(name)) continue;
-    // More than one agent manages funds on the same router, and the policy is
-    // the whole difference between them. An agent with no policy of its own is
-    // left unserviced (the deposit simply stays where it is) rather than being
-    // run on another agent's, which would silently give a depositor the agent
-    // they did not choose.
     const policy = policyForAgent(name);
-    if (!policy) {
+    const strategy = managedStrategyFor(name);
+    if (!policy && !strategy) {
       agents.get(name)!.ctx.log({
         event: 'managed-disabled',
         level: 'warn',
-        reason: `no rotation policy registered for ${name}; add one in src/yield-policy.ts`,
+        reason: `no managed execution policy registered for ${name}`,
       });
       continue;
     }
@@ -205,7 +203,8 @@ async function main() {
       master: { publicKey: keySet.master.publicKey, address: keySet.master.address },
       byToken,
     });
-    managerKeySets.set(name, { keySet, policy });
+    if (policy) managerKeySets.set(name, { keySet, policy });
+    if (strategy) strategyKeySets.set(name, { keySet, module: agents.get(name)!.module });
   }
 
   startX402Server({ port: PORT, facilitatorKey: privateKey, agents, managers });
@@ -236,6 +235,41 @@ async function main() {
         } catch (err) {
           ctx.log({
             event: 'managed-sweep-error',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          running = false;
+        }
+      };
+      void loop();
+      setInterval(loop, MANAGED_TICK_MS);
+    }
+  }
+
+  if (strategyKeySets.size > 0) {
+    const client = createAltanaClient();
+    for (const [name, { keySet, module }] of strategyKeySets) {
+      const ctx = agents.get(name)!.ctx;
+      const managerKey = keySet.byToken.get('USDT');
+      if (!managerKey) {
+        ctx.log({ event: 'managed-disabled', reason: 'no USDT manager key for strategy mandates' });
+        continue;
+      }
+      let running = false;
+      const loop = async () => {
+        // The own-capital account has its own breaker state. A drawdown halt on
+        // that demo wallet must not disable unrelated public mandates; each
+        // managed account is checked against its namespaced breaker below.
+        if (running) return;
+        running = true;
+        try {
+          const result = await tickManagedStrategy({ ctx, module, client, managerKey });
+          if (result.serviced > 0 || result.errors > 0) {
+            ctx.log({ event: 'managed-strategy-sweep', ...result });
+          }
+        } catch (err) {
+          ctx.log({
+            event: 'managed-strategy-sweep-error',
             error: err instanceof Error ? err.message : String(err),
           });
         } finally {

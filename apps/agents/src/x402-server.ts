@@ -5,6 +5,7 @@ import {
   isDebtCompleteRouterRuntime,
   ROUTER_ACTIONS,
   TOKENS_BSC,
+  managedStrategyFor,
   routerByAddress,
   toBaseUnits,
 } from '@agripinaa/shared';
@@ -21,7 +22,6 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { collectProofEvents } from './proof';
-import { deploymentForEntry } from './executor';
 import { RequestGate } from './request-gate';
 import {
   loadManaged,
@@ -52,7 +52,6 @@ export interface ManagerSet {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ROUTER_SIGNATURE_LIST = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
-const ROUTER_SIGNATURES = new Set<string>(ROUTER_SIGNATURE_LIST);
 const manageGate = new RequestGate(20, 60_000, 8);
 const SESSION_EXPIRY_CLOCK_SKEW_SECONDS = 5 * 60;
 
@@ -82,12 +81,59 @@ function canonicalManagedPermissions(
   };
 }
 
+export function canonicalStrategyPermissions(agent: string): ExpectedAccountSessionPermissions | undefined {
+  const strategy = managedStrategyFor(agent);
+  if (!strategy) return undefined;
+  return {
+    calls: strategy.callScopes.flatMap((scope) =>
+      scope.signatures.map((signature) => ({ to: scope.to, signature })),
+    ),
+    spend: [
+      {
+        token: TOKENS_BSC.USDT!.address,
+        period: 'day',
+        limit: toBaseUnits(MANAGED_STABLE_CAP, TOKENS_BSC.USDT!.decimals),
+      },
+      ...strategy.additionalSpendCaps.map(({ token, amount }) => ({
+        token: TOKENS_BSC[token]!.address,
+        period: 'day' as const,
+        limit: toBaseUnits(amount, TOKENS_BSC[token]!.decimals),
+      })),
+      { period: 'day', limit: toBaseUnits(MANAGED_NATIVE_CAP, 18) },
+    ],
+    signatureCheckers: strategy.signatureCheckers,
+  };
+}
+
+function canonicalPermissionsFor(
+  agent: string,
+  chainId: number,
+  firstTarget: string,
+): { permissions: ExpectedAccountSessionPermissions; managerToken: string; target: Hex } | undefined {
+  const strategyPermissions = canonicalStrategyPermissions(agent);
+  const strategy = managedStrategyFor(agent);
+  if (strategyPermissions && strategy && chainId === 56) {
+    const target = strategy.callScopes[0]?.to;
+    if (!target || target.toLowerCase() !== firstTarget.toLowerCase()) return undefined;
+    return { permissions: strategyPermissions, managerToken: 'USDT', target };
+  }
+  const router = routerByAddress(firstTarget);
+  if (!router || router.chainId !== chainId || !isDebtCompleteRouter(router)) return undefined;
+  return { permissions: canonicalManagedPermissions(router), managerToken: router.symbol, target: router.address };
+}
+
 function requestIdentity(req: IncomingMessage): string {
   const remote = req.socket.remoteAddress ?? 'unknown';
   const cloudflareIp = req.headers['cf-connecting-ip'];
   const fromLocalTunnel = remote === '::1' || remote === '127.0.0.1' || remote === '::ffff:127.0.0.1';
   if (fromLocalTunnel && typeof cloudflareIp === 'string' && cloudflareIp.length <= 64) return cloudflareIp;
   return remote;
+}
+
+function firstScopedTarget(entry: ManagedAccount): Hex | undefined {
+  const first = entry.session.permissions.calls?.[0];
+  const target = first && 'to' in first ? first.to : undefined;
+  return typeof target === 'string' && ADDRESS_RE.test(target) ? target as Hex : undefined;
 }
 
 /**
@@ -111,6 +157,23 @@ export function canonicalManagedSession(
   };
 }
 
+function canonicalSessionFor(
+  account: Hex,
+  expiry: number,
+  permissions: ExpectedAccountSessionPermissions,
+  managerPublicKey: Hex,
+): ManagedAccount['session'] {
+  // ERC-1271 checker approvals are account-local authority verified beside the
+  // session descriptor, not an SDK SessionPermissions member. Never persist
+  // them inside the session object handed to execute().
+  return {
+    walletAddress: account,
+    publicKey: managerPublicKey,
+    permissions: { calls: permissions.calls, spend: permissions.spend },
+    expiry,
+  };
+}
+
 /**
  * Reject any manage request that isn't a real, on-chain, router-scoped session
  * granted to our own manager key. Returns a human-readable problem, or null if
@@ -119,6 +182,7 @@ export function canonicalManagedSession(
  * can actually act on and that can only touch the router.
  */
 async function validateManageRequest(
+  agent: string,
   body: { account?: string; chainId?: number; session?: ManagedAccount['session'] },
   managerSet: ManagerSet,
   attestationClient?: Parameters<typeof isDebtCompleteRouterRuntime>[0],
@@ -135,56 +199,50 @@ async function validateManageRequest(
 
   const calls = session.permissions?.calls ?? [];
   if (calls.length === 0) return 'session has no scoped calls (would be unrestricted)';
-  // The session must be scoped to ONE known managed router (USDT or USDC) on
-  // this chain, and to nothing but that router's selectors.
   const firstTo = 'to' in calls[0]! ? calls[0]!.to : undefined;
-  const router = firstTo ? routerByAddress(firstTo) : undefined;
-  if (!router || router.chainId !== chainId || !isDebtCompleteRouter(router))
-    return 'session is not scoped to a debt-complete managed router on this chain';
-  if (!attestationClient || !await isDebtCompleteRouterRuntime(attestationClient, router))
+  const canonical = firstTo ? canonicalPermissionsFor(agent, chainId, firstTo) : undefined;
+  if (!canonical) return 'session is not scoped to this agent\'s canonical managed policy';
+  const router = routerByAddress(firstTo ?? '');
+  if (router && (!attestationClient || !await isDebtCompleteRouterRuntime(attestationClient, router)))
     return 'managed router runtime does not match the audited deployment manifest';
-  if (calls.length !== ROUTER_SIGNATURES.size) return 'session must contain exactly the three router actions';
-  const seenSignatures = new Set<string>();
+  const expectedCalls = canonical.permissions.calls;
+  if (calls.length !== expectedCalls.length) return 'session call count is not the canonical agent policy';
   for (const [index, call] of calls.entries()) {
     const to = 'to' in call ? call.to : undefined;
     const signature = 'signature' in call ? call.signature : undefined;
-    if (!to || to.toLowerCase() !== router.address.toLowerCase())
-      return 'session scopes a call to a non-router target';
-    if (!signature || !ROUTER_SIGNATURES.has(signature))
-      return 'session scopes a non-router selector';
-    if (seenSignatures.has(signature)) return 'session repeats a router selector';
-    if (signature !== ROUTER_SIGNATURE_LIST[index]) return 'session router actions are not in canonical order';
-    seenSignatures.add(signature);
+    const expectedCall = expectedCalls[index];
+    if (!expectedCall || !to || to.toLowerCase() !== expectedCall.to.toLowerCase())
+      return 'session scopes a call to a non-policy target';
+    if (!signature || signature !== expectedCall.signature)
+      return 'session scopes a non-policy selector or uses a non-canonical order';
   }
 
   // The session must be granted to the manager key for the token it manages —
   // never any other token's key. This binds the (token → key identity) mapping
   // so a USDC mandate can't be authorized against the USDT key or vice versa.
-  const expected = managerSet.byToken.get(router.symbol);
+  const expected = managerSet.byToken.get(canonical.managerToken);
   if (!expected || session.publicKey.toLowerCase() !== expected.publicKey.toLowerCase())
-    return `session is not granted to this agent's ${router.symbol} manager key`;
+    return `session is not granted to this agent's ${canonical.managerToken} manager key`;
 
   // Permissions are canonical rather than client-selected. Together with the
   // account-local expiry/identity read below, this makes the stored record
   // reconstructible from on-chain facts and prevents a third party from
   // replacing it with forged permission bytes for the same public manager key.
   const spend = session.permissions?.spend ?? [];
-  if (spend.length !== 2) return 'session must contain exactly the managed token and native gas caps';
-  const tokenCap = spend[0];
-  const nativeCap = spend[1];
-  if (
-    !tokenCap
-    || !('token' in tokenCap)
-    || tokenCap.token?.toLowerCase() !== router.usdt.toLowerCase()
-    || tokenCap.period !== 'day'
-    || tokenCap.limit !== toBaseUnits(MANAGED_STABLE_CAP, TOKENS_BSC[router.symbol]!.decimals)
-  ) return 'session token cap is not the canonical managed limit';
-  if (
-    !nativeCap
-    || ('token' in nativeCap && nativeCap.token != null)
-    || nativeCap.period !== 'day'
-    || nativeCap.limit !== toBaseUnits(MANAGED_NATIVE_CAP, 18)
-  ) return 'session native gas cap is not the canonical managed limit';
+  if (spend.length !== canonical.permissions.spend.length) {
+    return 'session spend-cap count is not the canonical managed policy';
+  }
+  for (const [index, actual] of spend.entries()) {
+    const expectedSpend = canonical.permissions.spend[index];
+    if (!actual || !expectedSpend) return 'session spend caps are not the canonical managed policy';
+    const actualToken = 'token' in actual ? actual.token?.toLowerCase() : undefined;
+    const expectedToken = expectedSpend.token?.toLowerCase();
+    if (
+      actualToken !== expectedToken
+      || actual.period !== expectedSpend.period
+      || actual.limit !== expectedSpend.limit
+    ) return 'session spend caps are not the canonical managed policy';
+  }
 
   const live = await isSessionKeyValid({
     chainId,
@@ -198,7 +256,7 @@ async function validateManageRequest(
     sessionPublicKey: session.publicKey as Hex,
     sessionAddress: expected.address,
     expiry: session.expiry,
-    permissions: canonicalManagedPermissions(router),
+    permissions: canonical.permissions,
   });
   if (!descriptor) return 'session identity, expiry, or permissions do not match the smart account authorization';
   return null;
@@ -378,22 +436,21 @@ export function startX402Server(opts: {
       }
       const query = new URL(req.url ?? '/', 'http://localhost').searchParams;
       const account = query.get('account') ?? '';
-      const routerAddress = query.get('router') ?? '';
-      if (!ADDRESS_RE.test(account) || !ADDRESS_RE.test(routerAddress)) {
+      const targetAddress = query.get('target') ?? query.get('router') ?? '';
+      if (!ADDRESS_RE.test(account) || !ADDRESS_RE.test(targetAddress)) {
         res.writeHead(400, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: 'account and router must be 20-byte addresses' }));
+        res.end(JSON.stringify({ error: 'account and target must be 20-byte addresses' }));
         return;
       }
       const registeredEntry = loadManaged(agent).find((candidate) => {
         if (candidate.account.toLowerCase() !== account.toLowerCase()) return false;
-        const dep = deploymentForEntry(candidate);
-        return dep?.address.toLowerCase() === routerAddress.toLowerCase();
+        return firstScopedTarget(candidate)?.toLowerCase() === targetAddress.toLowerCase();
       });
       const registered = registeredEntry != null;
       const halted = runtime.ctx.breakers.isHalted();
       const health = registered
         ? runtime.ctx.state.get<ManagedHealth | null>(
-            managedHealthKey(account as Hex, routerAddress as Hex),
+            managedHealthKey(account as Hex, targetAddress as Hex),
             null,
           )
         : null;
@@ -444,6 +501,7 @@ export function startX402Server(opts: {
         };
         const runtime = opts.agents.get(agent);
         const problem = await validateManageRequest(
+          agent,
           body,
           managerSet,
           runtime ? {
@@ -458,40 +516,39 @@ export function startX402Server(opts: {
         }
         const session = body.session!;
         const firstCall = session.permissions.calls![0]!;
-        const router = routerByAddress('to' in firstCall ? firstCall.to : '');
-        const expectedManager = router ? managerSet.byToken.get(router.symbol) : undefined;
-        if (!router || !expectedManager) throw new Error('validated managed session could not be canonicalized');
+        const firstTarget = 'to' in firstCall ? firstCall.to : '';
+        const canonical = canonicalPermissionsFor(agent, body.chainId!, firstTarget);
+        const expectedManager = canonical ? managerSet.byToken.get(canonical.managerToken) : undefined;
+        if (!canonical || !expectedManager) throw new Error('validated managed session could not be canonicalized');
         const entry: ManagedAccount = {
           account: body.account as Hex,
           chainId: body.chainId!,
-          session: canonicalManagedSession(
+          session: canonicalSessionFor(
             body.account as Hex,
             session.expiry,
-            router,
+            canonical.permissions,
             expectedManager.publicKey,
           ),
           registeredAt: new Date().toISOString(),
         };
         const existingAuthorization = loadManaged(agent).find((candidate) => {
           if (candidate.account.toLowerCase() !== entry.account.toLowerCase()) return false;
-          const candidateRouter = deploymentForEntry(candidate);
-          return candidateRouter?.address.toLowerCase() === router.address.toLowerCase()
+          return firstScopedTarget(candidate)?.toLowerCase() === canonical.target.toLowerCase()
             && candidate.session.publicKey.toLowerCase() === entry.session.publicKey.toLowerCase()
             && candidate.session.expiry === entry.session.expiry;
         });
         const all = upsertManaged(agent, entry);
-        const entryRouter = deploymentForEntry(entry);
-        if (runtime && entryRouter && !existingAuthorization) {
+        if (runtime && !existingAuthorization) {
           // A previous grant for the same account/router may have a fresh
           // heartbeat. A replacement mandate is unavailable until this exact
           // new record survives its first sweep.
-          runtime.ctx.state.set(managedHealthKey(entry.account, entryRouter.address), null);
+          runtime.ctx.state.set(managedHealthKey(entry.account, canonical.target), null);
         }
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
           account: entry.account,
-          managedCount: all.filter((candidate) => deploymentForEntry(candidate)).length,
+          managedCount: all.length,
         }));
       } catch (err) {
         res.writeHead(400, { 'content-type': 'application/json' });

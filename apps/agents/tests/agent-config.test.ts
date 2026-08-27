@@ -53,31 +53,51 @@ test('the funding plan carries the live amounts, keyed by wallet name', () => {
   );
 });
 
-test('every managed agent gets its own companion session key, and only those', () => {
-  // Two agents manage user funds now, competing on the same router, and each
-  // needs a master manager key of its own: sharing one would give both agents
-  // the same on-chain identity, so a depositor could not grant to one without
-  // granting to the other.
+test('every managed agent gets its own companion session key', () => {
   assert.deepEqual(
     FUNDING_PLAN.filter((e) => e.sessionKey != null).map((e) => e.sessionKey),
-    ['agent-yield-session', 'agent-yield-b-session'],
+    [
+      'agent-grid-session',
+      'agent-grid-b-session',
+      'agent-health-factor-session',
+      'agent-venus-guardian-session',
+      'agent-yield-session',
+      'agent-yield-b-session',
+      'agent-lp-range-session',
+      'agent-weight-rebalancer-session',
+    ],
   );
-  assert.deepEqual(MANAGED_AGENT_SLUGS, ['yield', 'yield-b']);
+  assert.deepEqual(MANAGED_AGENT_SLUGS, [
+    'grid',
+    'grid-b',
+    'health-factor',
+    'venus-guardian',
+    'yield',
+    'yield-b',
+    'lp-range',
+    'weight-rebalancer',
+  ]);
 });
 
 test('the runner wallet inventory includes every live agent, manager, and facilitator', () => {
   assert.deepEqual(requiredRunnerWalletFiles(), [
     'facilitator.json',
     'agent-grid.json',
+    'agent-grid-session.json',
     'agent-grid-b.json',
+    'agent-grid-b-session.json',
     'agent-health-factor.json',
+    'agent-health-factor-session.json',
     'agent-venus-guardian.json',
+    'agent-venus-guardian-session.json',
     'agent-yield.json',
     'agent-yield-session.json',
     'agent-yield-b.json',
     'agent-yield-b-session.json',
     'agent-lp-range.json',
+    'agent-lp-range-session.json',
     'agent-weight-rebalancer.json',
+    'agent-weight-rebalancer-session.json',
   ]);
 });
 
@@ -91,6 +111,7 @@ test('the runner wallet inventory follows the selected registry revision', () =>
     [
       'facilitator.json',
       'agent-grid.json',
+      'agent-grid-session.json',
       'agent-yield.json',
       'agent-yield-session.json',
     ],

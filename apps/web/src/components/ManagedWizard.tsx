@@ -34,6 +34,9 @@ interface ManagedAgentProps {
   name: string;
   /** Runner agent name for the manage/manager-key endpoints (e.g. "yield"). */
   managedAgent: string;
+  /** Policy-specific language; Harvester and Steward are not one generic choice. */
+  submitLabel?: string;
+  activeSummary?: string;
 }
 
 type PasskeyWallet = Awaited<
@@ -385,7 +388,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               </div>
             </label>
             <button onClick={activate} disabled={busy || !gasReady || !usdtReady || !automationReady} className={primaryBtn}>
-              {busy ? phase || 'Working…' : 'Put funds under management'}
+              {busy ? phase || 'Working…' : agent.submitLabel ?? 'Put funds under management'}
             </button>
             <p className="text-xs text-muted-2">
               Two passkey taps: one approves the router, one grants the scoped
@@ -401,9 +404,8 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               <h2 className="font-display text-lg font-semibold text-success">Funds under management</h2>
             </div>
             <p className="text-sm text-muted">
-              {agent.name} now reads Venus and Aave each cycle and keeps your {token}
-              in the higher-yielding venue. Your funds never leave your account;
-              track the position and withdraw from your dashboard.
+              {agent.activeSummary ?? `${agent.name} now reads Venus and Aave each cycle and keeps your ${token} in the higher-yielding venue.`}{' '}
+              Your funds never leave your account; track the position and withdraw from your dashboard.
             </p>
             <a href="/dashboard" className={`inline-block ${primaryBtn}`}>
               Open dashboard

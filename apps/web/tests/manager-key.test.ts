@@ -98,10 +98,7 @@ test('a registered agent with no pin for the token is refused, not warned about'
   // for, reporting whatever key it likes, becoming the grantee of a live
   // mandate because the registry happened to hold no pin for it. A registered
   // agent has to be pinned before anything it reports can be granted to.
-  for (const [agent, token] of [
-    ['grid', 'USDT'],
-    ['yield', 'USDX'],
-  ] as const) {
+  for (const [agent, token] of [['yield', 'USDX']] as const) {
     assert.notEqual(agentBySlug(agent)?.tokenId, null, `${agent} is registered`);
     assert.throws(
       () => validateManagerKey(agent, token, { publicKey: stranger.publicKey, address: stranger.address }),
@@ -109,9 +106,9 @@ test('a registered agent with no pin for the token is refused, not warned about'
       `${agent}/${token}`,
     );
   }
-  const stub = jsonFetch(200, { agent: 'grid', publicKey: stranger.publicKey, address: stranger.address });
+  const stub = jsonFetch(200, { agent: 'yield', publicKey: stranger.publicKey, address: stranger.address });
   const { warnings } = await capturingWarn(() =>
-    withFetch(stub, () => assert.rejects(() => fetchManagerKey('grid', 'USDT'), /no pinned/)),
+    withFetch(stub, () => assert.rejects(() => fetchManagerKey('yield', 'USDX'), /no pinned/)),
   );
   assert.deepEqual(warnings, [], 'a refusal is not a warning');
 });

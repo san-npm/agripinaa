@@ -47,7 +47,7 @@ flowchart TB
 
   UI --> SC
   UI --> SF
-  UI -->|"passkey account: grant a scoped session, top up gas"| RT
+  UI -->|"passkey account: grant a scoped session, top up gas"| C
   UI -->|"EIP-712 claim signature"| RH
   SC --> SCAN
   SC --> SNAP
@@ -62,7 +62,8 @@ flowchart TB
   RH --> X4
   RUN --> ST
   RUN --> VEN
-  RUN -->|"managed rotations, session-scoped"| RT
+  RUN -->|"managed rotations, recipient-bound"| RT
+  RUN -->|"managed trades, guards and LP actions"| VEN
   RUN -->|"register, attest, read tokenURI"| ID
   RUN --> REP
   RT --> VEN
@@ -115,8 +116,9 @@ tunnel it exposes only these shapes: the paid `GET /:slug/status`, the public
 bounded `GET /proof`, `GET /healthz`, `GET /:slug/manager-key` (the public half
 of the key a managed session is granted to), and `POST /:slug/manage`, which
 takes no shared secret because the session itself is the authorization: it is
-checked on-chain for being granted to this agent's manager key, unexpired,
-unrevoked, and scoped to nothing but the router selectors.
+checked on-chain for being granted to this agent's pinned manager key,
+unexpired, unrevoked, and byte-for-byte equal to that agent's canonical calls,
+spend ceilings, and (where needed) ERC-1271 checker set.
 
 **The tunnel is a value, not a constant.** A Cloudflare quick tunnel takes a new
 hostname on every cold start, so no permanent hostname is written down anywhere.
@@ -195,15 +197,18 @@ runner's own 402 challenge, decoded, fetched by a Server Function
 (`apps/web/src/lib/x402-status.ts`) so the tunnel's missing CORS policy never
 becomes a dead panel.
 
-**Act.** Activation is offered only when the resulting session has a consumer:
-the managed Harvester runner today. Endpoint liveness remains a discovery badge,
-not proof of a session-handoff protocol, so third-party registrations offer
-inspection until Agripinaa implements such a protocol
-(`apps/web/src/lib/activatable.ts`, `apps/web/src/lib/liveness.ts`). Activation
-grants a scoped, revocable session key from a passkey smart account; managed
-yield additionally posts the public half of that session to the runner, which
-services it each tick within the granted scope. `/dashboard` reads session
-validity live from the KeyStore registry and revokes with one confirmation.
+**Act.** All eight first-party agents consume managed sessions. Endpoint
+liveness remains a discovery badge, not proof of a session-handoff protocol, so
+third-party registrations offer inspection until Agripinaa implements such a
+protocol (`apps/web/src/lib/activatable.ts`, `apps/web/src/lib/liveness.ts`).
+Activation grants a scoped, revocable session key from a passkey smart account
+and posts its public descriptor to the runner. Harvester and Steward use the
+recipient-bound yield routers; the other six use isolated strategy accounts
+with fixed venue approvals and an exact per-agent selector/checker policy. The
+runner revalidates the on-chain authorization before storing or using it.
+`/dashboard` reads session validity live from the KeyStore registry and revokes
+with one confirmation. See [security-strategy-sessions.md](./security-strategy-sessions.md)
+for the distinct trust boundary of those six mandates.
 
 ## Freshness
 

@@ -1,4 +1,5 @@
 import { agentByTokenId } from "@agripinaa/shared/agents";
+import { managedStrategyFor } from "@agripinaa/shared/managed-strategies";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,6 +7,7 @@ import { Suspense } from "react";
 
 import { ManagedWizard } from "@/components/ManagedWizard";
 import { SessionWizard } from "@/components/SessionWizard";
+import { StrategyWizard } from "@/components/StrategyWizard";
 import { ArrowIcon } from "@/components/icons";
 import {
   ACTIVATION_BLOCKED_COPY,
@@ -14,6 +16,7 @@ import {
   agentSupportsSessionHandoff,
   endpointIsLive,
 } from "@/lib/activatable";
+import { agentExperience } from "@/lib/agent-experience";
 import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
 import { CHAIN_ID, getAgent } from "@/lib/data";
 
@@ -61,6 +64,9 @@ async function ActivateContent({
   // can never reach a wizard.
   const record = agentByTokenId(agent.tokenId);
   const managedAgent = record?.managed ? record.slug : undefined;
+  const strategy = managedAgent ? managedStrategyFor(managedAgent) : undefined;
+  const experience = record ? agentExperience(record.slug) : undefined;
+  const managedCopy = experience?.managed;
 
   // Deep links skip the agent page, so the gate lives here too: no wallet step
   // renders for an agent that has nothing behind it.
@@ -86,12 +92,12 @@ async function ActivateContent({
           <Link
             href={
               blocked === "own-capital-only"
-                ? `/agent/${agent.chainId}/${agent.tokenId}#execution`
+                ? `/agent/${agent.chainId}/${agent.tokenId}#live-agent`
                 : `/agent/${agent.chainId}/${agent.tokenId}`
             }
             className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface-2 px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/50 hover:text-primary"
           >
-            {copy.ctaLabel} <ArrowIcon className="h-4 w-4" />
+            {experience?.profileCta ?? copy.ctaLabel} <ArrowIcon className="h-4 w-4" />
           </Link>
         </div>
       </div>
@@ -111,21 +117,35 @@ async function ActivateContent({
         <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> Back to {agent.name}
       </Link>
       <h1 className="relative z-10 mb-1 font-display text-2xl font-semibold">
-        {managedAgent ? "Put funds under " : "Activate "}
-        {agent.name}
+        {managedCopy?.heading ?? `${managedAgent ? "Put funds under " : "Activate "}${agent.name}`}
       </h1>
       <p className="relative z-10 mb-8 max-w-xl text-sm text-muted">
-        {managedAgent
+        {managedCopy
+          ? managedCopy.intro
+          : managedAgent
           ? "A passkey-secured account, a USDT or USDC deposit, and one grant that lets the agent rotate your funds between lending venues, never anywhere else."
           : "Three steps: a passkey-secured account, a one-time gas top-up, and one signature granting exactly the authority you choose."}
       </p>
-      {managedAgent ? (
+      {strategy ? (
+        <StrategyWizard
+          agent={{
+            chainId: agent.chainId,
+            tokenId: agent.tokenId,
+            name: agent.name,
+            slug: strategy.slug,
+            submitLabel: managedCopy?.submitLabel,
+            activeSummary: managedCopy?.activeSummary,
+          }}
+        />
+      ) : managedAgent ? (
         <ManagedWizard
           agent={{
             chainId: agent.chainId,
             tokenId: agent.tokenId,
             name: agent.name,
             managedAgent,
+            submitLabel: managedCopy?.submitLabel,
+            activeSummary: managedCopy?.activeSummary,
           }}
         />
       ) : (

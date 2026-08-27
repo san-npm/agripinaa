@@ -73,6 +73,16 @@ test('account permissions require the exact granted call and spend mappings', ()
   assert.equal(accountSessionPermissionsMatch({ ...base, globalExecutes: [EXECUTES[0]] }), false);
   assert.equal(accountSessionPermissionsMatch({ ...base, callCheckers: [{}] }), false);
   assert.equal(accountSessionPermissionsMatch({ ...base, signatureCheckers: [ROUTER] }), false);
+  assert.equal(accountSessionPermissionsMatch({
+    ...base,
+    expected: { ...EXPECTED_PERMISSIONS, signatureCheckers: [ROUTER] },
+    signatureCheckers: [ROUTER],
+  }), true);
+  assert.equal(accountSessionPermissionsMatch({
+    ...base,
+    expected: { ...EXPECTED_PERMISSIONS, signatureCheckers: [ROUTER] },
+    signatureCheckers: [TOKEN],
+  }), false);
 });
 
 test('account key identity requires Porto canonical secp256k1 encoding', () => {

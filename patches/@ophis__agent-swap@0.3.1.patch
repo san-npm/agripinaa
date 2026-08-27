@@ -1,17 +1,30 @@
+diff --git a/dist/wallet.d.ts b/dist/wallet.d.ts
+--- a/dist/wallet.d.ts
++++ b/dist/wallet.d.ts
+@@ -15,2 +15,4 @@ export interface OphisAgentWallet {
++    /** EOA default or ERC-1271 smart-account order signing. */
++    getSigningScheme?(): 'eip712' | 'eip1271';
+     /** The agent's EOA address — the order owner AND, pinned, the receiver. */
+     getAddress(): Address;
 diff --git a/dist/swap.js b/dist/swap.js
-index b9faae968a0e0c3827904d6e937501c60b324ef0..eef6fa3ebb3babe63ac6f02a16ee931c0ca47883 100644
 --- a/dist/swap.js
 +++ b/dist/swap.js
-@@ -106,7 +106,7 @@ export async function executeOphisSwap(wallet, params, options) {
+@@ -42,3 +42,4 @@ export async function executeOphisSwap(wallet, params, options) {
+     }
+     const owner = wallet.getAddress();
++    const signingScheme = wallet.getSigningScheme?.() ?? 'eip712';
+     const sellToken = assertErc20(params.sellToken, 'sellToken');
+@@ -106,7 +107,7 @@ export async function executeOphisSwap(wallet, params, options) {
          sellAmountBeforeFee: sellAmountAtomic.toString(),
          from: owner,
          receiver,
 -        appData: appDataHash,
 +        appData: fullAppData,
          appDataHash,
-         signingScheme: SigningScheme.EIP712,
+-        signingScheme: SigningScheme.EIP712,
++        signingScheme: signingScheme === 'eip1271' ? 'eip1271' : SigningScheme.EIP712,
      }));
-@@ -113,7 +113,18 @@ export async function executeOphisSwap(wallet, params, options) {
+@@ -113,7 +114,18 @@ export async function executeOphisSwap(wallet, params, options) {
      const q = (quoteRes.quote ?? quoteRes);
      // Assemble the order to sign. appData = the bytes32 HASH (this is what is signed). Slippage lowers
      // the buyAmount so the quoted price is a floor, not an exact requirement.
@@ -31,6 +44,11 @@ index b9faae968a0e0c3827904d6e937501c60b324ef0..eef6fa3ebb3babe63ac6f02a16ee931c
      // The order sells the GROSS amount with a signed feeAmount of 0: Ophis/CoW orders take the fee from
      // surplus + the appData partner fee, never a signed feeAmount (a non-zero one is unslipped extra
      // spend and the orderbook rejects it — see apps/mcp-server assertion). For a sell quote CoW splits
+@@ -176,3 +188,3 @@ export async function executeOphisSwap(wallet, params, options) {
+     // Submit. buildOphisOrderCreation produces the correct wire body (full appData STRING + the hash)
+     // and asserts the signed order's appData equals the hash.
+-    const body = buildOphisOrderCreation({ order, owner, fullAppData, appDataHash, signature, signingScheme: 'eip712' });
++    const body = buildOphisOrderCreation({ order, owner, fullAppData, appDataHash, signature, signingScheme });
 diff --git a/dist/swap.d.ts b/dist/swap.d.ts
 index 0038b20638b17017ff85e5c14ac72e486cc9631e..164142f00fc565f928a84856ed0d31b59a1c5f98 100644
 --- a/dist/swap.d.ts
