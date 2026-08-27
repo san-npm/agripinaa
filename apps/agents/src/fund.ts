@@ -32,7 +32,7 @@ import {
   fallback,
   http,
 } from 'viem';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { selectFundingEntries, type FundingEntry } from './agent-config';
@@ -120,7 +120,7 @@ async function main() {
 
   // --execute: transfers from spike-a
   const senderKey = await loadKey('spike-a');
-  const account = privateKeyToAccount(senderKey);
+  const account = privateKeyToAccount(senderKey, { nonceManager });
   const transport = fallback(BSC_MAINNET.rpcUrls.map((u) => http(u)));
   const publicClient = createPublicClient({ chain: bsc, transport });
   const walletClient = createWalletClient({ account, chain: bsc, transport });
