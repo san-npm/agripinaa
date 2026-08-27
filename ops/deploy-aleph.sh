@@ -44,6 +44,7 @@ SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN_H
 S() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 RUSER=$(S whoami)
 RHOME=$(S 'echo $HOME')
+APPDIR="$RHOME/agripinaa"
 
 echo "== verifying pinned deployment prerequisites…"
 # Provision the image out-of-band from trusted, pinned packages. A deploy that
@@ -71,8 +72,28 @@ S "cd ~/agripinaa && git fetch -q origin && git cat-file -e '$DEPLOY_COMMIT^{com
 # and a secret cutover must never depend on rsync's quick-check heuristics.
 # rsync splits -e on spaces and honours quotes, so the key and host-key paths
 # are quoted for it, not for this shell.
-rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --ignore-times "$OPS_DIR/../wallets/" "$HOST:agripinaa/wallets/"
-S 'test -f ~/agripinaa/wallets/agent-grid.json' || { echo "FATAL: wallet sync did not land"; exit 1; }
+rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --ignore-times "$OPS_DIR/../wallets/" "$HOST:$APPDIR/wallets/"
+# Check every key the runner loads before restarting it. A single legacy wallet
+# is not proof that a newly provisioned one landed at the checkout the systemd
+# unit actually uses.
+REQUIRED_WALLETS=(
+  agent-grid.json
+  agent-grid-b.json
+  agent-health-factor.json
+  agent-venus-guardian.json
+  agent-yield.json
+  agent-yield-session.json
+  agent-yield-b.json
+  agent-yield-b-session.json
+  agent-lp-range.json
+  agent-weight-rebalancer.json
+)
+for WALLET in "${REQUIRED_WALLETS[@]}"; do
+  S "test -f '$APPDIR/wallets/$WALLET'" || {
+    echo "FATAL: wallet sync did not land at $APPDIR/wallets/$WALLET"
+    exit 1
+  }
+done
 # Enforce 0600 on the remote regardless of what the local modes were (some
 # key files predate the chmod-on-write and could be 0644).
 S 'chmod 700 ~/agripinaa/wallets && chmod 600 ~/agripinaa/wallets/*.json'
@@ -84,7 +105,6 @@ S 'if [ -d ~/agripinaa/apps/agents/data ]; then chmod 700 ~/agripinaa/apps/agent
 echo "== installing systemd services (user: $RUSER)…"
 # The checkout lives under the remote user's home, not a fixed path; every unit
 # path below is derived from it so nothing hardcodes /opt or /root.
-APPDIR="$RHOME/agripinaa"
 for UNIT in runner tunnel; do
   if [ "$UNIT" = runner ]; then
     DESC="Agripinaa reference agents"
