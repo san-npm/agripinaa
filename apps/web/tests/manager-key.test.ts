@@ -81,16 +81,16 @@ test('malformed fields are refused before any pin check', () => {
   }
 });
 
-test('an agent that is not registered on chain is accepted with a logged warning', async () => {
-  // The Steward is configured and not yet minted (tokenId null), so no visitor
-  // can reach an activate page for it and nothing can be granted to the key it
-  // reports. That is the only slug the warn-and-accept path is left open for.
+test('the registered Steward refuses a manager key that misses its pin', async () => {
   const stub = jsonFetch(200, { agent: 'yield-b', publicKey: stranger.publicKey, address: stranger.address });
-  const { result, warnings } = await capturingWarn(() => withFetch(stub, () => fetchManagerKey('yield-b', 'USDT')));
-  assert.equal(agentBySlug('yield-b')?.tokenId, null, 'the fixture is the unregistered case');
-  assert.equal(result.address, stranger.address);
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!, /yield-b/);
+  const { warnings } = await capturingWarn(() =>
+    withFetch(stub, () => assert.rejects(
+      () => fetchManagerKey('yield-b', 'USDT'),
+      /does not match the pinned manager key/,
+    )),
+  );
+  assert.equal(agentBySlug('yield-b')?.tokenId, '307487');
+  assert.deepEqual(warnings, []);
 });
 
 test('a registered agent with no pin for the token is refused, not warned about', async () => {

@@ -17,7 +17,7 @@
  *    immutable ERC-8004 identity. Those bytes must not change: not a value,
  *    not a key, not the ORDER of the keys, since the body is JSON.stringify'd
  *    in declaration order. tests/agents.test.ts pins each registered agent's
- *    exact bytes and checks that an unregistered one is at least whole.
+ *    exact bytes.
  * 2. `wallet` is the agent's PUBLIC address. Signer secrets live only in
  *    wallets/*.json and are never read here.
  *
@@ -187,18 +187,13 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
-  /*
-   * Configured, not yet on-chain: no wallet, no token id, no registration, no
-   * attestation, no proofs. The owner approved the display name below before
-   * registration because register.ts mints it into a permanent tokenURI. Task
-   * 17 fills in the remaining identity fields after funding is released.
-   */
+  /* Wallet funded and identity registered; attestation and proof remain pending. */
   'grid-b': {
     slug: 'grid-b',
-    tokenId: null,
+    tokenId: '307485',
     name: 'Agripinaa BTC Grid',
     category: 'grid',
-    wallet: null,
+    wallet: '0x4A66d9f68CA6be7A44fDb891C0346c2381BF0D6d',
     walletFile: 'agent-grid-b.json',
     managed: false,
     backfillOphisTrades: true,
@@ -246,7 +241,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
      * be acquired before `fund --execute` reaches it.
      */
     funding: { bnb: '0.0015', usdt: '2', btcb: '0.000025' },
-    registrationTx: null,
+    registrationTx: '0xbb75b0bb6620b85ae53d38235b410a85c507b161ea0ad673167fc0a7d40d85eb',
     attestation: null,
     proofs: [],
   },
@@ -288,17 +283,13 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
-  /*
-   * Configured, not yet on-chain, same as grid-b: Task 17 fills in the wallet,
-   * token id, registration and attestation once the owner has signed off on the
-   * display name (PROVISIONAL below) and released the funding.
-   */
+  /* Fully registered and execution-attested from its first live Venus repair. */
   'venus-guardian': {
     slug: 'venus-guardian',
-    tokenId: null,
+    tokenId: '307486',
     name: 'Agripinaa Venus Guardian',
     category: 'health-factor',
-    wallet: null,
+    wallet: '0x94bD6175e45f5b1054700bbb4CaBcA1Ab4c15173',
     walletFile: 'agent-venus-guardian.json',
     managed: false,
     backfillOphisTrades: false,
@@ -331,9 +322,21 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       x402: { priceUsdt: '0.05', note: 'pending registration' },
     },
     funding: { bnb: '0.0015', usdt: '2', wbnb: '0.005' },
-    registrationTx: null,
-    attestation: null,
-    proofs: [],
+    registrationTx: '0xf0c59a0aae6a8f94e7aa899488de869515ec93743c0c850df5d425cdd21e40a0',
+    attestation: {
+      txHash: '0xdd938692c2c3f6eb1f6813171e177e1d9af20882ad0324871ba3d1cc954eb450',
+      verifier: VERIFIER,
+      tag: 'agripinaa-verified · health-factor',
+      feedbackHash: '0x244903446100c31d00763a40478eb52ec4407b346b46f2183bee7718117197f8',
+    },
+    proofs: [
+      {
+        label: 'repair-done',
+        ref: '0xd9817ea31984019038303cbcb1aeea46bc44ae98bd6fe0ef0bdc83a1a80f5808',
+        kind: 'tx',
+        note: 'Repaid 0.442891721262516486 USDT on Venus, restoring HF from 1.27 to 1.60',
+      },
+    ],
   },
   yield: {
     slug: 'yield',
@@ -378,22 +381,19 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
-  /*
-   * Configured, not yet on-chain, same as grid-b and venus-guardian. This one
-   * carries `managed: true`, so Task 17 must also generate its master manager
-   * key (fund --gen creates wallets/agent-yield-b-session.json) before any
-   * depositor can grant it a session, then pin the addresses the runner
-   * reports for it in `managerKeys` (none yet, so the browser accepts what the
-   * runner reports for this agent with a logged warning until then).
-   */
+  /* Fully registered and execution-attested from its first live Venus supply. */
   'yield-b': {
     slug: 'yield-b',
-    tokenId: null,
+    tokenId: '307487',
     name: 'Agripinaa Steward',
     category: 'yield',
-    wallet: null,
+    wallet: '0x454aC9bae8cC6eA1067F7422992A9Ab2e8DCEdF3',
     walletFile: 'agent-yield-b.json',
     managed: true,
+    managerKeys: {
+      USDT: '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01',
+      USDC: '0x66641f1c347bc9D4310166890636531CCbFcEF70',
+    },
     backfillOphisTrades: false,
     manifest: {
       name: 'Agripinaa Steward',
@@ -425,9 +425,21 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       x402: { priceUsdt: '0.05', note: 'pending registration' },
     },
     funding: { bnb: '0.0015', usdt: '1' },
-    registrationTx: null,
-    attestation: null,
-    proofs: [],
+    registrationTx: '0x4d3d55f3c17290a7e3dc04349f6e2ad5422b1cfb3aea46a3110500c07dc5a85e',
+    attestation: {
+      txHash: '0xec7cf7f7b13bdd4607d0cef66e0a6bc2ce70d78e0851bbd40b1f615ce09f95f3',
+      verifier: VERIFIER,
+      tag: 'agripinaa-verified · yield',
+      feedbackHash: '0xebf6999d9f572a91a835f849ae304cfa41f007a68a21c5b0b50e9bd5f129ba28',
+    },
+    proofs: [
+      {
+        label: 'supply',
+        ref: '0xbf543e86567cbfd26e2d9cfbbc9136076d71070a7814dbdffa23655da028d40b',
+        kind: 'tx',
+        note: 'Supplied 0.9 USDT to Venus on the first live Steward tick',
+      },
+    ],
   },
   'lp-range': {
     slug: 'lp-range',
@@ -483,17 +495,13 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       },
     ],
   },
-  /*
-   * Configured, not yet on-chain, same as grid-b: Task 17 fills in the wallet,
-   * token id, registration and attestation once the owner has signed off on the
-   * display name (PROVISIONAL below) and released the funding.
-   */
+  /* Wallet funded and identity registered; attestation and proof remain pending. */
   'weight-rebalancer': {
     slug: 'weight-rebalancer',
-    tokenId: null,
+    tokenId: '307488',
     name: 'Agripinaa Rebalancer',
     category: 'rebalancing',
-    wallet: null,
+    wallet: '0x2516deB9E76995fd7eb0911AacEA441c12ccc98C',
     walletFile: 'agent-weight-rebalancer.json',
     managed: false,
     backfillOphisTrades: true,
@@ -524,7 +532,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       x402: { priceUsdt: '0.05', note: 'pending registration' },
     },
     funding: { bnb: '0.0015', usdt: '2.5', wbnb: '0.004' },
-    registrationTx: null,
+    registrationTx: '0xcf6a2d2c86cc72e8c4c02e772ada6be228abaae2136d7f4d5b5a0e69ffbbc77c',
     attestation: null,
     proofs: [],
   },

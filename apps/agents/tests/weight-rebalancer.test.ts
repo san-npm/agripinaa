@@ -193,11 +193,11 @@ test('the cooldown outlasts an Ophis order, so rebalances cannot stack', () => {
   assert.ok(COOLDOWN_MS > weightRebalancerAgent.tickIntervalMs);
 });
 
-test('the registry record is configuration only until it is registered', () => {
+test('the registry record pins its registered identity and wallet', () => {
   const record = AGENTS['weight-rebalancer'];
-  assert.equal(record.tokenId, null);
-  assert.equal(record.wallet, null);
-  assert.equal(record.registrationTx, null);
+  assert.equal(record.tokenId, '307488');
+  assert.equal(record.wallet, '0x2516deB9E76995fd7eb0911AacEA441c12ccc98C');
+  assert.equal(record.registrationTx, '0xcf6a2d2c86cc72e8c4c02e772ada6be228abaae2136d7f4d5b5a0e69ffbbc77c');
   assert.equal(record.attestation, null);
   assert.deepEqual(record.proofs, []);
   assert.equal(record.category, 'rebalancing');

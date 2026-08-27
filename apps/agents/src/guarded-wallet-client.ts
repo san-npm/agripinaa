@@ -2,8 +2,12 @@ import {
   createWalletClient,
   fallback,
   http,
+  isHex,
+  keccak256,
   type Account,
+  type Hex,
   type PublicClient,
+  type Transport,
   type WalletClient,
 } from 'viem';
 import { bsc } from 'viem/chains';
@@ -12,6 +16,46 @@ import { BSC_MAINNET } from '@agripinaa/shared';
 
 const DEFAULT_GAS_LIMIT = 2_000_000n;
 const DEFAULT_MAX_TX_FEE_WEI = 10_000_000_000_000_000n; // 0.01 BNB
+
+/**
+ * A fallback transport can submit a raw transaction successfully to one RPC,
+ * lose that response, then receive `already known` from the next RPC. The
+ * transaction hash is deterministic over the signed bytes, so recovering it
+ * locally is both exact and safer than resubmitting with another nonce.
+ *
+ * Never recover from a generic `nonce too low`: that can describe an unrelated
+ * transaction. The backend must explicitly say these same raw bytes are known.
+ */
+export function knownRawTransactionHash(
+  method: string,
+  params: readonly unknown[] | undefined,
+  error: unknown,
+): Hex | undefined {
+  if (method !== 'eth_sendRawTransaction') return undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/\b(already known|known transaction)\b/i.test(message)) return undefined;
+  const serialized = params?.[0];
+  if (typeof serialized !== 'string' || serialized === '0x' || !isHex(serialized)) return undefined;
+  return keccak256(serialized);
+}
+
+function recoverKnownRawTransactions(base: Transport): Transport {
+  return (options) => {
+    const transport = base(options);
+    return {
+      ...transport,
+      async request({ method, params }) {
+        try {
+          return await transport.request({ method, params });
+        } catch (error) {
+          const hash = knownRawTransactionHash(method, params as readonly unknown[] | undefined, error);
+          if (hash) return hash;
+          throw error;
+        }
+      },
+    } as ReturnType<Transport>;
+  };
+}
 
 function positiveEnv(name: string, fallbackValue: bigint): bigint {
   const raw = process.env[name];
@@ -52,7 +96,9 @@ export function createGuardedWalletClient(
   account: Account,
   publicClient: PublicClient,
 ): WalletClient {
-  const transport = fallback(BSC_MAINNET.rpcUrls.map((url) => http(url)));
+  const transport = recoverKnownRawTransactions(
+    fallback(BSC_MAINNET.rpcUrls.map((url) => http(url))),
+  );
   const client = createWalletClient({ account, chain: bsc, transport });
   const gasLimit = positiveEnv('AGENTS_MAX_GAS_LIMIT', DEFAULT_GAS_LIMIT);
   const maxTxFeeWei = positiveEnv('AGENTS_MAX_TX_FEE_WEI', DEFAULT_MAX_TX_FEE_WEI);

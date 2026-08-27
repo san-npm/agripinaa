@@ -115,7 +115,7 @@ test('the runner boot guard rejects a module with no registry record', () => {
   );
 });
 
-test('an agent with no wallet yet is unprovisioned, and one with a key is not', () => {
+test('a registered wallet pin is never treated as configuration-only', () => {
   // The runner skips an unprovisioned agent instead of dying at boot: a record
   // can exist before `fund --gen` creates its key, and one such agent must not
   // take every other agent's tick loop down with it.
@@ -124,7 +124,7 @@ test('an agent with no wallet yet is unprovisioned, and one with a key is not', 
   // A record that names a wallet is provisioned, so a missing key file is a
   // an operational failure and must still surface (buildContext throws on it).
   assert.equal(isUnprovisioned(AGENTS.grid, false), false);
-  assert.equal(isUnprovisioned(AGENTS['grid-b'], false), true);
+  assert.equal(isUnprovisioned(AGENTS['grid-b'], false), false);
 });
 
 test('manifest urls are the ones the minted tokenURIs already point at', () => {

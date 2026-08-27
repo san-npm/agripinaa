@@ -93,12 +93,10 @@ test('a challenge paying any other address is refused and names both wallets', (
   assert.equal(checkPayTo('grid', '0x0000000000000000000000000000000000000000').verdict, 'mismatch');
 });
 
-test('an agent with no registry wallet can vouch for no destination', () => {
-  // grid-b is configured but not funded, so its wallet is null: nothing to pin
-  // against, so the answer is closed rather than open.
-  assert.equal(AGENTS['grid-b'].wallet, null);
-  const reported = AGENTS.grid.wallet!;
-  assert.deepEqual(checkPayTo('grid-b', reported), { verdict: 'unpinned', reported });
+test('the newly provisioned agent pins its own payment destination', () => {
+  const wallet = AGENTS['grid-b'].wallet!;
+  assert.deepEqual(checkPayTo('grid-b', wallet), { verdict: 'pinned', wallet });
+  assert.equal(checkPayTo('grid-b', AGENTS.grid.wallet!).verdict, 'mismatch');
 });
 
 test('every first-party agent has a preview in the shape x402-server returns', () => {

@@ -21,7 +21,7 @@ test('every agent in the registry has a manifest, registered or not', () => {
   );
 });
 
-test('an unregistered agent is served with its own body, not a placeholder', () => {
+test('the second registered grid is served with its own body, not a placeholder', () => {
   const m = buildManifest('grid-b', 'https://runner.example.com');
   assert.equal(m?.name, 'Agripinaa BTC Grid');
   assert.equal(m?.category, 'grid');
