@@ -5,10 +5,16 @@ import { TOKENS_BSC, toBaseUnits } from '@agripinaa/shared';
 import { parseAbi } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import { buildManagedStrategyContext } from '../src/managed-strategy-runner';
+import { managedAccountStateKey } from '../src/managed';
+import {
+  buildManagedStrategyContext,
+  managedStrategyNextDelayMs,
+  managedStrategySweepIntervalMs,
+} from '../src/managed-strategy-runner';
 import { ChassisOphisWallet } from '../src/ophis-wallet';
 import type { AgentContext } from '../src/types';
-import { canonicalStrategyPermissions } from '../src/x402-server';
+import { isGlobalHalt } from '../src/types';
+import { canonicalStrategyPermissions, managedServiceHalt } from '../src/x402-server';
 
 const PRIVATE_KEY = `0x${'31'.repeat(32)}` as const;
 const manager = privateKeyToAccount(PRIVATE_KEY);
@@ -73,10 +79,15 @@ test('managed context signs Ophis typed data as ERC-1271 for the user account', 
 test('managed writes are relayed through the exact stored session', async () => {
   let call: { to: string; data: string } | undefined;
   const client = {
-    execute: async (opts: { session: { walletAddress: string }; calls: { to: string; data: string }[] }) => {
+    execute: async (opts: {
+      session: { walletAddress: string };
+      calls: { to: string; data: string }[];
+      noWait?: boolean;
+    }) => {
       assert.equal(opts.session.walletAddress, USER);
+      assert.equal(opts.noWait, true);
       call = opts.calls[0];
-      return { status: 'CONFIRMED', transactionHash: `0x${'ab'.repeat(32)}` };
+      return { callsId: `0x${'cd'.repeat(32)}`, status: 'PENDING' };
     },
   };
   const { base } = baseContext();
@@ -85,6 +96,10 @@ test('managed writes are relayed through the exact stored session', async () => 
     client: client as never,
     entry: entry() as never,
     managerKey: { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey },
+    relayStatus: async () => ({
+      status: 'CONFIRMED',
+      transactionHash: `0x${'ab'.repeat(32)}`,
+    }),
   });
   const hash = await ctx.walletClient.writeContract({
     address: TOKENS_BSC.USDT!.address,
@@ -97,6 +112,110 @@ test('managed writes are relayed through the exact stored session', async () => 
   assert.equal(hash, `0x${'ab'.repeat(32)}`);
   assert.equal(call?.to, TOKENS_BSC.USDT!.address);
   assert.match(call?.data ?? '', /^0x70a08231/);
+});
+
+test('a relay-pending write is durably reconciled and never submitted twice', async () => {
+  const callsId = `0x${'cd'.repeat(32)}` as const;
+  const receipt = `0x${'ef'.repeat(32)}` as const;
+  let executions = 0;
+  let relayStatus: 'PENDING' | 'CONFIRMED' = 'PENDING';
+  const client = {
+    execute: async () => {
+      executions += 1;
+      return { callsId, status: 'PENDING' as const };
+    },
+  };
+  const { base, values } = baseContext();
+  const ctx = buildManagedStrategyContext({
+    base,
+    client: client as never,
+    entry: entry() as never,
+    managerKey: { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey },
+    relayStatus: async ({ callsId: checked }) => {
+      assert.equal(checked, callsId);
+      return relayStatus === 'CONFIRMED'
+        ? { status: 'CONFIRMED', transactionHash: receipt }
+        : { status: 'PENDING' };
+    },
+  });
+  const write = () => ctx.walletClient.writeContract({
+    address: TOKENS_BSC.USDT!.address,
+    abi: balanceOfAbi,
+    functionName: 'balanceOf',
+    args: [USER],
+    account: ctx.account,
+    chain: ctx.walletClient.chain,
+  });
+
+  await assert.rejects(write, /still pending at the relay/);
+  assert.equal(executions, 1);
+  assert.equal(
+    (values.get(managedAccountStateKey(USER, 'pendingRelayWrite')) as { callsId: string }).callsId,
+    callsId,
+  );
+
+  await assert.rejects(write, /refusing to submit it twice/);
+  assert.equal(executions, 1);
+
+  relayStatus = 'CONFIRMED';
+  assert.equal(await write(), receipt);
+  assert.equal(executions, 1);
+  assert.equal(values.get(managedAccountStateKey(USER, 'pendingRelayWrite')), null);
+});
+
+test('a confirmed relay receipt is never reused for different calldata', async () => {
+  const callsId = `0x${'cd'.repeat(32)}` as const;
+  const nextCallsId = `0x${'de'.repeat(32)}` as const;
+  const oldReceipt = `0x${'ef'.repeat(32)}` as const;
+  const newReceipt = `0x${'ab'.repeat(32)}` as const;
+  let executions = 0;
+  const client = {
+    execute: async () => {
+      executions += 1;
+      return executions === 1
+        ? { callsId, status: 'PENDING' as const }
+        : { callsId: nextCallsId, status: 'PENDING' as const };
+    },
+  };
+  let firstStatusRead = true;
+  const { base } = baseContext();
+  const ctx = buildManagedStrategyContext({
+    base,
+    client: client as never,
+    entry: entry() as never,
+    managerKey: { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey },
+    relayStatus: async ({ callsId: checked }) => {
+      if (checked === nextCallsId) return { status: 'CONFIRMED', transactionHash: newReceipt };
+      assert.equal(checked, callsId);
+      if (firstStatusRead) {
+        firstStatusRead = false;
+        return { status: 'PENDING' };
+      }
+      return { status: 'CONFIRMED', transactionHash: oldReceipt };
+    },
+  });
+  const write = (owner: `0x${string}`) => ctx.walletClient.writeContract({
+    address: TOKENS_BSC.USDT!.address,
+    abi: balanceOfAbi,
+    functionName: 'balanceOf',
+    args: [owner],
+    account: ctx.account,
+    chain: ctx.walletClient.chain,
+  });
+
+  await assert.rejects(() => write(USER), /still pending at the relay/);
+  assert.equal(await write('0x2222222222222222222222222222222222222222'), newReceipt);
+  assert.equal(executions, 2);
+});
+
+test('bounded batches still revisit every account inside the module cadence', () => {
+  assert.equal(managedStrategySweepIntervalMs(60_000, 0), 60_000);
+  assert.equal(managedStrategySweepIntervalMs(60_000, 100), 60_000);
+  assert.equal(managedStrategySweepIntervalMs(60_000, 101), 30_000);
+  assert.equal(managedStrategySweepIntervalMs(60_000, 300), 20_000);
+  assert.equal(managedStrategySweepIntervalMs(120_000, 300), 40_000);
+  assert.equal(managedStrategyNextDelayMs(60_000, 300, 5_000), 15_000);
+  assert.equal(managedStrategyNextDelayMs(60_000, 300, 25_000), 0);
 });
 
 test('managed Aave guardian adopts a user position and never arms demo setup', () => {
@@ -118,9 +237,65 @@ test('managed breaker state is isolated from the own-capital account', () => {
     entry: entry() as never,
     managerKey: { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey },
   });
-  ctx.breakers.halt('user drawdown');
-  assert.deepEqual(ctx.breakers.isHalted(), { halted: true, reason: 'user drawdown' });
+  ctx.breakers.halt('user drawdown', { global: false });
+  assert.deepEqual(ctx.breakers.isHalted(), { halted: true, reason: 'user drawdown', global: false });
   assert.deepEqual(base.breakers.isHalted(), { halted: false });
+});
+
+test('a managed shared-integrity halt propagates to the global breaker', () => {
+  const { base } = baseContext('lp-range');
+  let globalHalt: { reason: string; global: boolean } | null = null;
+  base.breakers.halt = (reason, scope) => {
+    globalHalt = { reason, global: scope?.global === true };
+  };
+  base.breakers.isHalted = () => globalHalt
+    ? { halted: true, reason: globalHalt.reason, global: globalHalt.global }
+    : { halted: false };
+  const ctx = buildManagedStrategyContext({
+    base,
+    client: {} as never,
+    entry: entry() as never,
+    managerKey: { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey },
+  });
+
+  ctx.breakers.halt('position manager factory mismatch', { global: true });
+  assert.deepEqual(globalHalt, { reason: 'position manager factory mismatch', global: true });
+  assert.deepEqual(ctx.breakers.isHalted(), {
+    halted: true,
+    reason: 'position manager factory mismatch',
+    global: true,
+  });
+});
+
+test('managed strategy status reads the account breaker, not the demo-wallet breaker', () => {
+  const { base, values } = baseContext('grid');
+  base.breakers.isHalted = () => ({ halted: true, reason: 'demo drawdown', global: false });
+  assert.deepEqual(managedServiceHalt('grid', USER, base), { halted: false });
+
+  values.set(managedAccountStateKey(USER, 'halted'), { reason: 'user drawdown' });
+  assert.deepEqual(managedServiceHalt('grid', USER, base), {
+    halted: true,
+    reason: 'user drawdown',
+  });
+
+  const yieldContext = { ...base, name: 'yield' } as AgentContext;
+  assert.deepEqual(managedServiceHalt('yield', USER, yieldContext), {
+    halted: true,
+    reason: 'demo drawdown',
+    global: false,
+  });
+});
+
+test('global and legacy fail-closed halts still stop every managed account', () => {
+  const { base } = baseContext('grid');
+  base.breakers.isHalted = () => ({ halted: true, reason: 'state-file-corrupt', global: true });
+  assert.deepEqual(managedServiceHalt('grid', USER, base), {
+    halted: true,
+    reason: 'state-file-corrupt',
+    global: true,
+  });
+  assert.equal(isGlobalHalt({ halted: true, reason: 'legacy operator halt' }), true);
+  assert.equal(isGlobalHalt({ halted: true, reason: 'demo drawdown', global: false }), false);
 });
 
 test('Ranger handoff requires the WBNB ceiling that makes direct mint executable', () => {

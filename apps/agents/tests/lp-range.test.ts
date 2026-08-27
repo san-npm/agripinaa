@@ -395,6 +395,31 @@ function fakeCtx(opts: LpFakeOpts): {
   return { ctx, logs, store, swapAttempts, writes };
 }
 
+test('a relay-confirmed mint repairs provenance and position bookkeeping before the next tick', async () => {
+  const tokenId = '7300002';
+  const { ctx, logs, store } = fakeCtx({
+    position: null,
+    liquidityByTokenId: { [tokenId]: BigInt(1) },
+    ownedTokenIds: [tokenId],
+  });
+  const repaired = await lpRangeAgent.recoverConfirmedWrite!(ctx, {
+    to: POSITION_MANAGER as `0x${string}`,
+    data: '0x1234',
+    functionName: 'mint',
+    transactionHash: '0xmint',
+  });
+
+  assert.equal(repaired, true);
+  assert.deepEqual(store.get('mintedTokenIds'), [tokenId]);
+  assert.deepEqual(store.get('position'), {
+    tokenId,
+    tickLower: STUCK_POSITION.tickLower,
+    tickUpper: STUCK_POSITION.tickUpper,
+    outSince: null,
+  });
+  assert.ok(logs.some((entry) => entry.event === 'mint-recovered'));
+});
+
 test('a stored position drained to zero liquidity is treated as absent, not range-checked', async () => {
   const { ctx, logs, store } = fakeCtx({
     position: { ...STUCK_POSITION },

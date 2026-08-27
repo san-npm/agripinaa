@@ -14,6 +14,7 @@ import {
   describeScope,
 } from '@/lib/managed-strategy';
 import { markRegistered, storeSession } from '@/lib/session-store';
+import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
 import { CoinsIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
@@ -126,16 +127,15 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
           },
         });
       } catch (storageError) {
-        const revoked = await client.revokeSession({
-          wallet,
-          signer: wallet.signer,
-          chainId: 56,
-          session: session as Parameters<typeof client.revokeSession>[0]['session'],
+        return await compensateSessionStorageFailure({
+          storageError,
+          revoke: () => client.revokeSession({
+            wallet,
+            signer: wallet.signer,
+            chainId: 56,
+            session: session as Parameters<typeof client.revokeSession>[0]['session'],
+          }),
         });
-        if (revoked.status !== 'CONFIRMED') {
-          throw new Error('CRITICAL: recovery storage failed and the new session could not be revoked automatically.');
-        }
-        throw new Error(`Recovery storage failed; the new session was revoked. ${storageError instanceof Error ? storageError.message : ''}`.trim());
       }
 
       if (strategy.signatureCheckers.length > 0) {

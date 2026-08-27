@@ -437,7 +437,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
   });
   if (factory.toLowerCase() !== EXPECTED_FACTORY.toLowerCase()) {
     /* Minting through a manager wired to an unknown factory risks the funds. */
-    ctx.breakers.halt(`position manager factory mismatch: ${factory}`);
+    ctx.breakers.halt(`position manager factory mismatch: ${factory}`, { global: true });
     throw new Error(`position manager factory mismatch: ${factory}`);
   }
 
@@ -1010,6 +1010,39 @@ export const lpRangeAgent: AgentModule = {
   name: 'lp-range',
   category: 'rebalancing',
   tickIntervalMs: 600_000,
+
+  async recoverConfirmedWrite(ctx, write) {
+    if (
+      write.functionName !== 'mint'
+      || write.to.toLowerCase() !== POSITION_MANAGER.toLowerCase()
+    ) return false;
+    const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash: write.transactionHash });
+    if (receipt.status !== 'success') throw new Error('confirmed relay mint receipt reverted');
+    const tokenId = await findMintedTokenId(ctx, receipt.logs);
+    // Record provenance first: if the following position read is interrupted,
+    // the normal recovery scan may safely adopt this NFT on the next sweep.
+    recordMintedTokenId(ctx, tokenId.toString());
+    const position = await ctx.publicClient.readContract({
+      address: POSITION_MANAGER,
+      abi: NPM_ABI,
+      functionName: 'positions',
+      args: [tokenId],
+    });
+    ctx.state.set('position', {
+      tokenId: tokenId.toString(),
+      tickLower: position[5],
+      tickUpper: position[6],
+      outSince: null,
+    } satisfies PositionState);
+    ctx.log({
+      event: 'mint-recovered',
+      txHash: write.transactionHash,
+      tokenId: tokenId.toString(),
+      tickLower: position[5],
+      tickUpper: position[6],
+    });
+    return true;
+  },
 
   async tick(ctx) {
     if (ctx.breakers.isHalted().halted) {
