@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 
 import {
@@ -73,9 +74,29 @@ const fundingMerchantIngressGate = new RequestGate(10_000, 60_000, 16);
 // the separate concurrency cap still bounds live RPC work during an attack.
 const FUNDING_QUOTE_GLOBAL_KEY = 'public-funding-quotes';
 const fundingQuoteGate = new RequestGate(10_000, 60_000, 16);
+const sessionGrantGate = new RequestGate(1_000, 60_000, 32, 1);
 const FUNDING_MERCHANT_BODY_BYTES = 256 * 1024;
 const FUNDING_QUOTE_CACHE_MS = 10_000;
 const SESSION_EXPIRY_CLOCK_SKEW_SECONDS = 5 * 60;
+const SESSION_GRANT_LEASE_MS = 30_000;
+const SESSION_GRANT_BODY_BYTES = 4_096;
+const PUBLIC_KEY_RE = /^0x04[0-9a-fA-F]{128}$/;
+const LEASE_TOKEN_RE = /^0x[0-9a-fA-F]{64}$/;
+
+function bearerMatches(header: string | undefined, expected: string | undefined): boolean {
+  if (!header?.startsWith('Bearer ') || !expected) return false;
+  const presented = Buffer.from(header.slice(7));
+  const wanted = Buffer.from(expected);
+  return presented.length === wanted.length && timingSafeEqual(presented, wanted);
+}
+
+function managerTokenFor(managerSet: ManagerSet, publicKey: string): string | undefined {
+  const normalized = publicKey.toLowerCase();
+  for (const [token, identity] of managerSet.byToken) {
+    if (identity.publicKey.toLowerCase() === normalized) return token;
+  }
+  return undefined;
+}
 
 export function fundingRoutesEnabled(facilitatorAddress: string, hasQuoteClient: boolean): boolean {
   return hasQuoteClient
@@ -370,10 +391,13 @@ export function startX402Server(opts: {
   agents: Map<string, { module: AgentModule; ctx: AgentContext }>;
   /** Public manager-key identities per managed-capable agent (e.g. yield). */
   managers?: Map<string, ManagerSet>;
+  /** Shared secret for web-to-runner operational endpoints. */
+  opsToken?: string;
   rpcUrl?: string;
 }): Server {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
   const managers = opts.managers ?? new Map<string, ManagerSet>();
+  const grantLeases = new Map<string, { token: string; expiresAt: number }>();
   const quoteClient = opts.agents.values().next().value?.ctx.publicClient;
   // A locally generated facilitator still serves status/proof/x402 traffic.
   // The public funding routes are enabled only when the runner has both a live
@@ -474,6 +498,140 @@ export function startX402Server(opts: {
     const match = /^\/([a-z-]+)\/status$/.exec(pathname);
     const entry = match ? opts.agents.get(match[1]!) : undefined;
     const merchant = match ? merchants.get(match[1]!) : undefined;
+
+    if (pathname === '/internal/session-grant-lease') {
+      if (!opts.opsToken) {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'activation lease is not configured' }));
+        return;
+      }
+      const authorization = Array.isArray(req.headers.authorization)
+        ? undefined
+        : req.headers.authorization;
+      if (!bearerMatches(authorization, opts.opsToken)) {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      if (req.method !== 'POST' && req.method !== 'DELETE') {
+        res.writeHead(405, { allow: 'POST, DELETE', 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      const permit = sessionGrantGate.enter('web');
+      if (!permit.ok) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': String(permit.retryAfterSeconds),
+        });
+        res.end(JSON.stringify({ error: 'too many activation lease requests' }));
+        return;
+      }
+      let body: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(await readBody(req, SESSION_GRANT_BODY_BYTES, 5_000)) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid body');
+        body = parsed as Record<string, unknown>;
+      } catch {
+        if (!res.destroyed) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'invalid request' }));
+        }
+        permit.release();
+        return;
+      }
+      const account = typeof body.account === 'string' ? body.account.toLowerCase() : '';
+      const agent = typeof body.agent === 'string' ? body.agent : '';
+      const publicKey = typeof body.publicKey === 'string' ? body.publicKey.toLowerCase() : '';
+      const leaseToken = typeof body.leaseToken === 'string' ? body.leaseToken.toLowerCase() : '';
+      const managerSet = managers.get(agent);
+      const managerToken = managerSet ? managerTokenFor(managerSet, publicKey) : undefined;
+      if (
+        !ADDRESS_RE.test(account)
+        || !PUBLIC_KEY_RE.test(publicKey)
+        || !LEASE_TOKEN_RE.test(leaseToken)
+        || !managerSet
+        || !managerToken
+      ) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid request' }));
+        permit.release();
+        return;
+      }
+      const key = `${account}:${agent}:${managerToken}`;
+      const now = Date.now();
+      for (const [knownKey, knownLease] of grantLeases) {
+        if (knownLease.expiresAt <= now) grantLeases.delete(knownKey);
+      }
+      const lease = grantLeases.get(key);
+
+      if (req.method === 'DELETE') {
+        if (grantLeases.get(key)?.token === leaseToken) grantLeases.delete(key);
+        res.writeHead(200, { 'cache-control': 'no-store', 'content-type': 'application/json' });
+        res.end(JSON.stringify({ released: true }));
+        permit.release();
+        return;
+      }
+
+      const expiry = body.expiry;
+      const nowSeconds = Math.floor(now / 1_000);
+      if (
+        typeof expiry !== 'number'
+        || !Number.isSafeInteger(expiry)
+        || expiry <= nowSeconds
+        || expiry > nowSeconds + MAX_SESSION_SECONDS + SESSION_EXPIRY_CLOCK_SKEW_SECONDS
+      ) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid session expiry' }));
+        permit.release();
+        return;
+      }
+
+      // A completed handoff survives process restarts in the managed registry.
+      // Permit another asset's distinct manager, but never rotate this asset's
+      // manager while its previous on-chain authorization may still be live.
+      let persistedConflict = false;
+      try {
+        persistedConflict = loadManaged(agent).some((candidate) => {
+          if (
+            candidate.account.toLowerCase() !== account
+            || candidate.session.expiry <= nowSeconds
+            || candidate.session.publicKey.toLowerCase() === publicKey
+          ) return false;
+          const priorToken = managerTokenFor(managerSet, candidate.session.publicKey);
+          return priorToken === undefined || priorToken === managerToken;
+        });
+      } catch {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'activation lease state unavailable' }));
+        permit.release();
+        return;
+      }
+      if (persistedConflict) {
+        res.writeHead(409, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'a previous manager binding may still be live' }));
+        permit.release();
+        return;
+      }
+      const activeLease = grantLeases.get(key);
+      if (activeLease && activeLease.token !== leaseToken) {
+        res.writeHead(409, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'another activation is submitting' }));
+        permit.release();
+        return;
+      }
+      if (!activeLease && grantLeases.size >= 1_024) {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'activation lease capacity unavailable' }));
+        permit.release();
+        return;
+      }
+      grantLeases.set(key, { token: leaseToken, expiresAt: now + SESSION_GRANT_LEASE_MS });
+      res.writeHead(201, { 'cache-control': 'no-store', 'content-type': 'application/json' });
+      res.end(JSON.stringify({ acquired: true }));
+      permit.release();
+      return;
+    }
 
     if (pathname === '/healthz') {
       res.writeHead(200, { 'content-type': 'application/json' });

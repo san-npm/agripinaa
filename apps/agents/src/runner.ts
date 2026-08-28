@@ -211,7 +211,13 @@ async function main() {
     if (strategy) strategyKeySets.set(name, { keySet, module: agents.get(name)!.module });
   }
 
-  startX402Server({ port: PORT, facilitatorKey: privateKey, agents, managers });
+  startX402Server({
+    port: PORT,
+    facilitatorKey: privateKey,
+    agents,
+    managers,
+    opsToken: process.env.OPS_TOKEN,
+  });
   console.log(`x402 status server on :${PORT} (${[...agents.keys()].join(', ')})`);
   if (managers.size > 0) {
     console.log(`managed mode: ${[...managers.keys()].join(', ')}`);

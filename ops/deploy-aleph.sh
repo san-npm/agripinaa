@@ -114,7 +114,9 @@ for UNIT in runner tunnel; do
     DESC="Agripinaa reference agents"
     EXEC="/usr/bin/env pnpm --filter @agripinaa/agents start"
     WD="WorkingDirectory=$APPDIR"
-    EXTRA=""
+    # The internal activation lease is authenticated with OPS_TOKEN. Keep the
+    # file optional for local/legacy installs, but load it whenever provisioned.
+    EXTRA="EnvironmentFile=-$APPDIR/ops/ops.env"
   else
     DESC="Cloudflare tunnel for agent x402 endpoints"
     EXEC="/usr/bin/cloudflared tunnel --url http://localhost:4410"
