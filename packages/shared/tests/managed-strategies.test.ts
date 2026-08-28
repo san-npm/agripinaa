@@ -8,6 +8,12 @@ import {
   managedStrategyFor,
 } from '../src/managed-strategies';
 
+test('managed strategy lookup rejects inherited object keys', () => {
+  assert.equal(managedStrategyFor('constructor'), undefined);
+  assert.equal(managedStrategyFor('__proto__'), undefined);
+  assert.equal(managedStrategyFor('toString'), undefined);
+});
+
 const SIX = ['grid', 'grid-b', 'health-factor', 'venus-guardian', 'lp-range', 'weight-rebalancer'];
 
 test('all six non-yield agents have a concrete managed policy', () => {

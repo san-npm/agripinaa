@@ -10,6 +10,45 @@ import type { Hex } from 'viem';
 export type ManagedKeyValidity = 'checking' | 'valid' | 'invalid' | 'unknown';
 export type ManagedRunnerStatus = 'checking' | 'ready' | 'halted' | 'not-registered' | 'unavailable';
 
+export interface ManagedRunnerSnapshot {
+  service: ManagedRunnerStatus;
+  positionTokenId: string | null;
+  /** A response arrived, even if the runner reports stale/unavailable health. */
+  reachable: boolean;
+}
+
+/** Fail closed when parsing the runner's public status response. */
+export function managedRunnerSnapshot(
+  body: unknown,
+  responseOk: boolean,
+): ManagedRunnerSnapshot {
+  if (typeof body !== 'object' || body === null) {
+    return { service: 'unavailable', positionTokenId: null, reachable: responseOk };
+  }
+  const candidate = body as { service?: unknown; positionTokenId?: unknown };
+  const service = responseOk
+    && (candidate.service === 'ready'
+      || candidate.service === 'halted'
+      || candidate.service === 'not-registered')
+    ? candidate.service
+    : 'unavailable';
+  const positionTokenId = responseOk
+    && typeof candidate.positionTokenId === 'string'
+    && /^[1-9]\d*$/.test(candidate.positionTokenId)
+    ? candidate.positionTokenId
+    : null;
+  return { service, positionTokenId, reachable: responseOk };
+}
+
+/** Prefer a fresh exact ID even when runner health is stale; cache only bridges fetch failures. */
+export function effectiveManagedPositionTokenId(
+  snapshot: ManagedRunnerSnapshot,
+  cached: string | null,
+): string | null {
+  return snapshot.positionTokenId
+    ?? (snapshot.reachable ? null : cached);
+}
+
 export function managedServiceStatus(
   validity: ManagedKeyValidity,
   recoveryOnly: boolean,
@@ -42,16 +81,23 @@ export async function readManagedRunnerStatus(
   account: string,
   router: string,
 ): Promise<ManagedRunnerStatus> {
-  if (!agent || !isAddressLike(account) || !isAddressLike(router)) return 'unavailable';
+  return (await readManagedRunnerSnapshot(agent, account, router)).service;
+}
+
+export async function readManagedRunnerSnapshot(
+  agent: string | undefined,
+  account: string,
+  router: string,
+): Promise<ManagedRunnerSnapshot> {
+  if (!agent || !isAddressLike(account) || !isAddressLike(router)) {
+    return { service: 'unavailable', positionTokenId: null, reachable: false };
+  }
   try {
     const params = new URLSearchParams({ account, router });
     const response = await fetch(`/api/managed/${agent}/managed-status?${params}`, { cache: 'no-store' });
-    const body = await response.json() as { service?: unknown };
-    return response.ok && (body.service === 'ready' || body.service === 'halted' || body.service === 'not-registered')
-      ? body.service
-      : 'unavailable';
+    return managedRunnerSnapshot(await response.json(), response.ok);
   } catch {
-    return 'unavailable';
+    return { service: 'unavailable', positionTokenId: null, reachable: false };
   }
 }
 

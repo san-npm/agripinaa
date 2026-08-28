@@ -1,12 +1,14 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
+import { MANAGED_NATIVE_CAP } from '@agripinaa/session-kit/scope';
 import { managedStrategyFor } from '@agripinaa/shared/managed-strategies';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { altanaClient } from '@/lib/altana';
 import { clearFundingCheckpointForSession } from '@/lib/funding-checkpoint';
 import { registerManaged } from '@/lib/managed';
+import { readableManagedCeilings, readableSessionCeiling } from '@/lib/session-copy';
 import {
   forgetSession,
   markRegistered,
@@ -16,16 +18,18 @@ import {
 } from '@/lib/session-store';
 import { toast } from '@/lib/toast';
 
-type Validity = 'checking' | 'valid' | 'invalid' | 'unknown';
+export type SessionValidity = 'checking' | 'valid' | 'invalid' | 'unknown';
 
 export function SessionCard({
   meta,
   onChange,
+  position,
 }: {
   meta: StoredSessionMeta;
   onChange: () => void;
+  position?: ReactNode | ((validity: SessionValidity) => ReactNode);
 }) {
-  const [validity, setValidity] = useState<Validity>('checking');
+  const [validity, setValidity] = useState<SessionValidity>('checking');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -153,9 +157,10 @@ export function SessionCard({
         : validity === 'checking'
           ? { text: 'checking…', cls: 'bg-surface-2 text-muted-2' }
           : { text: 'not verifiable', cls: 'bg-primary/15 text-primary' };
+  const strategy = managedStrategyFor(meta.agent.slug ?? '');
 
   return (
-    <li id={`session-${meta.id}`} className="scroll-mt-24 rounded-lg border border-border p-4">
+    <li id={`session-${meta.id}`} className="scroll-mt-24 rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium">{meta.agent.name}</p>
@@ -168,22 +173,57 @@ export function SessionCard({
           {badge.text}
         </span>
       </div>
-      <dl className="mt-3 space-y-1 text-xs text-muted">
-        <div>
-          <dt className="inline text-muted-2">Cap: </dt>
-          <dd className="inline">{meta.scope.capFormatted}</dd>
-        </div>
-        <div>
-          <dt className="inline text-muted-2">Expires: </dt>
-          <dd className="inline">{new Date(meta.scope.expiresAt).toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt className="inline text-muted-2">Allowlist: </dt>
-          <dd className="inline break-all font-mono">
-            {meta.scope.allowlist.join(', ')}
-          </dd>
-        </div>
-      </dl>
+      {typeof position === 'function' ? position(validity) : position}
+      <details className="mt-4 rounded-lg border border-border bg-surface-2 p-3 text-xs">
+        <summary className="cursor-pointer select-none font-medium text-foreground">
+          Session permissions
+        </summary>
+        <dl className="mt-3 space-y-2 text-muted">
+          {strategy && (
+            <>
+              <div>
+                <dt className="text-muted-2">What the agent can do</dt>
+                <dd className="mt-0.5 leading-relaxed">{strategy.summary}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-2">On-chain authorization ceilings</dt>
+                <dd className="mt-1 leading-relaxed">
+                  <ul className="list-disc space-y-0.5 pl-4">
+                    {readableManagedCeilings(
+                      meta.scope.capFormatted,
+                      strategy.additionalSpendCaps,
+                      MANAGED_NATIVE_CAP,
+                    ).map((ceiling) => <li key={ceiling}>{ceiling}</li>)}
+                  </ul>
+                  <p className="mt-2">
+                    These are hard daily maximums, not your balance, fees, or the agent&apos;s
+                    intended spend.
+                  </p>
+                  {strategy.signatureCheckers.length > 0 && (
+                    <p className="mt-1">Separately, Ophis order authority is bounded by the assets approved in this dedicated account.</p>
+                  )}
+                </dd>
+              </div>
+            </>
+          )}
+          {!strategy && (
+            <div>
+              <dt className="text-muted-2">Daily spend limit</dt>
+              <dd className="mt-0.5">{readableSessionCeiling(meta.scope.capFormatted)}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-muted-2">Expires</dt>
+            <dd className="mt-0.5">{new Date(meta.scope.expiresAt).toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-2">Allowed contract{meta.scope.allowlist.length === 1 ? '' : 's'}</dt>
+            <dd className="mt-0.5 break-all font-mono">
+              {meta.scope.allowlist.join(', ')}
+            </dd>
+          </div>
+        </dl>
+      </details>
       <div className="mt-3 flex gap-2">
         {meta.registrationStatus === 'pending'
           && managedStrategyFor(meta.agent.slug ?? '')

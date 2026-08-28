@@ -39,6 +39,7 @@ import {
   loadManaged,
   managedAccountStateKey,
   managedHealthKey,
+  managedRangerTokenId,
   MANAGED_HEALTH_MAX_AGE_MS,
   upsertManaged,
   type ManagedAccount,
@@ -820,9 +821,8 @@ export function startX402Server(opts: {
       return;
     }
 
-    // Public liveness/registration fact used by the owner's dashboard. It
-    // discloses no session bytes: only whether this exact account/router is in
-    // the registry and whether the responding runner is halted.
+    // Public liveness/registration facts used by the owner's dashboard. It
+    // discloses no session bytes: only service state and Ranger's public NFT id.
     const serviceMatch = /^\/([a-z-]+)\/managed-status$/.exec(pathname);
     if (serviceMatch) {
       const agent = serviceMatch[1]!;
@@ -860,6 +860,20 @@ export function startX402Server(opts: {
         : null;
       const fresh = health != null && Date.now() - health.at <= MANAGED_HEALTH_MAX_AGE_MS;
       const ready = registered && fresh && health?.result === 'ready';
+      // Ranger's NFT remains the user's on-chain position after a session is
+      // revoked or expires. The registry entry is then removed, but the
+      // namespaced runner state is retained so the dashboard can still account
+      // for that deployed principal instead of showing only idle balances.
+      const canonicalTarget = managedStrategyFor(agent)?.callScopes[0]?.to;
+      const positionTokenId = canonicalTarget?.toLowerCase() === targetAddress.toLowerCase()
+        ? managedRangerTokenId(
+            agent,
+            runtime.ctx.state.get(
+              managedAccountStateKey(account as Hex, 'position'),
+              null,
+            ),
+          )
+        : null;
       res.writeHead(200, { 'cache-control': 'no-store', 'content-type': 'application/json' });
       res.end(JSON.stringify({
         registered,
@@ -868,6 +882,7 @@ export function startX402Server(opts: {
           ? null
           : halted.reason ?? (!fresh ? 'managed sweep heartbeat is stale or not yet available' : health?.reason ?? null),
         lastSweepAt: health?.at ?? null,
+        positionTokenId,
       }));
       return;
     }

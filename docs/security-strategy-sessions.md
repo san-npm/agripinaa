@@ -26,10 +26,12 @@ the same policy and verifies the account's live authorization before storing
 it. It rejects a different manager key, target, selector, order, spend ceiling,
 expiry, chain, or ERC-1271 checker.
 
-Every strategy carries the canonical USDT and native-gas ceilings. Ranger also
-carries a fixed WBNB ceiling because Pancake V3 `mint` spends both inventory
-legs through the account; omitting that permission would make its first mint
-fail closed at the smart account.
+Every strategy carries the canonical USDT and native-BNB ceilings. The native
+ceiling covers transaction gas and any native value attached to an allowlisted
+call; it is not a gas-only permission. Ranger also carries a fixed WBNB ceiling
+because Pancake V3 `mint` spends both inventory legs through the account;
+omitting that permission would make its first mint fail closed at the smart
+account.
 
 No strategy session receives the ERC-20 `approve(address,uint256)` selector.
 Venue approvals are a separate passkey-admin transaction to these fixed

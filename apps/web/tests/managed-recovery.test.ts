@@ -13,6 +13,8 @@ import {
 
 import {
   managedServiceStatus,
+  effectiveManagedPositionTokenId,
+  managedRunnerSnapshot,
   managedUnwindCall,
   resolveManagedRouterDeployment,
 } from '../src/lib/managed-router';
@@ -105,6 +107,47 @@ test('retired key validity never becomes a managing service state', () => {
   assert.equal(managedServiceStatus('unknown', true).label, 'recovery only · authority unknown');
   assert.equal(managedServiceStatus('valid', false, 'halted').label, 'agent halted');
   assert.equal(managedServiceStatus('valid', false, 'unavailable').active, false);
+});
+
+test('runner status accepts only a successful service and positive numeric Ranger id', () => {
+  assert.deepEqual(managedRunnerSnapshot({ service: 'ready', positionTokenId: '7271073' }, true), {
+    service: 'ready',
+    positionTokenId: '7271073',
+    reachable: true,
+  });
+  assert.deepEqual(managedRunnerSnapshot({ service: 'ready', positionTokenId: '../wallet' }, true), {
+    service: 'ready',
+    positionTokenId: null,
+    reachable: true,
+  });
+  assert.deepEqual(managedRunnerSnapshot({ service: 'ready', positionTokenId: '7271073' }, false), {
+    service: 'unavailable',
+    positionTokenId: null,
+    reachable: false,
+  });
+});
+
+test('a stale runner heartbeat cannot hide the exact Ranger NFT returned beside it', () => {
+  assert.equal(effectiveManagedPositionTokenId({
+    service: 'unavailable',
+    positionTokenId: '7271073',
+    reachable: true,
+  }, null), '7271073');
+  assert.equal(effectiveManagedPositionTokenId({
+    service: 'unavailable',
+    positionTokenId: null,
+    reachable: false,
+  }, '7271073'), '7271073');
+  assert.equal(effectiveManagedPositionTokenId({
+    service: 'unavailable',
+    positionTokenId: null,
+    reachable: true,
+  }, '7271073'), null);
+  assert.equal(effectiveManagedPositionTokenId({
+    service: 'ready',
+    positionTokenId: null,
+    reachable: true,
+  }, '7271073'), null);
 });
 
 test('a recoverable live session can retry a failed runner handoff without a new grant', () => {

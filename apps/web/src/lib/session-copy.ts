@@ -25,3 +25,28 @@ export const SESSION_GRANTED_COPY = {
 export function sessionGrantedBody(agentName: string): string {
   return SESSION_GRANTED_COPY.body.replace('{agent}', agentName);
 }
+
+/** Turn the stored canonical cap description into readable technical copy. */
+export function readableSessionCeiling(cap: string): string {
+  const withoutInventory = cap.replace(/^Dedicated strategy-account inventory;\s*/i, '');
+  const readableNumber = withoutInventory.replace(
+    /^(\d+)(\.\d+)?\b/,
+    (_value, whole: string, fraction: string | undefined) =>
+      `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${fraction ?? ''}`,
+  );
+  return readableNumber.replace(/\bdirect-call cap\b/i, 'for allowlisted direct calls');
+}
+
+/** Render every spend permission in a managed session, including native BNB. */
+export function readableManagedCeilings(
+  canonicalCap: string,
+  additional: readonly { token: string; amount: string }[],
+  nativeSpendCap: string,
+): string[] {
+  return [
+    readableSessionCeiling(canonicalCap),
+    ...additional.map(({ token, amount }) =>
+      `${readableSessionCeiling(amount)} ${token} per day for allowlisted direct calls`),
+    `${nativeSpendCap} BNB per day for native value on allowlisted calls and transaction gas`,
+  ];
+}

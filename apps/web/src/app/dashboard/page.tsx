@@ -10,6 +10,7 @@ import { managedStrategyFor } from '@agripinaa/shared/managed-strategies';
 
 import { ManagedPositionCard } from '@/components/ManagedPositionCard';
 import { SessionCard } from '@/components/SessionCard';
+import { StrategyPositionCard } from '@/components/StrategyPositionCard';
 import { ArrowIcon, CoinsIcon, LightningIcon, ReceiptIcon, ShieldIcon } from '@/components/icons';
 import {
   listFundingCheckpoints,
@@ -110,6 +111,8 @@ export default function DashboardPage() {
                 {dashboard.sessions.map((meta) =>
                   isManaged(meta) ? (
                     <ManagedPositionCard key={meta.id} meta={meta} onChange={refresh} />
+                  ) : managedStrategyFor(meta.agent.slug ?? '') ? (
+                    <StrategyPositionCard key={meta.id} meta={meta} onChange={refresh} />
                   ) : (
                     <SessionCard key={meta.id} meta={meta} onChange={refresh} />
                   ),
