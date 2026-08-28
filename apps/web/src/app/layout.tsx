@@ -91,9 +91,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </Link>
             <Link
               href="/funds"
-              className="text-muted transition-colors hover:text-foreground"
+              className="whitespace-nowrap text-muted transition-colors hover:text-foreground"
             >
-              Funds
+              Router security
             </Link>
             <Link
               href="/dashboard"
