@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 
 import { verifyPayment, type DecodedPayment, type MerchantConfig } from '@altananetwork/x402-server';
 import { FUNDING_FEE_PAYER_BSC } from '@agripinaa/shared';
 
-import { fundingRoutesEnabled, readBody } from '../src/x402-server';
+import { fundingRoutesEnabled, readBody, startX402Server } from '../src/x402-server';
 
 const TOKEN = '0x1111111111111111111111111111111111111111' as const;
 const PAYER = '0x2222222222222222222222222222222222222222' as const;
@@ -69,4 +70,51 @@ test('merchant body reads fail closed on stalled or oversized uploads', async ()
   oversized.end('four');
   await assert.rejects(result, /body too large/);
   assert.equal(oversized.destroyed, true);
+});
+
+test('the authenticated runner lease serializes grant submissions and releases by token', async (t) => {
+  const publicKey = `0x04${'55'.repeat(64)}` as const;
+  const server = startX402Server({
+    port: 0,
+    facilitatorKey: `0x${'11'.repeat(32)}`,
+    agents: new Map(),
+    managers: new Map([[
+      'lease-test',
+      {
+        master: { publicKey, address: PAY_TO },
+        byToken: new Map([['USDT', { publicKey, address: PAY_TO }]]),
+      },
+    ]]),
+    opsToken: 'test-ops-token',
+  });
+  t.after(() => server.close());
+  if (!server.listening) await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const url = `http://127.0.0.1:${address.port}/internal/session-grant-lease`;
+  const input = {
+    account: PAYER,
+    agent: 'lease-test',
+    publicKey,
+    leaseToken: `0x${'66'.repeat(32)}`,
+    expiry: Math.floor(Date.now() / 1_000) + 3_600,
+  };
+  const request = (method: 'POST' | 'DELETE', body: typeof input, authorized = true) => fetch(url, {
+    method,
+    headers: {
+      ...(authorized ? { authorization: 'Bearer test-ops-token' } : {}),
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  assert.equal((await request('POST', input, false)).status, 401);
+  assert.equal((await request('POST', input)).status, 201);
+  assert.equal((await request('POST', input)).status, 201);
+  const other = { ...input, leaseToken: `0x${'77'.repeat(32)}` as const };
+  assert.equal((await request('POST', other)).status, 409);
+  assert.equal((await request('DELETE', other)).status, 200);
+  assert.equal((await request('POST', other)).status, 409);
+  assert.equal((await request('DELETE', input)).status, 200);
+  assert.equal((await request('POST', other)).status, 201);
 });

@@ -129,7 +129,7 @@ export interface SafeFetchOptions {
    * a GET, and neither is what a proxy should do.
    */
   maxRedirects?: number;
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   headers?: Record<string, string>;
   body?: string;
   /**
