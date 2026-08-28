@@ -5,9 +5,11 @@ import {
   isDebtCompleteRouterRuntime,
   ROUTER_ACTIONS,
   TOKENS_BSC,
+  FUNDING_FEE_PAYER_BSC,
   managedStrategyFor,
   routerByAddress,
   toBaseUnits,
+  type FundingAsset,
 } from '@agripinaa/shared';
 import { deserializeSession } from '@agripinaa/session-kit/persist';
 import { MANAGED_NATIVE_CAP, MANAGED_STABLE_CAP, MAX_SESSION_SECONDS } from '@agripinaa/session-kit/scope';
@@ -22,6 +24,14 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { collectProofEvents } from './proof';
+import {
+  createFundingMerchant,
+  fundingRequestAccount,
+  fundingQuote,
+  parseFundingAsset,
+  prepareFundingFeePayer,
+  type FundingQuoteResponse,
+} from './funding-merchant';
 import { RequestGate } from './request-gate';
 import {
   loadManaged,
@@ -54,7 +64,22 @@ export interface ManagerSet {
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ROUTER_SIGNATURE_LIST = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
 const manageGate = new RequestGate(20, 60_000, 8);
+const FUNDING_MERCHANT_GLOBAL_KEY = 'public-funding-merchant';
+const fundingMerchantIngressGate = new RequestGate(10_000, 60_000, 16);
+// Quote calls normally arrive through one web-server egress address, so this
+// is intentionally a generous global abuse ceiling rather than a misleading
+// per-user limit. At four polls/minute it supports 2,500 simultaneous tabs;
+// the separate concurrency cap still bounds live RPC work during an attack.
+const FUNDING_QUOTE_GLOBAL_KEY = 'public-funding-quotes';
+const fundingQuoteGate = new RequestGate(10_000, 60_000, 16);
+const FUNDING_MERCHANT_BODY_BYTES = 256 * 1024;
+const FUNDING_QUOTE_CACHE_MS = 10_000;
 const SESSION_EXPIRY_CLOCK_SKEW_SECONDS = 5 * 60;
+
+export function fundingRoutesEnabled(facilitatorAddress: string, hasQuoteClient: boolean): boolean {
+  return hasQuoteClient
+    && facilitatorAddress.toLowerCase() === FUNDING_FEE_PAYER_BSC.toLowerCase();
+}
 
 export function managedServiceHalt(
   agent: string,
@@ -279,21 +304,51 @@ async function validateManageRequest(
   return null;
 }
 
-async function readBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise<string> {
+export async function readBody(
+  req: IncomingMessage,
+  maxBytes = 64 * 1024,
+  timeoutMs = 10_000,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let settled = false;
     const chunks: Buffer[] = [];
-    req.on('data', (c: Buffer) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+    };
+    const fail = (error: Error, destroy = false) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (destroy && !req.destroyed) req.destroy();
+      reject(error);
+    };
+    const onData = (c: Buffer) => {
       size += c.length;
       if (size > maxBytes) {
-        reject(new Error('body too large'));
-        req.destroy();
+        fail(new Error('body too large'), true);
         return;
       }
       chunks.push(c);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
+    };
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    };
+    const onError = (error: Error) => fail(error);
+    const timer = setTimeout(
+      () => fail(new Error('body read timed out'), true),
+      timeoutMs,
+    );
+    timer.unref();
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
   });
 }
 
@@ -316,6 +371,50 @@ export function startX402Server(opts: {
 }): Server {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
   const managers = opts.managers ?? new Map<string, ManagerSet>();
+  const quoteClient = opts.agents.values().next().value?.ctx.publicClient;
+  // A locally generated facilitator still serves status/proof/x402 traffic.
+  // The public funding routes are enabled only when the runner has both a live
+  // quorum client and the key for the fee-payer identity published to clients.
+  const fundingMerchant = quoteClient
+    && fundingRoutesEnabled(facilitator.address, true)
+    ? createFundingMerchant({ client: quoteClient, privateKey: opts.facilitatorKey })
+    : null;
+  let fundingFeePayerReady: Promise<void> | null = null;
+  const fundingQuoteCache = new Map<
+    FundingAsset,
+    { expiresAt: number; value: Promise<FundingQuoteResponse> }
+  >();
+  const getFundingQuote = (asset: FundingAsset) => {
+    if (!quoteClient) return Promise.reject(new Error('funding quote client unavailable'));
+    const now = Date.now();
+    const cached = fundingQuoteCache.get(asset);
+    if (cached && cached.expiresAt > now) return cached.value;
+    const entry = {
+      // Coalesce every request for one asset while its quorum reads are in
+      // flight. Successful quotes remain reusable for only ten of their
+      // thirty valid seconds, leaving the browser ample submission time.
+      expiresAt: Number.POSITIVE_INFINITY,
+      value: fundingQuote(quoteClient, asset),
+    };
+    fundingQuoteCache.set(asset, entry);
+    void entry.value.then(
+      (quote) => {
+        if (fundingQuoteCache.get(asset) === entry) {
+          // Never serve a cached quote during its final five seconds. Slow RPC
+          // responses therefore shorten (or skip) the cache window instead of
+          // handing the browser an already stale amount.
+          entry.expiresAt = Math.min(
+            Date.now() + FUNDING_QUOTE_CACHE_MS,
+            quote.expiresAt - 5_000,
+          );
+        }
+      },
+      () => {
+        if (fundingQuoteCache.get(asset) === entry) fundingQuoteCache.delete(asset);
+      },
+    );
+    return entry.value;
+  };
 
   const merchants = new Map(
     [...opts.agents.entries()].map(([name, { ctx }]) => [
@@ -376,6 +475,133 @@ export function startX402Server(opts: {
     if (pathname === '/healthz') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, agents: [...opts.agents.keys()] }));
+      return;
+    }
+    if (pathname === '/funding/quote') {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { allow: 'GET', 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      if (!fundingMerchant) {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'funding routes are not configured on this runner' }));
+        return;
+      }
+      const asset = parseFundingAsset(new URL(req.url ?? '/', 'http://localhost').searchParams.get('asset'));
+      if (!asset) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'asset must be BTCB, BNB, USDT, or USDC' }));
+        return;
+      }
+      const permit = fundingQuoteGate.enter(FUNDING_QUOTE_GLOBAL_KEY);
+      if (!permit.ok) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': String(permit.retryAfterSeconds),
+        });
+        res.end(JSON.stringify({ error: 'too many funding quote requests' }));
+        return;
+      }
+      // A disconnected client does not cancel the shared quorum work. Hold the
+      // slot until that work actually settles so disconnect/retry cannot bypass
+      // the process-wide concurrency ceiling.
+      try {
+        const quote = await getFundingQuote(asset);
+        if (!res.destroyed) {
+          res.writeHead(200, { 'cache-control': 'no-store', 'content-type': 'application/json' });
+          res.end(JSON.stringify(quote));
+        }
+      } catch {
+        if (!res.destroyed) {
+          res.writeHead(503, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'funding quote unavailable' }));
+        }
+      } finally {
+        permit.release();
+      }
+      return;
+    }
+    if (pathname === '/funding/merchant') {
+      if (req.method !== 'POST') {
+        res.writeHead(405, { allow: 'POST', 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      if (!fundingMerchant) {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'funding routes are not configured on this runner' }));
+        return;
+      }
+      // Read a strictly bounded body before taking a scarce merchant slot.
+      // Slow or trickled uploads are disconnected after five seconds, so they
+      // cannot exhaust the 16 relay-processing permits.
+      let body: string;
+      try {
+        body = await readBody(req, FUNDING_MERCHANT_BODY_BYTES, 5_000);
+      } catch {
+        if (!res.destroyed) {
+          res.writeHead(413, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'body too large, timed out, or unreadable' }));
+        }
+        return;
+      }
+      const ingressPermit = fundingMerchantIngressGate.enter(FUNDING_MERCHANT_GLOBAL_KEY);
+      if (!ingressPermit.ok) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': String(ingressPermit.retryAfterSeconds),
+        });
+        res.end(JSON.stringify({ error: 'too many funding preparations' }));
+        return;
+      }
+      // The bounded in-memory Request below is independent of the incoming
+      // socket. A disconnect cannot cancel it, so only release the slot in the
+      // finally after merchant/relay processing actually stops.
+      try {
+        const account = fundingRequestAccount(body);
+        if (!account) {
+          if (!res.destroyed) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'invalid funding preparation request' }));
+          }
+          return;
+        }
+        try {
+          fundingFeePayerReady ??= prepareFundingFeePayer(opts.facilitatorKey).catch((error) => {
+            fundingFeePayerReady = null;
+            throw error;
+          });
+          await fundingFeePayerReady;
+        } catch {
+          if (!res.destroyed) {
+            res.writeHead(503, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'funding fee payer unavailable' }));
+          }
+          return;
+        }
+        // Call Porto's Fetch handler only after consuming a bounded body. The
+        // runner is reachable through the tunnel as well as the web proxy, so
+        // its memory safety cannot rely on Next.js having screened the request.
+        const response = await fundingMerchant.fetch(new Request('http://localhost/', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }));
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, key) => { headers[key] = value; });
+        res.writeHead(response.status, headers);
+        res.end(Buffer.from(await response.arrayBuffer()));
+      } catch {
+        if (!res.headersSent) {
+          res.writeHead(502, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'funding merchant unavailable' }));
+        } else {
+          res.destroy();
+        }
+      } finally {
+        ingressPermit.release();
+      }
       return;
     }
     if (pathname === '/proof') {

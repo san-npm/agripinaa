@@ -1,0 +1,112 @@
+diff --git a/dist/viem/RelayActions.js b/dist/viem/RelayActions.js
+index 50a5e6b..b256c2f 100644
+--- a/dist/viem/RelayActions.js
++++ b/dist/viem/RelayActions.js
+@@ -122,11 +122,7 @@ export async function prepareCalls(client, parameters) {
+                 transport: http(merchantUrl),
+             });
+             // Prepare with Merchant RPC.
+-            return await RelayActions.prepareCalls(client_, args).catch((e) => {
+-                console.error(e);
+-                // Fall back to default client.
+-                return RelayActions.prepareCalls(client, args);
+-            });
++            return await RelayActions.prepareCalls(client_, args);
+         }
+         return await RelayActions.prepareCalls(client, args);
+     })();
+diff --git a/src/viem/RelayActions.ts b/src/viem/RelayActions.ts
+index 97a0f32..b340ebe 100644
+--- a/src/viem/RelayActions.ts
++++ b/src/viem/RelayActions.ts
+@@ -266,11 +266,7 @@ export async function prepareCalls(
+         transport: http(merchantUrl),
+       })
+       // Prepare with Merchant RPC.
+-      return await RelayActions.prepareCalls(client_, args).catch((e) => {
+-        console.error(e)
+-        // Fall back to default client.
+-        return RelayActions.prepareCalls(client, args)
+-      })
++      return await RelayActions.prepareCalls(client_, args)
+     }
+     return await RelayActions.prepareCalls(client, args)
+   })()
+diff --git a/dist/server/Route.js b/dist/server/Route.js
+index 42b1243..073322a 100644
+--- a/dist/server/Route.js
++++ b/dist/server/Route.js
+@@ -113,7 +113,7 @@ export function merchant(options) {
+-                const sponsor = (() => {
++                const sponsor = await (() => {
+                     if (typeof options.sponsor === 'function')
+-                        return options.sponsor(request.params[0]);
++                        return options.sponsor(request._decoded.params[0]);
+                     if (typeof options.sponsor === 'boolean')
+                         return options.sponsor;
+                     return true;
+                 })();
+@@ -141,4 +141,8 @@ export function merchant(options) {
+-                    const { capabilities } = z.decode(MerchantSchema.wallet_prepareCalls.Response, result);
++                    const decoded = z.decode(MerchantSchema.wallet_prepareCalls.Response, result);
++                    const { capabilities } = decoded;
++                    if (sponsor && options.approve &&
++                        !(await options.approve(request._decoded.params[0], decoded)))
++                        throw new Error('merchant rejected relay quote');
+                     const { feePayerDigest } = capabilities;
+                     if (!feePayerDigest)
+                         throw new Error('`feePayerDigest` is required');
+diff --git a/dist/server/Route.d.ts b/dist/server/Route.d.ts
+index 3f19723..43523c1 100644
+--- a/dist/server/Route.d.ts
++++ b/dist/server/Route.d.ts
+@@ -81,5 +81,7 @@ export declare namespace merchant {
+         /** Whether to sponsor calls or not, and the condition to do so. */
+         sponsor?: boolean | ((request: MerchantSchema.wallet_prepareCalls.Parameters) => MaybePromise<boolean>) | undefined;
++        /** Final policy check after the relay returns the exact signed fee quote. */
++        approve?: ((request: MerchantSchema.wallet_prepareCalls.Parameters, result: MerchantSchema.wallet_prepareCalls.Response) => MaybePromise<boolean>) | undefined;
+         /** Relay transport override. */
+         relay?: Porto.Config['relay'] | undefined;
+     };
+diff --git a/src/server/Route.ts b/src/server/Route.ts
+index d68fe75..f1fbdd2 100644
+--- a/src/server/Route.ts
++++ b/src/server/Route.ts
+@@ -138,7 +138,7 @@ export function merchant(options: merchant.Options) {
+
+     switch (request.method) {
+       case 'wallet_prepareCalls': {
+-        const sponsor = (() => {
++        const sponsor = await (() => {
+           if (typeof options.sponsor === 'function')
+-            return options.sponsor(request.params[0]! as never)
++            return options.sponsor(request._decoded.params[0]! as never)
+           if (typeof options.sponsor === 'boolean') return options.sponsor
+@@ -166,7 +166,13 @@ export function merchant(options: merchant.Options) {
+-          const { capabilities } = z.decode(
++          const decoded = z.decode(
+             MerchantSchema.wallet_prepareCalls.Response,
+             result,
+           )
++          const { capabilities } = decoded
++          if (
++            sponsor &&
++            options.approve &&
++            !(await options.approve(request._decoded.params[0]! as never, decoded))
++          ) throw new Error('merchant rejected relay quote')
+           const { feePayerDigest } = capabilities
+           if (!feePayerDigest) throw new Error('`feePayerDigest` is required')
+
+@@ -251,5 +256,12 @@ export declare namespace merchant {
+         ) => MaybePromise<boolean>)
+       | undefined
++    /** Final policy check after the relay returns the exact signed fee quote. */
++    approve?:
++      | ((
++          request: MerchantSchema.wallet_prepareCalls.Parameters,
++          result: MerchantSchema.wallet_prepareCalls.Response,
++        ) => MaybePromise<boolean>)
++      | undefined
+     /** Relay transport override. */
+     relay?: Porto.Config['relay'] | undefined
+   }

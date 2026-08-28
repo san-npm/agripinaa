@@ -1,11 +1,14 @@
 'use client';
 
-import { isDebtCompleteRouter, MANAGED_TOKENS, routerFor } from '@agripinaa/shared/contracts';
+import { isDebtCompleteRouter, routerFor } from '@agripinaa/shared/contracts';
+import type { AgentSlug } from '@agripinaa/shared/agents';
+import { managedTokenForFunding } from '@agripinaa/shared/funding';
+import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
 import { createPublicClient, erc20Abi, http } from 'viem';
 
-import { altanaClient, SUPPORTED_CHAINS } from '@/lib/altana';
-import { bsc, bscTestnet } from '@/lib/bsc-chain';
+import { altanaClient } from '@/lib/altana';
+import { bsc } from '@/lib/bsc-chain';
 import {
   approveRouter,
   buildManagedScope,
@@ -18,22 +21,35 @@ import {
   type VenueApys,
 } from '@/lib/managed';
 import { markRegistered, storeSession } from '@/lib/session-store';
+import { waitForManagedPrincipal } from '@/lib/managed-principal';
 import { toast } from '@/lib/toast';
+import {
+  FUNDING_ASSETS,
+  buildFundingBootstrapPlan,
+  fundingGasQuote,
+  type FundingAsset,
+  type FundingGasQuote,
+} from '@/lib/funding-bootstrap';
+import {
+  assertFundingCheckpointWritable,
+  clearFundingCheckpoint,
+  loadFundingCheckpoint,
+  saveFundingCheckpoint,
+  type ConfirmedFundingCheckpoint,
+  type FundingCheckpoint,
+} from '@/lib/funding-checkpoint';
+import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
+import { FundingDeposit } from './FundingDeposit';
 import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
-
-/** Native balance needed before activation (approvals + key registration + margin).
- *  BSC gas is ~0.05-0.1 gwei, so the two activation txs cost well under 0.0002 BNB;
- *  0.0005 keeps a healthy margin without demanding an unrealistic top-up. */
-const MIN_NATIVE = 500_000_000_000_000n; // 0.0005 BNB
 
 interface ManagedAgentProps {
   chainId: number;
   tokenId: string;
   name: string;
   /** Runner agent name for the manage/manager-key endpoints (e.g. "yield"). */
-  managedAgent: string;
+  managedAgent: AgentSlug;
   /** Policy-specific language; Harvester and Steward are not one generic choice. */
   submitLabel?: string;
   activeSummary?: string;
@@ -42,19 +58,35 @@ interface ManagedAgentProps {
 type PasskeyWallet = Awaited<
   ReturnType<ReturnType<typeof altanaClient>['createPasskeyWallet']>
 >;
+type ManagedSession = Awaited<ReturnType<ReturnType<typeof altanaClient>['grantSession']>>;
+
+interface GrantedManagedActivation {
+  session: ManagedSession;
+  local: ReturnType<typeof storeSession>;
+}
 
 export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [step, setStep] = useState<Step>('wallet');
-  const [chainId, setChainId] = useState<number>(56);
-  const [token, setToken] = useState<string>('USDT');
+  const chainId = 56;
+  const [fundingAsset, setFundingAsset] = useState<FundingAsset>('USDT');
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
   const [nativeBal, setNativeBal] = useState<bigint | null>(null);
-  const [usdtBal, setUsdtBal] = useState<bigint | null>(null);
+  const [balances, setBalances] = useState<Record<FundingAsset, bigint | null>>({
+    BTCB: null,
+    BNB: null,
+    USDT: null,
+    USDC: null,
+  });
+  const [gasQuote, setGasQuote] = useState<FundingGasQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [preparedFunding, setPreparedFunding] = useState<FundingCheckpoint | null>(null);
+  const [grantedActivation, setGrantedActivation] = useState<GrantedManagedActivation | null>(null);
   const [hours, setHours] = useState<number>(168);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<string>('');
   const [apys, setApys] = useState<VenueApys | null>(null);
+  const token = managedTokenForFunding(agent.managedAgent, fundingAsset);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,17 +101,11 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const bestApyPct = apys ? Math.max(apys.venusApyBps, apys.aaveApyBps) / 100 : null;
   const bestVenue = apys ? (apys.venusApyBps >= apys.aaveApyBps ? 'Venus' : 'Aave') : null;
 
-  // Managed mode only works where the YieldRouter (and real Venus/Aave) exist.
-  const managedChains = SUPPORTED_CHAINS.filter((c) =>
-    MANAGED_TOKENS.some((symbol) => isDebtCompleteRouter(routerFor(c.id, symbol))),
-  );
   const deployment = routerFor(chainId, token);
   const automationReady = isDebtCompleteRouter(deployment);
-  const usdtAddress = deployment?.usdt;
-
   const publicClient = useCallback(
-    () => createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() }),
-    [chainId],
+    () => createPublicClient({ chain: bsc, transport: http() }),
+    [],
   );
 
   async function connectPasskey(mode: 'create' | 'recover') {
@@ -95,6 +121,13 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         mode === 'create'
           ? await client.createPasskeyWallet({ name: 'Agripinaa' })
           : await client.recoverFromPasskey();
+      const checkpoint = loadFundingCheckpoint(chainId, w.address as `0x${string}`, agent.managedAgent);
+      if (checkpoint?.expectedTotalWei !== undefined) {
+        setFundingAsset(checkpoint.plan.input);
+        setPreparedFunding(checkpoint);
+      } else {
+        setPreparedFunding(null);
+      }
       setWallet(w);
       setStep('deposit');
     } catch (e) {
@@ -105,22 +138,28 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   }
 
   useEffect(() => {
-    if (step !== 'deposit' || !wallet || !usdtAddress) return;
+    if (step !== 'deposit' || !wallet) return;
     let cancelled = false;
     const tick = async () => {
       try {
-        const [n, u] = await Promise.all([
+        const tokenAssets = FUNDING_ASSETS.filter((symbol): symbol is Exclude<FundingAsset, 'BNB'> => symbol !== 'BNB');
+        const [n, ...assets] = await Promise.all([
           publicClient().getBalance({ address: wallet.address as `0x${string}` }),
-          publicClient().readContract({
-            address: usdtAddress,
+          ...tokenAssets.map((symbol) => publicClient().readContract({
+            address: TOKENS_BSC[symbol]!.address,
             abi: erc20Abi,
             functionName: 'balanceOf',
             args: [wallet.address as `0x${string}`],
-          }),
+          })),
         ]);
         if (!cancelled) {
           setNativeBal(n);
-          setUsdtBal(u);
+          setBalances({
+            BNB: n,
+            BTCB: assets[tokenAssets.indexOf('BTCB')]!,
+            USDT: assets[tokenAssets.indexOf('USDT')]!,
+            USDC: assets[tokenAssets.indexOf('USDC')]!,
+          });
         }
       } catch {
         /* transient RPC failure; next tick retries */
@@ -132,7 +171,32 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       cancelled = true;
       clearInterval(t);
     };
-  }, [step, wallet, publicClient, usdtAddress]);
+  }, [step, wallet, publicClient]);
+
+  useEffect(() => {
+    if (step !== 'deposit') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const next = await fundingGasQuote(fundingAsset);
+        if (!cancelled) {
+          setGasQuote(next);
+          setQuoteError(null);
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setGasQuote(null);
+          setQuoteError(cause instanceof Error ? cause.message : 'Gas quote unavailable.');
+        }
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [fundingAsset, step]);
 
   async function activate() {
     if (!wallet) return;
@@ -143,68 +207,240 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     setBusy(true);
     setError(null);
     try {
-      // 1. Approve the router to move the account's token + aToken + vToken.
-      setPhase('Approving the router (1 passkey tap)…');
-      await approveRouter(wallet, chainId, token);
-
-      // 2. Fetch the agent's manager key and grant a router-scoped session to
-      //    it via a verify-only stub (the agent key never enters the browser).
-      setPhase('Granting the managed session (1 passkey tap)…');
-      const manager = await fetchManagerKey(agent.managedAgent, token);
-      const scope = buildManagedScope({ chainId, hours, token });
-      const client = altanaClient();
-      const summary = describeScope(scope);
+      const fundingClient = publicClient();
       const router = routerFor(chainId, token)!;
-      // Snapshot every managed leg before granting authority. Once grantSession
-      // returns, the very next operation is durable recovery storage—there is
-      // no network await that could leave a live key invisible to the owner.
-      const activationPosition = await readManagedPosition(
-        wallet.address as `0x${string}`,
-        chainId,
-        token,
-        router.address,
-      );
-      const session = await client.grantSession({
-        wallet,
-        signer: wallet.signer,
-        chainId,
-        sessionSigner: verifyOnlyStub(manager.address, manager.publicKey) as never,
-        ...scope,
-      });
-
-      // Persist the revoke/recovery bundle BEFORE the network handoff. If the
-      // POST fails or its response is lost, the live key remains visible and
-      // revocable from the dashboard instead of becoming orphaned authority.
-      let local: ReturnType<typeof storeSession>;
-      try {
-        local = storeSession({
-          session,
+      let prepared = preparedFunding;
+      if (prepared?.status === 'submitted') {
+        setPhase('Resuming the already-submitted funding transaction…');
+        const resumed = await altanaClient().waitForExecution({
+          callsId: prepared.callsId,
           chainId,
-          agent: { chainId: agent.chainId, tokenId: agent.tokenId, name: agent.name, slug: agent.managedAgent },
-          scope: { allowlist: [router.address], capFormatted: summary.capFormatted, expiresAt: summary.expiresAt },
-          principalUsdt: activationPosition.totalUsdt,
         });
-      } catch (storageError) {
-        // Never leave an invisible live key when browser storage is blocked or
-        // full. The compensating revoke uses the owner passkey and happens
-        // before the runner is told about the mandate.
-        let revoked: { status: string };
+        if (resumed.status === 'PENDING') {
+          throw new Error('The funding transaction is still pending. It is saved safely; retry activation without depositing again.');
+        }
+        if (resumed.status === 'FAILED' || !resumed.transactionHash) {
+          clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+          setPreparedFunding(null);
+          throw new Error('The saved funding transaction failed. No strategy funding was recorded; review the quote and retry.');
+        }
+        const receipt = await fundingClient.waitForTransactionReceipt({
+          hash: resumed.transactionHash,
+          timeout: 30_000,
+        });
+        if (
+          receipt.status !== 'success'
+          || !receiptProvesFundingMainBatch(
+            receipt.logs as never,
+            wallet.address as `0x${string}`,
+            prepared.plan.nativeReserveOutputWei,
+          )
+        ) {
+          clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+          setPreparedFunding(null);
+          throw new Error('The saved relay transaction did not complete the account funding calls. Review the balance and retry; no successful funding checkpoint was retained.');
+        }
+        const confirmed: ConfirmedFundingCheckpoint = {
+          ...prepared,
+          status: 'confirmed',
+          transactionHash: resumed.transactionHash,
+          receiptBlockNumber: receipt.blockNumber,
+        };
+        saveFundingCheckpoint(
+          chainId,
+          wallet.address as `0x${string}`,
+          agent.managedAgent,
+          confirmed,
+        );
+        setPreparedFunding(confirmed);
+        prepared = confirmed;
+      }
+      if (!prepared) {
+        // 1. Snapshot the old target position, then prepare the single deposit
+        // and approve the router in one owner bundle.
+        setPhase('Building the deposit preparation…');
+        const baseline = await readManagedPosition(
+          wallet.address as `0x${string}`,
+          chainId,
+          token,
+          router.address,
+          fundingClient as never,
+        );
+        const displayedQuote = gasQuote?.asset === fundingAsset ? gasQuote : null;
+        if (!displayedQuote || displayedQuote.expiresAt <= Date.now() + 5_000) {
+          const refreshed = await fundingGasQuote(fundingAsset);
+          setGasQuote(refreshed);
+          setQuoteError(null);
+          throw new Error('The gas allocation quote was refreshed. Review the updated deduction, then confirm activation again.');
+        }
+        const plan = await buildFundingBootstrapPlan({
+          account: wallet.address as `0x${string}`,
+          agent: agent.managedAgent,
+          input: fundingAsset,
+          grossInput: balances[fundingAsset] ?? 0n,
+          nativeBalance: nativeBal ?? 0n,
+          gasQuote: displayedQuote,
+          quoteClient: fundingClient as never,
+          merchantUrl: new URL('/api/funding/merchant', window.location.origin).toString(),
+        });
+        setPhase(plan.preCalls.length > 0
+          ? 'Preparing your deposit (2 passkey confirmations, 1 funding transaction)…'
+          : 'Preparing your deposit (1 passkey confirmation, 1 funding transaction)…');
+        const minimumOutput = plan.minimumOutputs[token] ?? 0n;
+        if (minimumOutput <= 0n) throw new Error('Funding produced no managed principal.');
+        const baselineTotal = baseline.idleWei + baseline.deployedWei;
+        const allocation = plan.gasReserveInput + plan.bootstrapFeeInput;
+        const expectedTotalWei = fundingAsset === token
+          ? baselineTotal - allocation
+          : baselineTotal + minimumOutput;
+        if (expectedTotalWei <= 0n) throw new Error('Funding produced no managed principal.');
         try {
-          revoked = await client.revokeSession({
-            wallet,
-            signer: wallet.signer,
+          assertFundingCheckpointWritable(
             chainId,
-            session: session as Parameters<typeof client.revokeSession>[0]['session'],
-          });
-        } catch (revokeError) {
+            wallet.address as `0x${string}`,
+            agent.managedAgent,
+            plan,
+            expectedTotalWei,
+          );
+        } catch {
+          throw new Error('This browser cannot save a funding recovery checkpoint. Enable site storage before confirming the transaction.');
+        }
+        const fundingResult = await approveRouter(wallet, chainId, token, {
+          ...plan,
+          onSubmitted: (callsId) => {
+            const submitted: FundingCheckpoint = {
+              status: 'submitted',
+              callsId,
+              plan,
+              expectedTotalWei,
+            };
+            // Retain the id in this tab even if browser persistence becomes
+            // unavailable after the full-size reservation succeeded.
+            setPreparedFunding(submitted);
+            saveFundingCheckpoint(
+              chainId,
+              wallet.address as `0x${string}`,
+              agent.managedAgent,
+              submitted,
+            );
+          },
+        });
+        if (!fundingResult.transactionHash) {
+          throw new Error('The confirmed funding bundle returned no transaction hash.');
+        }
+        const receipt = await fundingClient.waitForTransactionReceipt({
+          hash: fundingResult.transactionHash,
+          timeout: 30_000,
+        });
+        if (
+          receipt.status !== 'success'
+          || !receiptProvesFundingMainBatch(
+            receipt.logs as never,
+            wallet.address as `0x${string}`,
+            plan.nativeReserveOutputWei,
+          )
+        ) {
+          clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+          setPreparedFunding(null);
           throw new Error(
-            `CRITICAL: local recovery storage failed and automatic revocation also failed. Revoke the new key from the wallet interface immediately. ${revokeError instanceof Error ? revokeError.message : ''}`.trim(),
+            'The relay transaction did not complete the account funding calls. Review the balance and retry; no successful funding checkpoint was retained.',
           );
         }
-        if (revoked.status !== 'CONFIRMED') {
-          throw new Error('Local recovery storage failed and the compensating session revocation did not confirm.');
+        const confirmed: ConfirmedFundingCheckpoint = {
+          status: 'confirmed',
+          callsId: fundingResult.callsId,
+          plan,
+          transactionHash: fundingResult.transactionHash,
+          expectedTotalWei,
+          receiptBlockNumber: receipt.blockNumber,
+        };
+        // Only a receipt carrying the account's exact reserve-withdrawal event
+        // proves the merchant-paid main batch succeeded. The outer receipt by
+        // itself can be successful after a caught inner revert.
+        try {
+          saveFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent, confirmed);
+        } catch {
+          throw new Error('Funding confirmed, but this browser could not save the retry checkpoint. Keep this page open and retry activation here; do not fund again.');
         }
-        throw new Error(`Local recovery storage failed; the new session was revoked. ${storageError instanceof Error ? storageError.message : ''}`.trim());
+        setPreparedFunding(confirmed);
+        prepared = confirmed;
+      }
+
+      if (prepared.status !== 'confirmed') {
+        throw new Error('The saved funding transaction has not confirmed yet. Retry activation without depositing again.');
+      }
+      const expectedTotalWei = prepared.expectedTotalWei;
+      if (expectedTotalWei === undefined) {
+        clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+        setPreparedFunding(null);
+        throw new Error('The saved managed-funding checkpoint is incomplete. Review the account balance before retrying.');
+      }
+
+      const client = altanaClient();
+      let granted = grantedActivation;
+      if (!granted) {
+        // 2. Fetch the agent's manager key and grant a router-scoped session to
+        // it via a verify-only stub (the agent key never enters the browser).
+        setPhase('Granting the managed session (1 passkey tap)…');
+        const manager = await fetchManagerKey(agent.managedAgent, token);
+        const scope = buildManagedScope({ chainId, hours, token });
+        const summary = describeScope(scope);
+        // Once grantSession returns, the very next operation is durable
+        // recovery storage—there is no network await that could leave a live
+        // key invisible to the owner.
+        const activationPosition = await waitForManagedPrincipal(
+          () => readManagedPosition(
+            wallet.address as `0x${string}`,
+            chainId,
+            token,
+            router.address,
+            fundingClient as never,
+            prepared.receiptBlockNumber,
+          ),
+          expectedTotalWei,
+        );
+        const session = await client.grantSession({
+          wallet,
+          signer: wallet.signer,
+          chainId,
+          sessionSigner: verifyOnlyStub(manager.address, manager.publicKey) as never,
+          ...scope,
+        });
+        // Persist the revoke/recovery bundle BEFORE the network handoff. If the
+        // POST fails or its response is lost, the live key remains visible and
+        // revocable from the dashboard instead of becoming orphaned authority.
+        let local: ReturnType<typeof storeSession>;
+        try {
+          local = storeSession({
+            session,
+            chainId,
+            agent: { chainId: agent.chainId, tokenId: agent.tokenId, name: agent.name, slug: agent.managedAgent },
+            scope: { allowlist: [router.address], capFormatted: summary.capFormatted, expiresAt: summary.expiresAt },
+            principalUsdt: activationPosition.totalUsdt,
+          });
+        } catch (storageError) {
+          // Never leave an invisible live key when browser storage is blocked
+          // or full. Compensate before the runner hears about the mandate.
+          let revoked: { status: string };
+          try {
+            revoked = await client.revokeSession({
+              wallet,
+              signer: wallet.signer,
+              chainId,
+              session: session as Parameters<typeof client.revokeSession>[0]['session'],
+            });
+          } catch (revokeError) {
+            throw new Error(
+              `CRITICAL: local recovery storage failed and automatic revocation also failed. Revoke the new key from the wallet interface immediately. ${revokeError instanceof Error ? revokeError.message : ''}`.trim(),
+            );
+          }
+          if (revoked.status !== 'CONFIRMED') {
+            throw new Error('Local recovery storage failed and the compensating session revocation did not confirm.');
+          }
+          throw new Error(`Local recovery storage failed; the new session was revoked. ${storageError instanceof Error ? storageError.message : ''}`.trim());
+        }
+        granted = { session, local };
+        setGrantedActivation(granted);
       }
 
       // 3. Register the account so the agent starts managing it.
@@ -212,9 +448,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       await registerManaged(agent.managedAgent, {
         account: wallet.address as `0x${string}`,
         chainId,
-        session,
+        session: granted.session,
       });
-      markRegistered(local.id);
+      markRegistered(granted.local.id);
+      clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
       setStep('active');
       toast({ title: 'Funds under management', detail: `${agent.name} is now working your deposit`, kind: 'success' });
     } catch (e) {
@@ -227,9 +464,18 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     }
   }
 
-  const fmt = (v: bigint | null) => (v == null ? '…' : (Number(v) / 1e18).toFixed(4));
-  const gasReady = nativeBal != null && nativeBal >= MIN_NATIVE;
-  const usdtReady = usdtBal != null && usdtBal > 0n;
+  const activeGasQuote = gasQuote?.asset === fundingAsset ? gasQuote : null;
+  const gasConversionRequired = fundingAsset === 'BNB'
+    || nativeBal == null
+    || activeGasQuote == null
+    || nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
+  const grossFunding = balances[fundingAsset];
+  const requiredFunding = activeGasQuote && gasConversionRequired ? activeGasQuote.totalGasInput : 0n;
+  const fundingReady = grossFunding != null && grossFunding > requiredFunding;
+  const preCallConfirmationRequired = fundingAsset !== 'BNB'
+    && activeGasQuote != null
+    && nativeBal != null
+    && nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
   const stepIndex = { wallet: 0, deposit: 1, active: 2 }[step];
   const primaryBtn =
     'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
@@ -268,39 +514,35 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               </p>
             )}
             <div>
-              <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Stablecoin to manage</p>
-              <div className="flex flex-wrap gap-2">
-                {MANAGED_TOKENS.map((t) => (
+              <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">One asset to deposit</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {FUNDING_ASSETS.map((asset) => (
                   <button
-                    key={t}
-                    onClick={() => setToken(t)}
-                    aria-pressed={token === t}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
-                      token === t
+                    key={asset}
+                    onClick={() => setFundingAsset(asset)}
+                    aria-pressed={fundingAsset === asset}
+                    className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                      fundingAsset === asset
                         ? 'border-primary/50 bg-primary/10 text-foreground shadow-[0_0_16px_rgba(245,158,11,0.15)]'
                         : 'border-border-strong text-muted-2 hover:border-primary/30 hover:text-foreground'
                     }`}
                   >
-                    <TokenLogo symbol={t} className="h-6 w-6" />
-                    {t}
+                    <TokenLogo symbol={asset} className="h-6 w-6" />
+                    {asset}
                   </button>
                 ))}
               </div>
+              <p className="mt-2 text-xs text-muted-2">
+                {fundingAsset === 'USDC' ? 'USDC remains USDC.' : `${fundingAsset} is prepared into USDT.`}{' '}
+                Gas is allocated from the same deposit.
+              </p>
             </div>
             <div>
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Network</p>
               <div className="inline-flex rounded-lg border border-border-strong p-0.5">
-                {managedChains.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setChainId(c.id)}
-                    className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                      chainId === c.id ? 'bg-primary/15 text-primary' : 'text-muted-2 hover:text-foreground'
-                    }`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
+                <span className="rounded-md bg-primary/15 px-3 py-1.5 text-sm text-primary">
+                  BNB Smart Chain
+                </span>
               </div>
               <p className="mt-2 text-xs text-muted-2">
                 Live venue management runs on BNB Chain mainnet. Try it with a
@@ -325,48 +567,29 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         {step === 'deposit' && wallet && (
           <section className="mt-6 space-y-4">
             <div>
-              <h2 className="font-display text-lg font-semibold">Deposit + gas</h2>
+              <h2 className="font-display text-lg font-semibold">Fund with one asset</h2>
               <p className="mt-1 text-sm text-muted">
-                Send {token} (the funds to manage) and a little {chainId === 97 ? 'tBNB' : 'BNB'}{' '}
-                for gas to your account:
+                Send only {fundingAsset}. The account converts the disclosed gas allocation and prepares {token} for this mandate.
               </p>
             </div>
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-wide text-muted-2">Stablecoin</p>
-              <div className="flex flex-wrap gap-2">
-                {MANAGED_TOKENS.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setToken(t)}
-                    aria-pressed={token === t}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
-                      token === t
-                        ? 'border-primary/50 bg-primary/10 text-foreground shadow-[0_0_16px_rgba(245,158,11,0.15)]'
-                        : 'border-border-strong text-muted-2 hover:border-primary/30 hover:text-foreground'
-                    }`}
-                  >
-                    <TokenLogo symbol={t} className="h-6 w-6" />
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="break-all rounded-lg border border-border bg-surface-2 p-3 font-mono text-xs">
-              {wallet.address}
-            </p>
+            <FundingDeposit
+              address={wallet.address as `0x${string}`}
+              asset={fundingAsset}
+              balances={balances}
+              gasQuote={activeGasQuote}
+              gasConversionRequired={gasConversionRequired}
+              preparedPlan={preparedFunding?.plan}
+              preparationStatus={preparedFunding?.status}
+              quoteError={quoteError}
+              locked={busy || preparedFunding !== null}
+              onAssetChange={(asset) => {
+                if (!busy && !preparedFunding) setFundingAsset(asset);
+              }}
+            />
             <p className="text-xs leading-relaxed text-muted-2">
-              This mandate manages the account&apos;s entire current {token} balance. To manage only part,
+              This mandate manages the {token} produced from the account&apos;s selected deposit. To manage only part,
               use a separate account funded with that amount.
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Balance symbol={token} label={token} value={usdtBal == null ? '…' : fmt(usdtBal)} ready={usdtReady} />
-              <Balance
-                symbol="BNB"
-                label={chainId === 97 ? 'tBNB (gas)' : 'BNB (gas)'}
-                value={fmt(nativeBal)}
-                ready={gasReady}
-              />
-            </div>
             <label className="text-sm">
               <span className="mb-1 block text-xs uppercase tracking-wide text-muted-2">Mandate expires after</span>
               <div className="inline-flex rounded-lg border border-border-strong p-0.5">
@@ -378,21 +601,28 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                   <button
                     key={o.h}
                     onClick={() => setHours(o.h)}
+                    disabled={busy || grantedActivation !== null}
                     className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                       hours === o.h ? 'bg-primary/15 text-primary' : 'text-muted-2 hover:text-foreground'
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     {o.label}
                   </button>
                 ))}
               </div>
             </label>
-            <button onClick={activate} disabled={busy || !gasReady || !usdtReady || !automationReady} className={primaryBtn}>
+            <button
+              onClick={activate}
+              disabled={busy || !automationReady || (!preparedFunding && (!activeGasQuote || !fundingReady))}
+              className={primaryBtn}
+            >
               {busy ? phase || 'Working…' : agent.submitLabel ?? 'Put funds under management'}
             </button>
             <p className="text-xs text-muted-2">
-              Two passkey taps: one approves the router, one grants the scoped
-              session. You can withdraw or revoke any time from your dashboard.
+              From a fresh deposit: {preCallConfirmationRequired ? 'three' : 'two'} passkey taps —
+              funding and router approvals, the scoped session
+              {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+              You can withdraw or revoke any time from your dashboard.
             </p>
           </section>
         )}
@@ -438,31 +668,6 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           </Assurance>
         </ul>
       </aside>
-    </div>
-  );
-}
-
-function Balance({
-  symbol,
-  label,
-  value,
-  ready,
-}: {
-  symbol: string;
-  label: string;
-  value: string;
-  ready: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm">
-      <span className="flex items-center gap-2 text-muted-2">
-        <TokenLogo symbol={symbol} className="h-5 w-5" />
-        {label}
-      </span>
-      <span className={`tabular font-mono ${ready ? 'text-success' : 'text-muted'}`}>
-        {value}
-        {ready && ' ✓'}
-      </span>
     </div>
   );
 }

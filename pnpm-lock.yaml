@@ -11,12 +11,18 @@ overrides:
   uuid: 11.1.1
 
 patchedDependencies:
+  '@altananetwork/sdk@0.7.0':
+    hash: 80c10b6f43fa9c8a66d76d051754a606bef7e3ebd79f7728abf761587faf0a38
+    path: patches/@altananetwork__sdk@0.7.0.patch
   '@altananetwork/x402-server@0.2.0':
     hash: 7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb
     path: patches/@altananetwork__x402-server@0.2.0.patch
   '@ophis/agent-swap@0.3.1':
     hash: afcb3ed74a295c6309ed8a870629b761f4c00f4fd1c8d02e4ee12d647a655c62
     path: patches/@ophis__agent-swap@0.3.1.patch
+  porto@0.2.37:
+    hash: add748c4f83c7190b8e8429bc96c648daacbb82b5521f9e5d4c288d4cc8d7b6e
+    path: patches/porto@0.2.37.patch
 
 importers:
 
@@ -35,7 +41,7 @@ importers:
         version: link:../../packages/shared
       '@altananetwork/sdk':
         specifier: ^0.7.0
-        version: 0.7.0(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
+        version: 0.7.0(patch_hash=80c10b6f43fa9c8a66d76d051754a606bef7e3ebd79f7728abf761587faf0a38)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
       '@altananetwork/x402-server':
         specifier: ^0.2.0
         version: 0.2.0(patch_hash=7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
@@ -48,6 +54,12 @@ importers:
       multiformats:
         specifier: 9.9.0
         version: 9.9.0
+      ox:
+        specifier: 0.9.17
+        version: 0.9.17(typescript@5.9.3)(zod@4.4.3)
+      porto:
+        specifier: 0.2.37
+        version: 0.2.37(patch_hash=add748c4f83c7190b8e8429bc96c648daacbb82b5521f9e5d4c288d4cc8d7b6e)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))
       viem:
         specifier: ^2.21.0
         version: 2.55.11(typescript@5.9.3)(zod@4.4.3)
@@ -78,7 +90,7 @@ importers:
         version: link:../../packages/shared
       '@altananetwork/sdk':
         specifier: ^0.7.0
-        version: 0.7.0(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
+        version: 0.7.0(patch_hash=80c10b6f43fa9c8a66d76d051754a606bef7e3ebd79f7728abf761587faf0a38)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.2.8)
@@ -212,7 +224,7 @@ importers:
         version: link:../shared
       '@altananetwork/sdk':
         specifier: ^0.7.0
-        version: 0.7.0(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
+        version: 0.7.0(patch_hash=80c10b6f43fa9c8a66d76d051754a606bef7e3ebd79f7728abf761587faf0a38)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
       '@altananetwork/x402-server':
         specifier: ^0.2.0
         version: 0.2.0(patch_hash=7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
@@ -2989,10 +3001,10 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@altananetwork/sdk@0.7.0(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)':
+  '@altananetwork/sdk@0.7.0(patch_hash=80c10b6f43fa9c8a66d76d051754a606bef7e3ebd79f7728abf761587faf0a38)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)':
     dependencies:
       ox: 0.14.33(typescript@5.9.3)(zod@4.4.3)
-      porto: 0.2.37(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))
+      porto: 0.2.37(patch_hash=add748c4f83c7190b8e8429bc96c648daacbb82b5521f9e5d4c288d4cc8d7b6e)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))
       viem: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     transitivePeerDependencies:
       - '@tanstack/react-query'
@@ -3013,7 +3025,7 @@ snapshots:
 
   '@altananetwork/x402-server@0.2.0(patch_hash=7508beb05f4958658c8c1780c2942cc6f5fecea3cb0bb1b4193c9b0faaf41bbb)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)':
     dependencies:
-      '@altananetwork/sdk': 0.7.0(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
+      '@altananetwork/sdk': 0.7.0(patch_hash=80c10b6f43fa9c8a66d76d051754a606bef7e3ebd79f7728abf761587faf0a38)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(zod@4.4.3)
       viem: 2.55.11(typescript@5.9.3)(zod@4.4.3)
     transitivePeerDependencies:
       - '@tanstack/react-query'
@@ -5403,7 +5415,7 @@ snapshots:
   pony-cause@2.1.11:
     optional: true
 
-  porto@0.2.37(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))):
+  porto@0.2.37(patch_hash=add748c4f83c7190b8e8429bc96c648daacbb82b5521f9e5d4c288d4cc8d7b6e)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(@wagmi/core@3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3)))(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))(wagmi@3.7.6(@tanstack/query-core@5.101.4)(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))):
     dependencies:
       '@wagmi/core': 3.6.4(@tanstack/query-core@5.101.4)(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.8))(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
       hono: 4.13.1
