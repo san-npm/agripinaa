@@ -150,6 +150,15 @@ export async function fundingGasQuote(asset: FundingAsset): Promise<FundingGasQu
   return fetchFundingGasQuote(asset);
 }
 
+export function fundingGasQuoteIsCurrent(
+  quote: FundingGasQuote | null,
+  asset: FundingAsset,
+  minimumRemainingMs = 0,
+  now = Date.now(),
+): quote is FundingGasQuote {
+  return quote?.asset === asset && quote.expiresAt > now + minimumRemainingMs;
+}
+
 function pathBytes(route: FundingRoute): Hex {
   const types: ('address' | 'uint24')[] = [];
   const values: (Address | number)[] = [];

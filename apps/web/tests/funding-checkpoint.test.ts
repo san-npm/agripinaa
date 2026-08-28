@@ -10,6 +10,7 @@ import {
   listFundingCheckpoints,
   loadFundingCheckpoint,
   saveFundingCheckpoint,
+  shouldPauseAfterFundingConfirmation,
 } from '../src/lib/funding-checkpoint';
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address;
@@ -71,6 +72,21 @@ const PLAN = {
 };
 
 describe('funding bootstrap checkpoint', () => {
+  it('pauses after a new confirmation but continues from an existing one', () => {
+    const submitted = { status: 'submitted', callsId: CALLS_ID, plan: PLAN } as const;
+    const confirmed = {
+      ...submitted,
+      status: 'confirmed',
+      transactionHash: HASH,
+      receiptBlockNumber: 123n,
+    } as const;
+
+    assert.equal(shouldPauseAfterFundingConfirmation(null), true);
+    assert.equal(shouldPauseAfterFundingConfirmation(submitted), true);
+    assert.equal(shouldPauseAfterFundingConfirmation(confirmed), false);
+    assert.equal(shouldPauseAfterFundingConfirmation(null, true), false);
+  });
+
   it('round-trips bigint plan data but never restores executable calls', () => {
     withLocalStorage(() => {
       saveFundingCheckpoint(56, ACCOUNT, 'grid', {

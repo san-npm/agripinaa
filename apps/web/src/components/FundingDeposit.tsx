@@ -26,6 +26,7 @@ export function FundingDeposit({
   gasConversionRequired,
   preparedPlan,
   preparationStatus,
+  preparationTransactionHash,
   quoteError,
   locked = false,
   onAssetChange,
@@ -37,6 +38,7 @@ export function FundingDeposit({
   gasConversionRequired: boolean;
   preparedPlan?: FundingBootstrapPlan | null;
   preparationStatus?: 'submitted' | 'confirmed';
+  preparationTransactionHash?: `0x${string}`;
   quoteError: string | null;
   locked?: boolean;
   onAssetChange(asset: FundingAsset): void;
@@ -83,15 +85,30 @@ export function FundingDeposit({
       </div>
 
       {preparedPlan && preparationStatus && (
-        <p className={`rounded-lg border p-3 text-xs leading-relaxed ${
+        <div role="status" aria-live="polite" aria-atomic="true" className={`rounded-lg border p-3 text-xs leading-relaxed ${
           preparationStatus === 'confirmed'
             ? 'border-success/25 bg-success/10 text-success'
             : 'border-primary/25 bg-primary/10 text-primary'
         }`}>
-          {preparationStatus === 'confirmed'
-            ? 'Deposit preparation is confirmed. A retry resumes from the next activation step without swapping or charging this deposit again.'
-            : 'The funding transaction was submitted and its relay ID is saved. A retry checks that same transaction without signing, swapping, or charging the deposit again.'}
-        </p>
+          <p className="font-semibold">
+            {preparationStatus === 'confirmed' ? 'Funding confirmed' : 'Funding submitted'}
+          </p>
+          <p className="mt-1">
+            {preparationStatus === 'confirmed'
+              ? 'Your deposit is ready. Continue below to grant the agent mandate with one passkey confirmation. This funding transaction will not run again.'
+              : 'The relay ID is saved. Use “Check funding status” below; retrying will not sign, swap, or charge this deposit again.'}
+          </p>
+          {preparationStatus === 'confirmed' && preparationTransactionHash && (
+            <a
+              href={`https://bscscan.com/tx/${preparationTransactionHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block font-medium underline decoration-success/50 underline-offset-2 hover:text-foreground"
+            >
+              View confirmed transaction on BscScan ↗
+            </a>
+          )}
+        </div>
       )}
 
       <div className="rounded-xl border border-border bg-surface-2 p-3">
@@ -152,6 +169,22 @@ export function FundingDeposit({
         Agripinaa does not sponsor gas. Remaining capital is prepared into the assets required by the selected
         agent with on-chain slippage protection.
       </p>
+    </div>
+  );
+}
+
+export function ActivationProgress({ phase }: { phase: string }) {
+  return (
+    <div
+      id="activation-progress"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="rounded-lg border border-primary/30 bg-primary/10 p-3 text-xs leading-relaxed"
+    >
+      <p className="font-semibold text-primary">Activation in progress</p>
+      <p className="mt-1 text-foreground">{phase || 'Working…'}</p>
+      <p className="mt-1 text-muted">The action below is temporarily locked to prevent a duplicate transaction.</p>
     </div>
   );
 }

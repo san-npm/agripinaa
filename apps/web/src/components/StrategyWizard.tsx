@@ -22,6 +22,7 @@ import {
   FUNDING_ASSETS,
   buildFundingBootstrapPlan,
   fundingGasQuote,
+  fundingGasQuoteIsCurrent,
   type FundingAsset,
   type FundingGasQuote,
 } from '@/lib/funding-bootstrap';
@@ -30,6 +31,7 @@ import {
   clearFundingCheckpoint,
   loadFundingCheckpoint,
   saveFundingCheckpoint,
+  shouldPauseAfterFundingConfirmation,
   type ConfirmedFundingCheckpoint,
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
@@ -54,7 +56,7 @@ import {
 } from '@/lib/session-recovery';
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
-import { FundingDeposit } from './FundingDeposit';
+import { ActivationProgress, FundingDeposit } from './FundingDeposit';
 import { CoinsIcon, ReceiptIcon, ShieldIcon, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
@@ -286,6 +288,11 @@ export function StrategyWizard({
     if (!wallet) return;
     setBusy(true);
     setError(null);
+    const pauseAfterFunding = shouldPauseAfterFundingConfirmation(
+      preparedFunding,
+      recoveredFunding !== null,
+    );
+    const pauseBeforeCheckerApproval = grantedActivation === null;
     try {
       let prepared = preparedFunding;
       if (prepared?.status === 'submitted') {
@@ -327,8 +334,10 @@ export function StrategyWizard({
       }
       if (!prepared && !recoveredFunding) {
         setPhase('Building the deposit preparation…');
-        const displayedQuote = gasQuote?.asset === fundingAsset ? gasQuote : null;
-        if (!displayedQuote || displayedQuote.expiresAt <= Date.now() + 5_000) {
+        const displayedQuote = fundingGasQuoteIsCurrent(gasQuote, fundingAsset, 5_000)
+          ? gasQuote
+          : null;
+        if (!displayedQuote) {
           const refreshed = await fundingGasQuote(fundingAsset);
           setGasQuote(refreshed);
           setQuoteError(null);
@@ -402,6 +411,14 @@ export function StrategyWizard({
 
       if (!recoveredFunding && prepared?.status !== 'confirmed') {
         throw new Error('The saved funding transaction has not confirmed yet. Retry activation without depositing again.');
+      }
+      if (pauseAfterFunding) {
+        toast({
+          title: 'Funding confirmed',
+          detail: `Continue below to grant ${agent.name} its scoped mandate.`,
+          kind: 'success',
+        });
+        return;
       }
 
       const client = altanaClient();
@@ -600,6 +617,14 @@ export function StrategyWizard({
           approved.toLowerCase() === checker.toLowerCase(),
         ),
       );
+      if (pauseBeforeCheckerApproval && missingSignatureCheckers.length > 0) {
+        toast({
+          title: 'Agent mandate confirmed',
+          detail: 'Continue below to authorize Ophis order validation.',
+          kind: 'success',
+        });
+        return;
+      }
       if (missingSignatureCheckers.length > 0) {
         setPhase('Authorizing Ophis order validation (1 passkey tap)…');
         for (const checker of missingSignatureCheckers) {
@@ -656,6 +681,21 @@ export function StrategyWizard({
   const freshConfirmationCount = 2 + strategy.signatureCheckers.length
     + (preCallConfirmationRequired ? 1 : 0);
   const recoveryHashReady = fundingRecoveryHash(recoveryTxHash) !== null;
+  const checkerAuthorizationPending = grantedActivation !== null
+    && strategy.signatureCheckers.some((checker) =>
+      !grantedActivation.approvedSignatureCheckers.some((approved) =>
+        approved.toLowerCase() === checker.toLowerCase(),
+      ),
+    );
+  const activationLabel = preparedFunding?.status === 'submitted'
+    ? 'Check funding status'
+    : checkerAuthorizationPending
+      ? 'Continue: authorize Ophis'
+      : grantedActivation
+        ? 'Retry agent handoff'
+        : recoveredFunding || preparedFunding?.status === 'confirmed'
+          ? 'Continue: grant agent mandate'
+          : agent.submitLabel ?? `Activate ${agent.name}`;
   const primaryBtn = 'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
   return (
@@ -768,6 +808,9 @@ export function StrategyWizard({
                 gasConversionRequired={gasConversionRequired}
                 preparedPlan={preparedFunding?.plan}
                 preparationStatus={preparedFunding?.status}
+                preparationTransactionHash={preparedFunding?.status === 'confirmed'
+                  ? preparedFunding.transactionHash
+                  : undefined}
                 quoteError={quoteError}
                 locked={busy || preparedFunding !== null}
                 onAssetChange={(asset) => {
@@ -791,12 +834,15 @@ export function StrategyWizard({
                 <option value={720}>30 days</option>
               </select>
             </label>
+            {busy && <ActivationProgress phase={phase} />}
             <button
               onClick={activate}
               disabled={busy || (!recoveredFunding && !preparedFunding && (!activeGasQuote || !assetsReady))}
-              className={primaryBtn}
+              aria-busy={busy}
+              aria-describedby={busy ? 'activation-progress' : undefined}
+              className={`${primaryBtn} ${busy ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}
             >
-              {busy ? phase || 'Working…' : agent.submitLabel ?? `Activate ${agent.name}`}
+              {busy ? 'Activation in progress…' : activationLabel}
             </button>
             <p className="text-xs text-muted-2">
               {recoveredFunding ? (
