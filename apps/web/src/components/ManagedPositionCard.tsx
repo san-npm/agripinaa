@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import type { Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
+import { clearFundingCheckpointForSession } from '@/lib/funding-checkpoint';
 import { managedServiceStatus, readManagedRunnerStatus, type ManagedRunnerStatus } from '@/lib/managed-router';
 import {
   destinationProblem,
@@ -335,6 +336,12 @@ export function ManagedPositionCard({
         session: reviveSession(meta),
       });
       markRegistered(meta.id);
+      clearFundingCheckpointForSession(
+        meta.chainId,
+        meta.account as Hex,
+        meta.agent.slug,
+        meta.grantedAt,
+      );
       setRunnerStatus('checking');
       onChange();
       toast({ title: 'Handoff restored', detail: 'The runner accepted the existing session; no new key was granted.', kind: 'success' });
@@ -380,7 +387,7 @@ export function ManagedPositionCard({
   const fmtChange = (n: number) => (Math.abs(n) >= 0.01 ? n.toFixed(2) : n.toFixed(6));
 
   return (
-    <li className="rounded-xl border border-border bg-surface p-5">
+    <li id={`session-${meta.id}`} className="scroll-mt-24 rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5">

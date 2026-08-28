@@ -1,11 +1,15 @@
 'use client';
 
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
+import { managedStrategyFor } from '@agripinaa/shared/managed-strategies';
 import { useEffect, useState } from 'react';
 
 import { altanaClient } from '@/lib/altana';
+import { clearFundingCheckpointForSession } from '@/lib/funding-checkpoint';
+import { registerManaged } from '@/lib/managed';
 import {
   forgetSession,
+  markRegistered,
   markRevoked,
   reviveSession,
   type StoredSessionMeta,
@@ -88,6 +92,59 @@ export function SessionCard({
     }
   }
 
+  async function finishHandoff() {
+    const slug = meta.agent.slug;
+    const strategy = slug ? managedStrategyFor(slug) : undefined;
+    if (!slug || !strategy) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const client = altanaClient();
+      const wallet = await client.recoverFromPasskey();
+      if (wallet.address.toLowerCase() !== meta.account.toLowerCase()) {
+        throw new Error('This passkey controls a different account than the saved session.');
+      }
+      const session = reviveSession(meta);
+      for (const checker of strategy.signatureCheckers) {
+        const approved = await client.approveSignatureChecker({
+          wallet,
+          signer: wallet.signer,
+          session: session as Parameters<typeof client.approveSignatureChecker>[0]['session'],
+          checker,
+          chainId: meta.chainId,
+        });
+        if (approved.status !== 'CONFIRMED') {
+          throw new Error('The strategy signature-checker approval did not confirm.');
+        }
+      }
+      await registerManaged(slug, {
+        account: meta.account as `0x${string}`,
+        chainId: meta.chainId,
+        session,
+      });
+      markRegistered(meta.id);
+      clearFundingCheckpointForSession(
+        meta.chainId,
+        meta.account as `0x${string}`,
+        slug,
+        meta.grantedAt,
+      );
+      onChange();
+      toast({
+        title: `${meta.agent.name} activated`,
+        detail: 'The runner accepted the saved session; no new key was granted.',
+        kind: 'success',
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(message);
+      toast({ title: 'Handoff failed', detail: message.slice(0, 80), kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const badge =
     validity === 'valid'
       ? { text: 'active on-chain', cls: 'bg-success/15 text-success' }
@@ -98,7 +155,7 @@ export function SessionCard({
           : { text: 'not verifiable', cls: 'bg-primary/15 text-primary' };
 
   return (
-    <li className="rounded-lg border border-border p-4">
+    <li id={`session-${meta.id}`} className="scroll-mt-24 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium">{meta.agent.name}</p>
@@ -128,6 +185,17 @@ export function SessionCard({
         </div>
       </dl>
       <div className="mt-3 flex gap-2">
+        {meta.registrationStatus === 'pending'
+          && managedStrategyFor(meta.agent.slug ?? '')
+          && validity !== 'invalid' && (
+          <button
+            onClick={finishHandoff}
+            disabled={busy}
+            className="rounded border border-primary/40 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            {busy ? 'Finishing…' : 'Finish activation'}
+          </button>
+        )}
         {validity === 'valid' && (
           <button
             onClick={revoke}
@@ -142,7 +210,8 @@ export function SessionCard({
             forgetSession(meta.id);
             onChange();
           }}
-          className="rounded border border-border-strong px-3 py-1 text-xs text-muted hover:border-border-strong"
+          disabled={busy}
+          className="rounded border border-border-strong px-3 py-1 text-xs text-muted hover:border-border-strong disabled:opacity-50"
         >
           Forget
         </button>

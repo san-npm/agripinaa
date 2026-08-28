@@ -26,6 +26,7 @@ interface StoredFundingCheckpoint {
   version: 3;
   status: unknown;
   callsId: unknown;
+  savedAt?: unknown;
   transactionHash?: unknown;
   plan: StoredFundingPlan;
   expectedTotalWei?: unknown;
@@ -37,6 +38,8 @@ interface FundingCheckpointBase {
   callsId: Hex;
   plan: FundingBootstrapPlan;
   expectedTotalWei?: bigint;
+  /** First durable submission time, used only to correlate dashboard recovery. */
+  savedAt?: number;
 }
 
 /** Durable immediately after the relay accepts the signed bundle. */
@@ -53,6 +56,14 @@ export interface ConfirmedFundingCheckpoint extends FundingCheckpointBase {
 
 export type FundingCheckpoint = SubmittedFundingCheckpoint | ConfirmedFundingCheckpoint;
 
+/** A recoverable funding step that has not yet become a stored session. */
+export interface StoredFundingActivation {
+  chainId: number;
+  account: Address;
+  agent: string;
+  checkpoint: FundingCheckpoint;
+}
+
 const RESERVED_CALLS_ID = `0x${'ff'.repeat(64)}`;
 // The relay currently returns a bytes32 id. Keep ample headroom so replacing a
 // reservation with any valid future id cannot need additional quota after the
@@ -61,6 +72,34 @@ const CHECKPOINT_RESERVE_PADDING = '0'.repeat(4 * 1024);
 
 function key(chainId: number, account: Address, agent: string): string {
   return `${KEY_PREFIX}:${chainId}:${account.toLowerCase()}:${encodeURIComponent(agent)}`;
+}
+
+function checkpointIdentity(storageKey: string): Omit<StoredFundingActivation, 'checkpoint'> | null {
+  const prefix = `${KEY_PREFIX}:`;
+  if (!storageKey.startsWith(prefix)) return null;
+
+  const remainder = storageKey.slice(prefix.length);
+  const chainSeparator = remainder.indexOf(':');
+  const accountSeparator = remainder.indexOf(':', chainSeparator + 1);
+  if (chainSeparator <= 0 || accountSeparator <= chainSeparator + 1) return null;
+
+  const chainId = Number(remainder.slice(0, chainSeparator));
+  const account = remainder.slice(chainSeparator + 1, accountSeparator);
+  const encodedAgent = remainder.slice(accountSeparator + 1);
+  if (
+    !Number.isSafeInteger(chainId)
+    || chainId <= 0
+    || !/^0x[0-9a-f]{40}$/.test(account)
+    || encodedAgent.length === 0
+  ) return null;
+
+  try {
+    const agent = decodeURIComponent(encodedAgent);
+    if (agent.length === 0) return null;
+    return { chainId, account: account as Address, agent };
+  } catch {
+    return null;
+  }
 }
 
 function decimal(value: unknown): bigint | undefined {
@@ -120,6 +159,11 @@ function parseCheckpoint(value: unknown): FundingCheckpoint | null {
     ? undefined
     : decimal(stored.expectedTotalWei);
   if (stored.expectedTotalWei !== undefined && expectedTotalWei === undefined) return null;
+  const savedAt = typeof stored.savedAt === 'number' ? stored.savedAt : undefined;
+  if (
+    stored.savedAt !== undefined
+    && (savedAt === undefined || !Number.isSafeInteger(savedAt) || savedAt <= 0)
+  ) return null;
 
   const restoredPlan: FundingBootstrapPlan = {
     // Executable calls are never restored. A submitted checkpoint can only be
@@ -140,6 +184,7 @@ function parseCheckpoint(value: unknown): FundingCheckpoint | null {
     callsId: stored.callsId as Hex,
     plan: restoredPlan,
     ...(expectedTotalWei === undefined ? {} : { expectedTotalWei }),
+    ...(savedAt === undefined ? {} : { savedAt }),
   };
   if (stored.status === 'submitted') return { ...base, status: 'submitted' };
 
@@ -172,6 +217,42 @@ export function loadFundingCheckpoint(
   } catch {
     return null;
   }
+}
+
+/**
+ * Enumerate durable, unfinished funding steps for dashboard recovery.
+ *
+ * localStorage is untrusted input: both the identity encoded in the key and
+ * the checkpoint body are validated before anything is returned to the UI.
+ * Interrupted reservations and corrupt records are omitted without mutating
+ * storage: another tab may be replacing the reservation with a submitted id.
+ */
+export function listFundingCheckpoints(): StoredFundingActivation[] {
+  if (typeof window === 'undefined') return [];
+
+  const storageKeys: string[] = [];
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const storageKey = window.localStorage.key(index);
+      if (storageKey?.startsWith(`${KEY_PREFIX}:`)) storageKeys.push(storageKey);
+    }
+  } catch {
+    return [];
+  }
+
+  const activations: StoredFundingActivation[] = [];
+  for (const storageKey of storageKeys) {
+    const identity = checkpointIdentity(storageKey);
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const checkpoint = raw === null ? null : parseCheckpoint(JSON.parse(raw));
+      if (!identity || !checkpoint) continue;
+      activations.push({ ...identity, checkpoint });
+    } catch {
+      // One corrupt or inaccessible record must not hide every other recovery.
+    }
+  }
+  return activations;
 }
 
 function storedPlan(plan: FundingBootstrapPlan): StoredFundingPlan {
@@ -222,10 +303,22 @@ export function saveFundingCheckpoint(
   checkpoint: FundingCheckpoint,
 ): void {
   const { plan } = checkpoint;
+  const storageKey = key(chainId, account, agent);
+  let savedAt = checkpoint.savedAt;
+  if (savedAt === undefined) {
+    try {
+      const previous = window.localStorage.getItem(storageKey);
+      if (previous !== null) savedAt = parseCheckpoint(JSON.parse(previous))?.savedAt;
+    } catch {
+      // The new checkpoint replaces an unreadable predecessor with a fresh timestamp.
+    }
+  }
+  savedAt ??= Date.now();
   const stored: StoredFundingCheckpoint = {
     version: 3,
     status: checkpoint.status,
     callsId: checkpoint.callsId,
+    savedAt,
     plan: storedPlan(plan),
     ...(checkpoint.expectedTotalWei === undefined
       ? {}
@@ -237,7 +330,7 @@ export function saveFundingCheckpoint(
         }
       : {}),
   };
-  window.localStorage.setItem(key(chainId, account, agent), JSON.stringify(stored));
+  window.localStorage.setItem(storageKey, JSON.stringify(stored));
 }
 
 export function clearFundingCheckpoint(chainId: number, account: Address, agent: string): void {
@@ -247,4 +340,24 @@ export function clearFundingCheckpoint(chainId: number, account: Address, agent:
     // A successful activation must not be reported as failed only because the
     // browser refused cleanup. The durable session remains visible/revocable.
   }
+}
+
+/**
+ * Clear only the funding attempt that led to an already-saved session.
+ *
+ * A later activation for the same account and agent reuses the storage key. An
+ * older session's handoff retry must never erase that newer attempt. Legacy
+ * checkpoints have no timestamp, so retain them rather than guessing.
+ */
+export function clearFundingCheckpointForSession(
+  chainId: number,
+  account: Address,
+  agent: string,
+  grantedAt: string,
+): void {
+  const grantedAtMs = Date.parse(grantedAt);
+  if (!Number.isFinite(grantedAtMs)) return;
+  const checkpoint = loadFundingCheckpoint(chainId, account, agent);
+  if (checkpoint?.savedAt === undefined || checkpoint.savedAt > grantedAtMs) return;
+  clearFundingCheckpoint(chainId, account, agent);
 }
