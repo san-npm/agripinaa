@@ -6,6 +6,8 @@ import type { Address, Hex } from 'viem';
 import {
   assertFundingCheckpointWritable,
   clearFundingCheckpoint,
+  clearFundingCheckpointForSession,
+  listFundingCheckpoints,
   loadFundingCheckpoint,
   saveFundingCheckpoint,
 } from '../src/lib/funding-checkpoint';
@@ -24,7 +26,11 @@ function withLocalStorage(
     configurable: true,
     value: {
       localStorage: {
+        get length() {
+          return values.size;
+        },
         getItem: (key: string) => values.get(key) ?? null,
+        key: (index: number) => [...values.keys()][index] ?? null,
         setItem: (key: string, value: string) => {
           const currentSize = [...values.entries()].reduce(
             (total, [storedKey, storedValue]) => total + storedKey.length + storedValue.length,
@@ -95,6 +101,7 @@ describe('funding bootstrap checkpoint', () => {
       assert.equal(restored.transactionHash, HASH);
       assert.equal(restored.callsId, CALLS_ID);
       assert.equal(restored?.expectedTotalWei, 98n);
+      assert.equal(typeof restored?.savedAt, 'number');
       assert.equal(restored.receiptBlockNumber, 123n);
       assert.equal(restored?.plan.strategyInput, 98n);
       assert.equal(restored?.plan.nativeReserveOutputWei, 7n);
@@ -124,6 +131,128 @@ describe('funding bootstrap checkpoint', () => {
       assert.equal(restored?.callsId, CALLS_ID);
       clearFundingCheckpoint(56, ACCOUNT, 'grid');
       assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'grid'), null);
+    });
+  });
+
+  it('enumerates valid unfinished activations for dashboard recovery', () => {
+    withLocalStorage((values) => {
+      saveFundingCheckpoint(56, ACCOUNT, 'lp-range', {
+        status: 'submitted',
+        callsId: CALLS_ID,
+        plan: PLAN,
+      });
+      saveFundingCheckpoint(56, ACCOUNT, 'grid', {
+        status: 'confirmed',
+        callsId: CALLS_ID,
+        transactionHash: HASH,
+        receiptBlockNumber: 123n,
+        plan: PLAN,
+      });
+      values.set('unrelated', '{bad json');
+
+      const activations = listFundingCheckpoints();
+      assert.deepEqual(
+        activations.map(({ chainId, account, agent, checkpoint }) => ({
+          chainId,
+          account,
+          agent,
+          status: checkpoint.status,
+        })),
+        [
+          { chainId: 56, account: ACCOUNT, agent: 'lp-range', status: 'submitted' },
+          { chainId: 56, account: ACCOUNT, agent: 'grid', status: 'confirmed' },
+        ],
+      );
+      assert.equal(values.has('unrelated'), true);
+    });
+  });
+
+  it('omits reservations and corrupt records without mutating concurrent recovery state', () => {
+    withLocalStorage((values) => {
+      saveFundingCheckpoint(56, ACCOUNT, 'lp-range', {
+        status: 'submitted',
+        callsId: CALLS_ID,
+        plan: PLAN,
+      });
+      values.set('agripinaa.funding-bootstrap.v3:nope:not-an-address:grid', '{}');
+      values.set(`agripinaa.funding-bootstrap.v3:56:${ACCOUNT}:grid`, '{bad json');
+      assertFundingCheckpointWritable(56, ACCOUNT, 'grid-b', PLAN);
+
+      assert.deepEqual(listFundingCheckpoints().map((entry) => entry.agent), ['lp-range']);
+      assert.equal(values.size, 4);
+      assert.match(
+        values.get(`agripinaa.funding-bootstrap.v3:56:${ACCOUNT}:grid-b`) ?? '',
+        /"status":"reserved"/,
+      );
+    });
+  });
+
+  it('preserves the first submission timestamp when confirmation replaces it', () => {
+    withLocalStorage(() => {
+      saveFundingCheckpoint(56, ACCOUNT, 'lp-range', {
+        status: 'submitted',
+        callsId: CALLS_ID,
+        plan: PLAN,
+      });
+      const submittedAt = loadFundingCheckpoint(56, ACCOUNT, 'lp-range')?.savedAt;
+      saveFundingCheckpoint(56, ACCOUNT, 'lp-range', {
+        status: 'confirmed',
+        callsId: CALLS_ID,
+        transactionHash: HASH,
+        receiptBlockNumber: 123n,
+        plan: PLAN,
+      });
+
+      assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'lp-range')?.savedAt, submittedAt);
+    });
+  });
+
+  it('clears only a checkpoint that predates the session being handed off', () => {
+    withLocalStorage(() => {
+      saveFundingCheckpoint(56, ACCOUNT, 'grid', {
+        status: 'submitted',
+        callsId: CALLS_ID,
+        plan: PLAN,
+        savedAt: 2_000,
+      });
+
+      clearFundingCheckpointForSession(
+        56,
+        ACCOUNT,
+        'grid',
+        new Date(1_000).toISOString(),
+      );
+      assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'grid')?.callsId, CALLS_ID);
+
+      clearFundingCheckpointForSession(
+        56,
+        ACCOUNT,
+        'grid',
+        new Date(3_000).toISOString(),
+      );
+      assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'grid'), null);
+    });
+  });
+
+  it('retains legacy checkpoints when session correlation is unavailable', () => {
+    withLocalStorage((values) => {
+      saveFundingCheckpoint(56, ACCOUNT, 'grid', {
+        status: 'submitted',
+        callsId: CALLS_ID,
+        plan: PLAN,
+      });
+      const storageKey = `agripinaa.funding-bootstrap.v3:56:${ACCOUNT}:grid`;
+      const stored = JSON.parse(values.get(storageKey) ?? '{}') as Record<string, unknown>;
+      delete stored.savedAt;
+      values.set(storageKey, JSON.stringify(stored));
+
+      clearFundingCheckpointForSession(
+        56,
+        ACCOUNT,
+        'grid',
+        new Date(3_000).toISOString(),
+      );
+      assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'grid')?.callsId, CALLS_ID);
     });
   });
 
