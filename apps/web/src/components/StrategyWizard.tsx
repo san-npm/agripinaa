@@ -1,9 +1,14 @@
 'use client';
 
 import { managedStrategyFor, type ManagedStrategySlug } from '@agripinaa/shared/managed-strategies';
+import {
+  ALTANA_KEYSTORE_CONTROLLER_BSC,
+  FUNDING_GAS_RESERVE_WEI,
+  FUNDING_MAX_REGISTRATION_FEE_WEI,
+} from '@agripinaa/shared/funding';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
-import { erc20Abi, type Hex } from 'viem';
+import { erc20Abi, maxUint256, parseAbi, type Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
 import { createBscPublicClient, waitForBscTransactionReceipt } from '@/lib/bsc-public-client';
@@ -28,14 +33,22 @@ import {
   type ConfirmedFundingCheckpoint,
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
+import {
+  fundingRecoveryHash,
+  receiptProvesStrategyFundingRecovery,
+} from '@/lib/funding-recovery';
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
 import { markRegistered, storeSession } from '@/lib/session-store';
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
 import { FundingDeposit } from './FundingDeposit';
-import { CoinsIcon, ShieldIcon, VerifiedIcon } from './icons';
+import { CoinsIcon, ReceiptIcon, ShieldIcon, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
+
+const KEYSTORE_FEE_ABI = parseAbi([
+  'function getRegistrationFeeInWei() view returns (uint256)',
+]);
 
 interface StrategyAgentProps {
   chainId: number;
@@ -55,7 +68,18 @@ interface GrantedStrategyActivation {
   approvedCheckerCount: number;
 }
 
-export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
+interface RecoveredFunding {
+  transactionHash: Hex;
+  receiptBlockNumber: bigint;
+}
+
+export function StrategyWizard({
+  agent,
+  initialRecoveryTxHash = '',
+}: {
+  agent: StrategyAgentProps;
+  initialRecoveryTxHash?: string;
+}) {
   const strategy = managedStrategyFor(agent.slug)!;
   const [step, setStep] = useState<Step>('wallet');
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
@@ -70,6 +94,8 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
   const [gasQuote, setGasQuote] = useState<FundingGasQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [preparedFunding, setPreparedFunding] = useState<FundingCheckpoint | null>(null);
+  const [recoveryTxHash, setRecoveryTxHash] = useState(initialRecoveryTxHash);
+  const [recoveredFunding, setRecoveredFunding] = useState<RecoveredFunding | null>(null);
   const [grantedActivation, setGrantedActivation] = useState<GrantedStrategyActivation | null>(null);
   const [hours, setHours] = useState(168);
   const [busy, setBusy] = useState(false);
@@ -93,8 +119,64 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
       if (checkpoint) {
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
+        setRecoveredFunding(null);
+      } else if (mode === 'recover' && recoveryTxHash.trim()) {
+        const transactionHash = fundingRecoveryHash(recoveryTxHash);
+        if (!transactionHash) {
+          throw new Error('Enter the complete 0x transaction hash from the successful funding transaction.');
+        }
+        setPhase('Verifying the funded account on BNB Chain…');
+        const receipt = await waitForBscTransactionReceipt(transactionHash);
+        if (!receiptProvesStrategyFundingRecovery(receipt, next.address as Hex, strategy.approvals)) {
+          throw new Error(`That transaction is not a completed ${agent.name} funding bundle for the recovered account.`);
+        }
+        const chainClient = publicClient();
+        const [nativeBalance, registrationFee, inventoryEntries, allowanceEntries] = await Promise.all([
+          chainClient.getBalance({ address: next.address as Hex }),
+          chainClient.readContract({
+            address: ALTANA_KEYSTORE_CONTROLLER_BSC,
+            abi: KEYSTORE_FEE_ABI,
+            functionName: 'getRegistrationFeeInWei',
+          }),
+          Promise.all(strategy.depositTokens.map(async (symbol) => [
+            symbol,
+            await chainClient.readContract({
+              address: TOKENS_BSC[symbol]!.address,
+              abi: erc20Abi,
+              functionName: 'balanceOf',
+              args: [next.address as Hex],
+            }),
+          ] as const)),
+          Promise.all(strategy.approvals.map(async (approval) => ({
+            approval,
+            allowance: await chainClient.readContract({
+              address: TOKENS_BSC[approval.token]!.address,
+              abi: erc20Abi,
+              functionName: 'allowance',
+              args: [next.address as Hex, approval.spender],
+            }),
+          }))),
+        ]);
+        const inventory = Object.fromEntries(inventoryEntries);
+        const missingAssets = strategy.depositTokens.filter((symbol) => (inventory[symbol] ?? 0n) === 0n);
+        if (missingAssets.length > 0) {
+          throw new Error(`The recovered account no longer holds its prepared ${missingAssets.join(' and ')} inventory.`);
+        }
+        const changedApprovals = allowanceEntries.filter(({ allowance }) => allowance !== maxUint256);
+        if (changedApprovals.length > 0) {
+          throw new Error('One or more strategy venue approvals changed after funding. Recovery cannot safely skip that owner step.');
+        }
+        if (registrationFee > FUNDING_MAX_REGISTRATION_FEE_WEI) {
+          throw new Error('The live Altana key-registration fee is above Agripinaa\'s safety ceiling.');
+        }
+        if (nativeBalance < FUNDING_GAS_RESERVE_WEI + registrationFee) {
+          throw new Error('The recovered account no longer holds enough native BNB for session registration and its execution reserve.');
+        }
+        setPreparedFunding(null);
+        setRecoveredFunding({ transactionHash, receiptBlockNumber: receipt.blockNumber });
       } else {
         setPreparedFunding(null);
+        setRecoveredFunding(null);
       }
       setWallet(next);
       setStep('deposit');
@@ -102,6 +184,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
+      setPhase('');
     }
   }
 
@@ -140,7 +223,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
   }, [publicClient, step, wallet]);
 
   useEffect(() => {
-    if (step !== 'deposit') return;
+    if (step !== 'deposit' || recoveredFunding) return;
     let cancelled = false;
     const refresh = async () => {
       try {
@@ -162,7 +245,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [fundingAsset, step]);
+  }, [fundingAsset, recoveredFunding, step]);
 
   async function activate() {
     if (!wallet) return;
@@ -207,7 +290,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
         setPreparedFunding(confirmed);
         prepared = confirmed;
       }
-      if (!prepared) {
+      if (!prepared && !recoveredFunding) {
         setPhase('Building the deposit preparation…');
         const displayedQuote = gasQuote?.asset === fundingAsset ? gasQuote : null;
         if (!displayedQuote || displayedQuote.expiresAt <= Date.now() + 5_000) {
@@ -282,7 +365,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
         prepared = confirmed;
       }
 
-      if (prepared.status !== 'confirmed') {
+      if (!recoveredFunding && prepared?.status !== 'confirmed') {
         throw new Error('The saved funding transaction has not confirmed yet. Retry activation without depositing again.');
       }
 
@@ -384,6 +467,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
     && nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
   const freshConfirmationCount = 2 + strategy.signatureCheckers.length
     + (preCallConfirmationRequired ? 1 : 0);
+  const recoveryHashReady = fundingRecoveryHash(recoveryTxHash) !== null;
   const primaryBtn = 'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
   return (
@@ -407,31 +491,102 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
                 Recover this account
               </button>
             </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void connect('recover');
+              }}
+              className="rounded-xl border border-primary/35 bg-primary/10 p-4"
+            >
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-primary/25 bg-surface text-primary">
+                  <ReceiptIcon className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold">Funding succeeded but the agent is missing?</h3>
+                  <p id="funding-recovery-help" className="mt-1 text-xs leading-relaxed text-muted">
+                    Paste the transaction hash from your wallet error. We verify it against this
+                    passkey account and {agent.name}&apos;s exact venue approvals. You will not deposit again.
+                  </p>
+                </div>
+              </div>
+              <label htmlFor="funding-recovery-transaction" className="mt-4 block text-xs font-medium text-foreground">
+                Funding transaction hash
+              </label>
+              <input
+                id="funding-recovery-transaction"
+                value={recoveryTxHash}
+                onChange={(event) => setRecoveryTxHash(event.target.value)}
+                disabled={busy}
+                aria-describedby="funding-recovery-help"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="0x…"
+                className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={busy || !recoveryHashReady}
+                className="mt-3 min-h-11 rounded-lg border border-primary/45 bg-surface px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy && phase ? phase : 'Verify funding and continue'}
+              </button>
+            </form>
           </section>
         )}
 
         {step === 'deposit' && wallet && (
           <section className="space-y-4">
             <div>
-              <h2 className="font-display text-lg font-semibold">Fund with one asset</h2>
+              <h2 className="font-display text-lg font-semibold">
+                {recoveredFunding ? 'Funding recovered' : 'Fund with one asset'}
+              </h2>
               <p className="mt-1 text-sm text-muted">
-                Choose BTCB, BNB, USDT, or USDC. Agripinaa prepares this strategy&apos;s inventory and gas from that single deposit.
+                {recoveredFunding
+                  ? 'The completed on-chain funding bundle belongs to this passkey account. Continue with the scoped mandate.'
+                  : 'Choose BTCB, BNB, USDT, or USDC. Agripinaa prepares this strategy\'s inventory and gas from that single deposit.'}
               </p>
             </div>
-            <FundingDeposit
-              address={wallet.address as Hex}
-              asset={fundingAsset}
-              balances={balances}
-              gasQuote={activeGasQuote}
-              gasConversionRequired={gasConversionRequired}
-              preparedPlan={preparedFunding?.plan}
-              preparationStatus={preparedFunding?.status}
-              quoteError={quoteError}
-              locked={busy || preparedFunding !== null}
-              onAssetChange={(asset) => {
-                if (!busy && !preparedFunding) setFundingAsset(asset);
-              }}
-            />
+            {recoveredFunding ? (
+              <div role="status" className="rounded-xl border border-success/35 bg-success/10 p-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-success/15 text-success">
+                    <VerifiedIcon className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-success">Funding transaction verified</p>
+                    <a
+                      href={`https://bscscan.com/tx/${recoveredFunding.transactionHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-0.5 block truncate font-mono text-xs text-muted underline decoration-border-strong underline-offset-2 hover:text-foreground"
+                    >
+                      {recoveredFunding.transactionHash}
+                    </a>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs leading-relaxed text-muted">
+                  Account {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)} still holds strategy inventory.
+                  No new transfer or funding approval will be requested.
+                </p>
+              </div>
+            ) : (
+              <FundingDeposit
+                address={wallet.address as Hex}
+                asset={fundingAsset}
+                balances={balances}
+                gasQuote={activeGasQuote}
+                gasConversionRequired={gasConversionRequired}
+                preparedPlan={preparedFunding?.plan}
+                preparationStatus={preparedFunding?.status}
+                quoteError={quoteError}
+                locked={busy || preparedFunding !== null}
+                onAssetChange={(asset) => {
+                  if (!busy && !preparedFunding) setFundingAsset(asset);
+                }}
+              />
+            )}
             <p className="rounded-lg border border-border bg-surface-2 p-3 text-xs leading-relaxed text-muted-2">
               {strategy.fundingNote} Native BNB is wrapped internally when a pool requires WBNB.
             </p>
@@ -450,15 +605,24 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
             </label>
             <button
               onClick={activate}
-              disabled={busy || (!preparedFunding && (!activeGasQuote || !assetsReady))}
+              disabled={busy || (!recoveredFunding && !preparedFunding && (!activeGasQuote || !assetsReady))}
               className={primaryBtn}
             >
               {busy ? phase || 'Working…' : agent.submitLabel ?? `Activate ${agent.name}`}
             </button>
             <p className="text-xs text-muted-2">
-              From a fresh deposit: {freshConfirmationCount} passkey confirmations — funding approvals,
-              the scoped session{strategy.usesOphis ? ', Ophis ERC-1271 validation' : ''}
-              {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+              {recoveredFunding ? (
+                <>
+                  Recovery skips the completed funding step. Continue with the scoped session
+                  {strategy.usesOphis ? ' and Ophis ERC-1271 validation' : ''}.
+                </>
+              ) : (
+                <>
+                  From a fresh deposit: {freshConfirmationCount} passkey confirmations — funding approvals,
+                  the scoped session{strategy.usesOphis ? ', Ophis ERC-1271 validation' : ''}
+                  {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+                </>
+              )}
             </p>
           </section>
         )}

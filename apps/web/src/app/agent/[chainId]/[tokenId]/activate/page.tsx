@@ -44,17 +44,21 @@ export default async function ActivatePage(
   await resolveAgentRoute(props.params);
   return (
     <Suspense fallback={<p className="text-muted-2">Loading…</p>}>
-      <ActivateContent params={props.params} />
+      <ActivateContent params={props.params} searchParams={props.searchParams} />
     </Suspense>
   );
 }
 
 async function ActivateContent({
   params,
+  searchParams,
 }: {
   params: PageProps<"/agent/[chainId]/[tokenId]/activate">["params"];
+  searchParams: PageProps<"/agent/[chainId]/[tokenId]/activate">["searchParams"];
 }) {
   const { chainId, tokenId } = await params;
+  const query = await searchParams;
+  const initialRecoveryTxHash = typeof query.recoverTx === "string" ? query.recoverTx : "";
   if (Number.parseInt(chainId, 10) !== CHAIN_ID) notFound();
   const agent = await getAgent(tokenId);
   if (!agent) notFound();
@@ -128,6 +132,7 @@ async function ActivateContent({
       </p>
       {strategy ? (
         <StrategyWizard
+          initialRecoveryTxHash={initialRecoveryTxHash}
           agent={{
             chainId: agent.chainId,
             tokenId: agent.tokenId,
