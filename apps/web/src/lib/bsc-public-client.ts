@@ -1,0 +1,133 @@
+'use client';
+
+import { BSC_MAINNET } from '@agripinaa/shared/chains';
+import {
+  createPublicClient,
+  fallback,
+  http,
+  type Hex,
+  type TransactionReceipt,
+} from 'viem';
+
+import { bsc } from './bsc-chain';
+
+export interface BscReceiptClient {
+  getTransactionReceipt(args: { hash: Hex }): Promise<TransactionReceipt>;
+}
+
+/**
+ * Receipt-capable endpoints operated by distinct organisations. The two BNB
+ * dataseed hostnames share an operator, so they must never be counted as two
+ * votes for the funding proof.
+ */
+export const BSC_RECEIPT_RPC_SOURCES = [
+  { operator: 'BNB Chain', url: 'https://bsc-dataseed.bnbchain.org' },
+  { operator: 'dRPC', url: 'https://bsc.drpc.org' },
+  { operator: 'Blast', url: 'https://bsc-mainnet.public.blastapi.io' },
+  { operator: 'bloXroute', url: 'https://bsc.rpc.blxrbdn.com' },
+] as const;
+
+/**
+ * Latest-state client for funding quotes and post-receipt balance reads.
+ * Explicit transports matter here: viem's bare http() selects the first chain
+ * URL and never gets a chance to recover when that provider rejects a method.
+ */
+export function createBscPublicClient() {
+  return createPublicClient({
+    chain: bsc,
+    transport: fallback(
+      BSC_MAINNET.rpcUrls.map((url) => http(url, { retryCount: 0, timeout: 5_000 })),
+    ),
+  });
+}
+
+function receiptClients(): BscReceiptClient[] {
+  return BSC_RECEIPT_RPC_SOURCES.map(({ url }) => createPublicClient({
+    chain: bsc,
+    transport: http(url, { retryCount: 0, timeout: 5_000 }),
+  }));
+}
+
+/** Stable comparison of the inclusion and every log the funding proof reads. */
+export function fundingReceiptFingerprint(receipt: TransactionReceipt): string {
+  return JSON.stringify({
+    blockHash: receipt.blockHash.toLowerCase(),
+    blockNumber: receipt.blockNumber.toString(),
+    transactionHash: receipt.transactionHash.toLowerCase(),
+    status: receipt.status,
+    logs: receipt.logs.map((log) => ({
+      address: log.address.toLowerCase(),
+      data: log.data.toLowerCase(),
+      topics: log.topics.map((topic) => topic.toLowerCase()),
+      logIndex: log.logIndex,
+    })),
+  });
+}
+
+/**
+ * The relay can confirm before every public RPC exposes the receipt, and one
+ * configured provider may reject receipt history altogether. Poll all pinned
+ * BSC endpoints and accept only a byte-matching quorum so neither an outage nor
+ * one dishonest response decides whether the user's funding batch succeeded.
+ */
+export async function waitForBscTransactionReceipt(
+  hash: Hex,
+  options: {
+    clients?: readonly BscReceiptClient[];
+    quorum?: number;
+    timeoutMs?: number;
+    pollMs?: number;
+  } = {},
+): Promise<TransactionReceipt> {
+  const clients = options.clients ?? receiptClients();
+  const quorum = options.quorum ?? 2;
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const pollMs = options.pollMs ?? 500;
+  if (
+    !Number.isSafeInteger(quorum)
+    || quorum < 1
+    || quorum > clients.length
+    || !Number.isSafeInteger(timeoutMs)
+    || timeoutMs < 0
+    || !Number.isSafeInteger(pollMs)
+    || pollMs < 0
+  ) {
+    throw new Error('invalid BSC receipt polling policy');
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const responses = await Promise.all(clients.map(async (client) => {
+      try {
+        return await client.getTransactionReceipt({ hash });
+      } catch {
+        return null;
+      }
+    }));
+    const matching = new Map<string, TransactionReceipt[]>();
+    for (const receipt of responses) {
+      let fingerprint: string;
+      try {
+        if (!receipt || receipt.transactionHash.toLowerCase() !== hash.toLowerCase()) continue;
+        fingerprint = fundingReceiptFingerprint(receipt);
+      } catch {
+        // viem formats known fields but does not runtime-validate the full RPC
+        // shape. One malformed provider response must not suppress an honest
+        // quorum from the other endpoints.
+        continue;
+      }
+      const group = matching.get(fingerprint) ?? [];
+      group.push(receipt);
+      matching.set(fingerprint, group);
+      if (group.length >= quorum) return group[0]!;
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+  } while (Date.now() <= deadline);
+
+  throw new Error(
+    'The relay confirmed the funding transaction, but two BSC RPC providers have not agreed on its receipt yet. Retry activation; do not deposit again.',
+  );
+}

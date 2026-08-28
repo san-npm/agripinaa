@@ -5,10 +5,10 @@ import type { AgentSlug } from '@agripinaa/shared/agents';
 import { managedTokenForFunding } from '@agripinaa/shared/funding';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
-import { createPublicClient, erc20Abi, http } from 'viem';
+import { erc20Abi } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
-import { bsc } from '@/lib/bsc-chain';
+import { createBscPublicClient, waitForBscTransactionReceipt } from '@/lib/bsc-public-client';
 import {
   approveRouter,
   buildManagedScope,
@@ -104,7 +104,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const deployment = routerFor(chainId, token);
   const automationReady = isDebtCompleteRouter(deployment);
   const publicClient = useCallback(
-    () => createPublicClient({ chain: bsc, transport: http() }),
+    () => createBscPublicClient(),
     [],
   );
 
@@ -142,10 +142,11 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     let cancelled = false;
     const tick = async () => {
       try {
+        const client = publicClient();
         const tokenAssets = FUNDING_ASSETS.filter((symbol): symbol is Exclude<FundingAsset, 'BNB'> => symbol !== 'BNB');
         const [n, ...assets] = await Promise.all([
-          publicClient().getBalance({ address: wallet.address as `0x${string}` }),
-          ...tokenAssets.map((symbol) => publicClient().readContract({
+          client.getBalance({ address: wallet.address as `0x${string}` }),
+          ...tokenAssets.map((symbol) => client.readContract({
             address: TOKENS_BSC[symbol]!.address,
             abi: erc20Abi,
             functionName: 'balanceOf',
@@ -224,10 +225,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           setPreparedFunding(null);
           throw new Error('The saved funding transaction failed. No strategy funding was recorded; review the quote and retry.');
         }
-        const receipt = await fundingClient.waitForTransactionReceipt({
-          hash: resumed.transactionHash,
-          timeout: 30_000,
-        });
+        const receipt = await waitForBscTransactionReceipt(resumed.transactionHash);
         if (
           receipt.status !== 'success'
           || !receiptProvesFundingMainBatch(
@@ -328,10 +326,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         if (!fundingResult.transactionHash) {
           throw new Error('The confirmed funding bundle returned no transaction hash.');
         }
-        const receipt = await fundingClient.waitForTransactionReceipt({
-          hash: fundingResult.transactionHash,
-          timeout: 30_000,
-        });
+        const receipt = await waitForBscTransactionReceipt(fundingResult.transactionHash);
         if (
           receipt.status !== 'success'
           || !receiptProvesFundingMainBatch(
