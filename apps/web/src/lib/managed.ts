@@ -26,6 +26,7 @@ import {
 } from 'viem';
 
 import { altanaClient } from './altana';
+import type { FundingCall } from './funding-bootstrap';
 import { bsc, bscTestnet } from './bsc-chain';
 import {
   ACCOUNT_HISTORY_CONCURRENCY,
@@ -153,7 +154,17 @@ async function assertRouterRuntime(chainId: number, router: NonNullable<ReturnTy
  * aToken, and vToken. The router only ever moves these back to the account, so
  * an unlimited approval to it is safe (that is the whole point of the adapter).
  */
-export async function approveRouter(wallet: WalletLike, chainId: number, token = 'USDT') {
+export async function approveRouter(
+  wallet: WalletLike,
+  chainId: number,
+  token = 'USDT',
+  bootstrap?: {
+    calls: readonly FundingCall[];
+    preCalls?: readonly FundingCall[];
+    merchantUrl?: string;
+    onSubmitted?: (callsId: Hex) => void | Promise<void>;
+  },
+) {
   const router = routerFor(chainId, token);
   if (!isDebtCompleteRouter(router)) {
     throw new Error(`no debt-complete YieldRouter deployed for ${token} on chain ${chainId}`);
@@ -164,7 +175,10 @@ export async function approveRouter(wallet: WalletLike, chainId: number, token =
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
     chainId,
-    calls,
+    calls: [...(bootstrap?.calls ?? []), ...calls] as never,
+    ...(bootstrap?.preCalls?.length ? { preCalls: bootstrap.preCalls as never } : {}),
+    ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
+    ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });
   return assertConfirmed(r, 'Router approval');
 }
@@ -302,15 +316,36 @@ export async function readManagedPosition(
   chainId: number,
   token = 'USDT',
   recoveryRouterAddress?: string,
+  clientOverride?: ReturnType<typeof createPublicClient>,
+  blockNumber?: bigint,
 ): Promise<ManagedPosition> {
   const router = resolveManagedRouterDeployment(chainId, token, recoveryRouterAddress);
   if (!router) throw new Error(`no matching YieldRouter for ${token} on chain ${chainId}`);
-  const client = createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
+  const client = clientOverride
+    ?? createPublicClient({ chain: chainId === 97 ? bscTestnet : bsc, transport: http() });
   const [idle, aUsdt, venusUnderlying, native] = await Promise.all([
-    client.readContract({ address: router.usdt, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
-    client.readContract({ address: router.aUsdt, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
-    client.readContract({ address: router.vUsdt, abi: vTokenReadAbi, functionName: 'balanceOfUnderlying', args: [account] }),
-    client.getBalance({ address: account }),
+    client.readContract({
+      address: router.usdt,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [account],
+      ...(blockNumber !== undefined ? { blockNumber } : {}),
+    }),
+    client.readContract({
+      address: router.aUsdt,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [account],
+      ...(blockNumber !== undefined ? { blockNumber } : {}),
+    }),
+    client.readContract({
+      address: router.vUsdt,
+      abi: vTokenReadAbi,
+      functionName: 'balanceOfUnderlying',
+      args: [account],
+      ...(blockNumber !== undefined ? { blockNumber } : {}),
+    }),
+    client.getBalance({ address: account, ...(blockNumber !== undefined ? { blockNumber } : {}) }),
   ]);
   const total = idle + aUsdt + venusUnderlying;
   const venue = classifyManagedVenue(idle, aUsdt, venusUnderlying);

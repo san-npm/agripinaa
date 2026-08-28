@@ -123,8 +123,8 @@ async function ActivateContent({
         {managedCopy
           ? managedCopy.intro
           : managedAgent
-          ? "A passkey-secured account, a USDT or USDC deposit, and one grant that lets the agent rotate your funds between lending venues, never anywhere else."
-          : "Three steps: a passkey-secured account, a one-time gas top-up, and one signature granting exactly the authority you choose."}
+          ? "A passkey-secured account, one BTCB, BNB, USDT, or USDC deposit, and one grant that lets the agent rotate the prepared funds between lending venues, never anywhere else."
+          : "Three steps: a passkey-secured account, one asset deposit with transparent gas conversion, and one scoped mandate."}
       </p>
       {strategy ? (
         <StrategyWizard

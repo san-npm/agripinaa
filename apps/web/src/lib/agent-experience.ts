@@ -29,7 +29,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate WBNB grid',
     managed: {
       heading: 'Run the WBNB mean-reversion grid',
-      intro: 'Assign WBNB or USDT to a dedicated passkey account. Grid trades $2 ladder clips through Ophis and enforces its cooldown, daily action cap, breakout halt, and drawdown floor per account.',
+      intro: 'Fund a dedicated passkey account once with BTCB, BNB, USDT, or USDC. Grid prepares its WBNB and USDT legs, trades $2 ladder clips through Ophis, and enforces its cooldown, daily action cap, breakout halt, and drawdown floor per account.',
       submitLabel: 'Start WBNB grid',
       activeSummary: 'Grid is now watching the WBNB/USDT ladder and will submit bounded Ophis orders when a level crosses.',
     },
@@ -39,7 +39,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate BTC grid',
     managed: {
       heading: 'Run the patient BTCB grid',
-      intro: 'Assign BTCB or USDT to a dedicated passkey account. BTC Grid uses its wider 2.5% ladder, $1.50 clips, and slower cooldown through Ophis.',
+      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares both grid legs, then BTC Grid runs its wider 2.5% ladder and slower cooldown through Ophis.',
       submitLabel: 'Start BTCB grid',
       activeSummary: 'BTC Grid is now watching its wider BTCB/USDT ladder and will trade bounded clips through Ophis.',
     },
@@ -49,7 +49,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Protect Aave position',
     managed: {
       heading: 'Guard an Aave borrowing position',
-      intro: 'Connect the passkey account that owns your Aave position and fund it with a USDT repair reserve. Guardian monitors health factor and can only call Aave repay under the published cap.',
+      intro: 'Connect the passkey account that owns your Aave position and fund once with BTCB, BNB, USDT, or USDC. The deposit becomes a USDT repair reserve; Guardian can only call Aave repay under the published cap.',
       submitLabel: 'Start Aave protection',
       activeSummary: 'Guardian is now monitoring this account’s Aave health factor and can deploy its USDT repair reserve when the action threshold is crossed.',
     },
@@ -59,7 +59,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Protect Venus position',
     managed: {
       heading: 'Guard a Venus borrowing position',
-      intro: 'Connect the passkey account that owns your Venus position and fund it with a USDT repair reserve. Venus Guardian monitors the protocol-native position and can only call repayBorrow.',
+      intro: 'Connect the passkey account that owns your Venus position and fund once with BTCB, BNB, USDT, or USDC. The deposit becomes a USDT repair reserve; Venus Guardian can only call repayBorrow.',
       submitLabel: 'Start Venus protection',
       activeSummary: 'Venus Guardian is now monitoring this account’s Venus health factor and can deploy its USDT repair reserve at the action threshold.',
     },
@@ -93,7 +93,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate LP Ranger',
     managed: {
       heading: 'Run a managed Pancake V3 range',
-      intro: 'Assign WBNB or USDT to a dedicated passkey account. LP Ranger mints a ±5% position, waits through its out-of-range timer, and uses Ophis when inventory needs balancing.',
+      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares WBNB and USDT, then LP Ranger mints a ±5% position and uses Ophis when inventory needs balancing.',
       submitLabel: 'Start LP Ranger',
       activeSummary: 'LP Ranger now owns the range lifecycle for this dedicated account under its weekly rebalance and daily action limits.',
     },
@@ -103,7 +103,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     profileCta: 'Activate 50/50 rebalancer',
     managed: {
       heading: 'Keep WBNB and USDT near 50/50',
-      intro: 'Assign WBNB or USDT to a dedicated passkey account. Rebalancer acts only outside its five-point drift band and submits one bounded Ophis order toward the target.',
+      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares WBNB and USDT, then Rebalancer acts only outside its five-point drift band.',
       submitLabel: 'Start 50/50 rebalancing',
       activeSummary: 'Rebalancer is now monitoring this account’s WBNB/USDT weights and will act only outside the published drift band.',
     },

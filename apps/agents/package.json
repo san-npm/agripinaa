@@ -21,6 +21,8 @@
     "@ophis/agent-swap": "^0.3.1",
     "@ophis/sdk": "^0.3.0",
     "multiformats": "9.9.0",
+    "ox": "0.9.17",
+    "porto": "0.2.37",
     "viem": "^2.21.0"
   },
   "devDependencies": {

@@ -5,9 +5,10 @@ import {
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
-import { encodeFunctionData, erc20Abi, maxUint256 } from 'viem';
+import { encodeFunctionData, erc20Abi, maxUint256, type Hex } from 'viem';
 
 import { altanaClient } from './altana';
+import type { FundingCall } from './funding-bootstrap';
 
 export { buildStrategyScope, describeScope } from './strategy-scope';
 
@@ -23,6 +24,12 @@ export async function approveStrategyVenues(
   wallet: WalletLike,
   slug: ManagedStrategySlug,
   chainId = 56,
+  bootstrap?: {
+    calls: readonly FundingCall[];
+    preCalls?: readonly FundingCall[];
+    merchantUrl?: string;
+    onSubmitted?: (callsId: Hex) => void | Promise<void>;
+  },
 ) {
   const strategy = managedStrategyFor(slug);
   if (!strategy) throw new Error(`no managed strategy policy for ${slug}`);
@@ -47,7 +54,10 @@ export async function approveStrategyVenues(
     wallet: wallet as never,
     signer: wallet.signer as never,
     chainId,
-    calls,
+    calls: [...(bootstrap?.calls ?? []), ...calls] as never,
+    ...(bootstrap?.preCalls?.length ? { preCalls: bootstrap.preCalls as never } : {}),
+    ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
+    ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });
   if (result.status !== 'CONFIRMED') {
     throw new Error(
