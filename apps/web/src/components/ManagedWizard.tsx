@@ -38,6 +38,7 @@ import {
   FUNDING_ASSETS,
   buildFundingBootstrapPlan,
   fundingGasQuote,
+  fundingGasQuoteIsCurrent,
   type FundingAsset,
   type FundingGasQuote,
 } from '@/lib/funding-bootstrap';
@@ -46,11 +47,12 @@ import {
   clearFundingCheckpoint,
   loadFundingCheckpoint,
   saveFundingCheckpoint,
+  shouldPauseAfterFundingConfirmation,
   type ConfirmedFundingCheckpoint,
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
-import { FundingDeposit } from './FundingDeposit';
+import { ActivationProgress, FundingDeposit } from './FundingDeposit';
 import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
@@ -219,6 +221,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     }
     setBusy(true);
     setError(null);
+    const pauseAfterFunding = shouldPauseAfterFundingConfirmation(preparedFunding);
     try {
       const fundingClient = publicClient();
       const router = routerFor(chainId, token)!;
@@ -276,8 +279,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           router.address,
           fundingClient as never,
         );
-        const displayedQuote = gasQuote?.asset === fundingAsset ? gasQuote : null;
-        if (!displayedQuote || displayedQuote.expiresAt <= Date.now() + 5_000) {
+        const displayedQuote = fundingGasQuoteIsCurrent(gasQuote, fundingAsset, 5_000)
+          ? gasQuote
+          : null;
+        if (!displayedQuote) {
           const refreshed = await fundingGasQuote(fundingAsset);
           setGasQuote(refreshed);
           setQuoteError(null);
@@ -375,6 +380,14 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
 
       if (prepared.status !== 'confirmed') {
         throw new Error('The saved funding transaction has not confirmed yet. Retry activation without depositing again.');
+      }
+      if (pauseAfterFunding) {
+        toast({
+          title: 'Funding confirmed',
+          detail: `Continue below to grant ${agent.name} its scoped mandate.`,
+          kind: 'success',
+        });
+        return;
       }
       const expectedTotalWei = prepared.expectedTotalWei;
       if (expectedTotalWei === undefined) {
@@ -623,6 +636,13 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     && nativeBal != null
     && nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
   const stepIndex = { wallet: 0, deposit: 1, active: 2 }[step];
+  const activationLabel = preparedFunding?.status === 'submitted'
+    ? 'Check funding status'
+    : preparedFunding?.status === 'confirmed' && !grantedActivation
+      ? 'Continue: grant agent mandate'
+      : grantedActivation
+        ? 'Retry agent handoff'
+        : agent.submitLabel ?? 'Put funds under management';
   const primaryBtn =
     'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
@@ -726,6 +746,9 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               gasConversionRequired={gasConversionRequired}
               preparedPlan={preparedFunding?.plan}
               preparationStatus={preparedFunding?.status}
+              preparationTransactionHash={preparedFunding?.status === 'confirmed'
+                ? preparedFunding.transactionHash
+                : undefined}
               quoteError={quoteError}
               locked={busy || preparedFunding !== null}
               onAssetChange={(asset) => {
@@ -757,12 +780,15 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                 ))}
               </div>
             </label>
+            {busy && <ActivationProgress phase={phase} />}
             <button
               onClick={activate}
               disabled={busy || !automationReady || (!preparedFunding && (!activeGasQuote || !fundingReady))}
-              className={primaryBtn}
+              aria-busy={busy}
+              aria-describedby={busy ? 'activation-progress' : undefined}
+              className={`${primaryBtn} ${busy ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}
             >
-              {busy ? phase || 'Working…' : agent.submitLabel ?? 'Put funds under management'}
+              {busy ? 'Activation in progress…' : activationLabel}
             </button>
             <p className="text-xs text-muted-2">
               From a fresh deposit: {preCallConfirmationRequired ? 'three' : 'two'} passkey taps —

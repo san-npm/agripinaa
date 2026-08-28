@@ -56,6 +56,18 @@ export interface ConfirmedFundingCheckpoint extends FundingCheckpointBase {
 
 export type FundingCheckpoint = SubmittedFundingCheckpoint | ConfirmedFundingCheckpoint;
 
+/**
+ * A newly confirmed funding step ends the current user action. The next
+ * passkey-protected step must start from a fresh click so the browser can show
+ * its prompt and the UI can acknowledge funding before continuing.
+ */
+export function shouldPauseAfterFundingConfirmation(
+  checkpointAtStart: FundingCheckpoint | null,
+  fundingAlreadyRecovered = false,
+): boolean {
+  return !fundingAlreadyRecovered && checkpointAtStart?.status !== 'confirmed';
+}
+
 /** A recoverable funding step that has not yet become a stored session. */
 export interface StoredFundingActivation {
   chainId: number;
