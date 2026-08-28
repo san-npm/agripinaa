@@ -5,6 +5,7 @@ import {
   isDebtCompleteRouterRuntime,
   ROUTER_ACTIONS,
   TOKENS_BSC,
+  ALTANA_ORCHESTRATOR_BSC,
   FUNDING_FEE_PAYER_BSC,
   managedStrategyFor,
   routerByAddress,
@@ -120,6 +121,7 @@ function canonicalManagedPermissions(
       },
       { period: 'day', limit: toBaseUnits(MANAGED_NATIVE_CAP, 18) },
     ],
+    ...(router.chainId === 56 ? { relayOrchestrator: ALTANA_ORCHESTRATOR_BSC } : {}),
   };
 }
 
@@ -144,6 +146,7 @@ export function canonicalStrategyPermissions(agent: string): ExpectedAccountSess
       { period: 'day', limit: toBaseUnits(MANAGED_NATIVE_CAP, 18) },
     ],
     signatureCheckers: strategy.signatureCheckers,
+    relayOrchestrator: ALTANA_ORCHESTRATOR_BSC,
   };
 }
 
@@ -191,12 +194,12 @@ export function canonicalManagedSession(
   router: NonNullable<ReturnType<typeof routerByAddress>>,
   managerPublicKey: Hex,
 ): ManagedAccount['session'] {
-  return {
-    walletAddress: account,
-    publicKey: managerPublicKey,
-    permissions: canonicalManagedPermissions(router),
+  return canonicalSessionFor(
+    account,
     expiry,
-  };
+    canonicalManagedPermissions(router),
+    managerPublicKey,
+  );
 }
 
 function canonicalSessionFor(

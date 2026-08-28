@@ -6,6 +6,8 @@
 export async function compensateSessionStorageFailure(input: {
   storageError: unknown;
   revoke: () => Promise<{ status: string }>;
+  /** Cleanup that is safe only after the compensating revocation is final. */
+  afterConfirmedRevocation?: () => void | Promise<void>;
 }): Promise<never> {
   let revoked: { status: string };
   try {
@@ -22,6 +24,7 @@ export async function compensateSessionStorageFailure(input: {
       'CRITICAL: recovery storage failed and the compensating session revocation did not confirm. Revoke the new key from the wallet interface immediately.',
     );
   }
+  await input.afterConfirmedRevocation?.();
   throw new Error(
     `Recovery storage failed; the new session was revoked. ${
       input.storageError instanceof Error ? input.storageError.message : ''

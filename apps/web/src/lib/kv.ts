@@ -156,3 +156,79 @@ export async function kvReserveCounterPair(
     return null;
   }
 }
+
+const ACQUIRE_SESSION_GRANT_LEASE_LUA = `
+local bound = redis.call('GET', KEYS[1])
+if bound and bound ~= ARGV[1] then return -1 end
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])
+redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[4])
+return 1
+`;
+
+const RELEASE_SESSION_GRANT_LEASE_LUA = `
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+return redis.call('DEL', KEYS[1])
+`;
+
+export async function kvAcquireSessionGrantLease(input: {
+  bindingKey: string;
+  leaseKey: string;
+  manager: string;
+  leaseToken: string;
+  bindingTtlMs: number;
+  leaseTtlMs: number;
+}): Promise<'acquired' | 'busy' | 'manager-conflict' | 'unavailable'> {
+  if (!kvAvailable()) return 'unavailable';
+  try {
+    const res = await fetch(`${URL_BASE}/`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify([
+        'EVAL',
+        ACQUIRE_SESSION_GRANT_LEASE_LUA,
+        '2',
+        input.bindingKey,
+        input.leaseKey,
+        input.manager,
+        input.leaseToken,
+        String(input.bindingTtlMs),
+        String(input.leaseTtlMs),
+      ]),
+      signal: AbortSignal.timeout(3_000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return 'unavailable';
+    const result = (await res.json() as { result?: unknown }).result;
+    if (result === 1 || result === '1') return 'acquired';
+    if (result === 0 || result === '0') return 'busy';
+    if (result === -1 || result === '-1') return 'manager-conflict';
+    return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export async function kvReleaseSessionGrantLease(
+  leaseKey: string,
+  leaseToken: string,
+): Promise<void> {
+  if (!kvAvailable()) return;
+  try {
+    await fetch(`${URL_BASE}/`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify([
+        'EVAL',
+        RELEASE_SESSION_GRANT_LEASE_LUA,
+        '1',
+        leaseKey,
+        leaseToken,
+      ]),
+      signal: AbortSignal.timeout(3_000),
+      cache: 'no-store',
+    });
+  } catch {
+    // The short lease expires automatically; never delete another holder's lock.
+  }
+}

@@ -124,6 +124,7 @@ export const ACCOUNT_PERMISSIONS_READ_ABI = [
 ] as const;
 
 const PORTO_ANY_KEYHASH = `0x${'32'.repeat(32)}` as Hex;
+const PORTO_ANY_SELECTOR = '0x32323232' as Hex;
 const ZERO_ADDRESS: Address = '0x0000000000000000000000000000000000000000';
 const SPEND_PERIOD = {
   minute: 0,
@@ -143,6 +144,13 @@ export interface ExpectedAccountSessionPermissions {
   }[];
   /** Exact ERC-1271 callers approved for this key (empty/omitted means none). */
   signatureCheckers?: readonly Address[];
+  /**
+   * Exact Porto relay orchestrator injected into every relay-backed session.
+   * Porto adds an any-selector call for this one target after converting the
+   * application policy; omitting this field means no injected permission is
+   * expected. Callers must pin the deployment rather than accept any target.
+   */
+  relayOrchestrator?: Address;
 }
 
 interface AccountSpendInfo {
@@ -158,10 +166,9 @@ interface AccountKeyDescriptor {
   publicKey: Hex;
 }
 
-export function accountKeyDescriptorMatches(
+export function accountKeyIdentityMatches(
   key: AccountKeyDescriptor,
   expectedAddress: Address,
-  expectedExpiry: number,
 ): boolean {
   const address = expectedAddress.toLowerCase().slice(2);
   const raw = key.publicKey.toLowerCase().slice(2);
@@ -169,17 +176,27 @@ export function accountKeyDescriptorMatches(
   // either directly or left-padded to bytes32. A suffix match would also admit
   // an External key with an attacker-controlled prefix.
   const canonicalIdentity = raw === address || raw === `${'0'.repeat(24)}${address}`;
-  return key.keyType === 2
-    && !key.isSuperAdmin
-    && Number(key.expiry) === expectedExpiry
-    && canonicalIdentity;
+  return key.keyType === 2 && !key.isSuperAdmin && canonicalIdentity;
 }
 
-function packedCall(to: Address, signature: string): Hex {
+export function accountKeyDescriptorMatches(
+  key: AccountKeyDescriptor,
+  expectedAddress: Address,
+  expectedExpiry: number,
+): boolean {
+  return accountKeyIdentityMatches(key, expectedAddress)
+    && Number(key.expiry) === expectedExpiry;
+}
+
+function packedSelector(to: Address, selector: Hex): Hex {
   // GuardedExecutor._packCanExecute puts the 20-byte target in the upper
   // bytes and the 4-byte selector in the lower bytes, leaving eight zero bytes
   // between them.
-  return `0x${to.slice(2).toLowerCase()}${'0'.repeat(16)}${toFunctionSelector(signature).slice(2).toLowerCase()}`;
+  return `0x${to.slice(2).toLowerCase()}${'0'.repeat(16)}${selector.slice(2).toLowerCase()}`;
+}
+
+function packedCall(to: Address, signature: string): Hex {
+  return packedSelector(to, toFunctionSelector(signature));
 }
 
 function sameStringSet(actual: readonly string[], expected: readonly string[]): boolean {
@@ -196,6 +213,9 @@ function sameStringSet(actual: readonly string[], expected: readonly string[]): 
  * expand a key beyond its local list, so any of them makes the descriptor
  * non-canonical. Session-local ERC-1271 checkers are accepted only when the
  * caller names their exact canonical set (Ophis uses the CoW settlement).
+ * Porto's relay conversion also appends one any-selector permission for its
+ * orchestrator. That permission is accepted only when the caller supplies the
+ * exact pinned orchestrator address; every other extra execute still fails.
  */
 export function accountSessionPermissionsMatch(args: {
   expected: ExpectedAccountSessionPermissions;
@@ -217,6 +237,9 @@ export function accountSessionPermissionsMatch(args: {
   }
   if (!sameStringSet(args.signatureCheckers, args.expected.signatureCheckers ?? [])) return false;
   const expectedExecutes = args.expected.calls.map((call) => packedCall(call.to, call.signature));
+  if (args.expected.relayOrchestrator) {
+    expectedExecutes.push(packedSelector(args.expected.relayOrchestrator, PORTO_ANY_SELECTOR));
+  }
   if (!sameStringSet(args.executes, expectedExecutes)) return false;
 
   const actualSpends = args.spends.map((spend) =>
@@ -234,7 +257,7 @@ export function keyIdFromPublicKey(sessionPublicKey: Hex): Hex {
 }
 
 function rpcUrlFor(chainId: number): string {
-  if (chainId === BSC_MAINNET.id) return BSC_MAINNET.rpcUrls[0];
+  if (chainId === BSC_MAINNET.id) return BSC_MAINNET.rpcUrls[0]!;
   if (chainId === BSC_TESTNET.id) return BSC_TESTNET.rpcUrls[0];
   throw new Error(
     `isSessionKeyValid: no default RPC for chainId ${chainId}; supported chains are 56 and 97`,
@@ -263,10 +286,40 @@ async function quorumBooleanRead(
   );
   const values = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
   if (urls.length === 1 && values.length === 1) return values[0]!;
-  const trueVotes = values.filter(Boolean).length;
-  const falseVotes = values.length - trueVotes;
-  if (trueVotes >= 2) return true;
-  if (falseVotes >= 2) return false;
+  // Conflicting latest-state views are not a negative answer. In particular,
+  // two stale providers must not outvote one provider that already sees an
+  // irreversible key registration. Require every fulfilled independent source
+  // to agree, with at least two successful reads.
+  if (values.length >= 2 && values.every((value) => value === values[0])) {
+    return values[0]!;
+  }
+  const firstError = settled.find((result) => result.status === 'rejected');
+  if (firstError?.status === 'rejected' && values.length === 0) throw firstError.reason;
+  throw new Error('authority RPC quorum unavailable or disagreed');
+}
+
+async function quorumValueRead<T>(
+  chainId: number,
+  rpcUrl: string | undefined,
+  read: (client: ReturnType<typeof createPublicClient>) => Promise<T>,
+  fingerprint: (value: T) => string,
+): Promise<T> {
+  const urls = verificationRpcUrls(chainId, rpcUrl);
+  const settled = await Promise.allSettled(
+    urls.map((url) => read(createPublicClient({ transport: http(url) }))),
+  );
+  const values = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+  if (urls.length === 1 && values.length === 1) return values[0]!;
+
+  const groups = new Map<string, { count: number; value: T }>();
+  for (const value of values) {
+    const key = fingerprint(value);
+    const group = groups.get(key) ?? { count: 0, value };
+    group.count += 1;
+    groups.set(key, group);
+  }
+  const unanimous = groups.size === 1 ? groups.values().next().value : undefined;
+  if (unanimous && unanimous.count >= 2) return unanimous.value;
   const firstError = settled.find((result) => result.status === 'rejected');
   if (firstError?.status === 'rejected' && values.length === 0) throw firstError.reason;
   throw new Error('authority RPC quorum unavailable or disagreed');
@@ -301,6 +354,71 @@ export async function isSessionKeyValid(args: IsSessionKeyValidArgs): Promise<bo
     functionName: 'isValidKey',
     args: [account, keyIdFromPublicKey(sessionPublicKey)],
   }));
+}
+
+/**
+ * True iff this exact public key has ever been registered for the account.
+ * Unlike `isValidKey`, KeyStore's `getPublicKey` retains the bytes after an
+ * expiry or monotonic revocation, so this distinguishes a fresh key from one
+ * that must never be submitted to `registerKey` again.
+ */
+export async function wasSessionKeyRegistered(args: IsSessionKeyValidArgs): Promise<boolean> {
+  const { chainId, account, sessionPublicKey, rpcUrl } = args;
+  const keyStore = KEYSTORE_ADDRESSES[chainId];
+  if (!keyStore) {
+    throw new Error(
+      `wasSessionKeyRegistered: no KeyStore deployment known for chainId ${chainId}; supported chains are 56 and 97`,
+    );
+  }
+  const publicKey = await quorumValueRead(chainId, rpcUrl, (client) => client.readContract({
+    address: keyStore,
+    abi: KEYSTORE_READ_ABI,
+    functionName: 'getPublicKey',
+    args: [account, keyIdFromPublicKey(sessionPublicKey)],
+  }), (value) => value.toLowerCase());
+  if (publicKey === '0x') return false;
+  if (publicKey.toLowerCase() !== sessionPublicKey.toLowerCase()) {
+    throw new Error('KeyStore returned public-key bytes that do not match their key id');
+  }
+  return true;
+}
+
+export interface FindAccountSessionExpiryArgs {
+  chainId: number;
+  /** The smart-account address whose local descriptors are inspected. */
+  account: Address;
+  /** Secp256k1 address derived from the pinned manager public key. */
+  sessionAddress: Address;
+  /** Override the default public RPC (e.g. a paid endpoint). */
+  rpcUrl?: string;
+}
+
+/**
+ * Recover the expiry of an already-authorized manager identity. This is a
+ * quorum read and returns null only when the canonical identity is absent.
+ * Exact permissions must still be checked with
+ * isAccountSessionDescriptorValid before the descriptor is reused.
+ */
+export async function findAccountSessionExpiry(
+  args: FindAccountSessionExpiryArgs,
+): Promise<number | null> {
+  return quorumValueRead(args.chainId, args.rpcUrl, async (client) => {
+    const [keys] = await client.readContract({
+      address: args.account,
+      abi: ACCOUNT_KEYS_READ_ABI,
+      functionName: 'getKeys',
+    });
+    const matches = keys.filter((key) => accountKeyIdentityMatches(key, args.sessionAddress));
+    if (matches.length === 0) return null;
+    if (matches.length !== 1) {
+      throw new Error('account contains multiple descriptors for the same session identity');
+    }
+    const expiry = Number(matches[0]!.expiry);
+    if (!Number.isSafeInteger(expiry) || expiry <= 0) {
+      throw new Error('account session descriptor has an invalid expiry');
+    }
+    return expiry;
+  }, (value) => value === null ? 'null' : String(value));
 }
 
 export interface IsAccountSessionDescriptorValidArgs extends IsSessionKeyValidArgs {

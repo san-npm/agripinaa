@@ -21,6 +21,17 @@ import {
   type VenueApys,
 } from '@/lib/managed';
 import { markRegistered, storeSession } from '@/lib/session-store';
+import {
+  acquireSessionGrantSubmissionLock,
+  clearSessionGrantCheckpoint,
+  loadSessionGrantCheckpoint,
+  retireExpiredRotatedManagerCheckpoint,
+  reserveSessionGrantCheckpoint,
+  submitSessionGrantCheckpoint,
+} from '@/lib/session-grant-checkpoint';
+import { findRelaySessionGrant } from '@/lib/session-relay-recovery';
+import { recoverExistingSession } from '@/lib/session-recovery';
+import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { waitForManagedPrincipal } from '@/lib/managed-principal';
 import { toast } from '@/lib/toast';
 import {
@@ -81,6 +92,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [preparedFunding, setPreparedFunding] = useState<FundingCheckpoint | null>(null);
   const [grantedActivation, setGrantedActivation] = useState<GrantedManagedActivation | null>(null);
+  const [recoveredExpiry, setRecoveredExpiry] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(168);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -374,15 +386,12 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       const client = altanaClient();
       let granted = grantedActivation;
       if (!granted) {
-        // 2. Fetch the agent's manager key and grant a router-scoped session to
-        // it via a verify-only stub (the agent key never enters the browser).
-        setPhase('Granting the managed session (1 passkey tap)…');
+        // 2. Fetch the pinned manager key, recovering an exact on-chain grant
+        // first if a relay confirmation was lost before browser persistence.
+        setPhase('Checking for an existing managed session…');
         const manager = await fetchManagerKey(agent.managedAgent, token);
-        const scope = buildManagedScope({ chainId, hours, token });
-        const summary = describeScope(scope);
-        // Once grantSession returns, the very next operation is durable
-        // recovery storage—there is no network await that could leave a live
-        // key invisible to the owner.
+        let scope = buildManagedScope({ chainId, hours, token });
+        const sessionSigner = verifyOnlyStub(manager.address, manager.publicKey);
         const activationPosition = await waitForManagedPrincipal(
           () => readManagedPosition(
             wallet.address as `0x${string}`,
@@ -394,13 +403,151 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           ),
           expectedTotalWei,
         );
-        const session = await client.grantSession({
-          wallet,
-          signer: wallet.signer,
+        let grantCheckpoint = retireExpiredRotatedManagerCheckpoint(
           chainId,
-          sessionSigner: verifyOnlyStub(manager.address, manager.publicKey) as never,
-          ...scope,
+          wallet.address as `0x${string}`,
+          agent.managedAgent,
+          manager.publicKey,
+        );
+        if (grantCheckpoint) scope = { ...scope, expiry: grantCheckpoint.expiry };
+        const relayGrant = grantCheckpoint?.status === 'submitted'
+          ? null
+          : await findRelaySessionGrant({
+            account: wallet.address as `0x${string}`,
+            publicKey: manager.publicKey,
+          });
+        if (grantCheckpoint?.status === 'reserved' && relayGrant) {
+          submitSessionGrantCheckpoint(
+            chainId,
+            wallet.address as `0x${string}`,
+            agent.managedAgent,
+            manager.publicKey,
+            grantCheckpoint.expiry,
+            relayGrant.callsId,
+          );
+          grantCheckpoint = loadSessionGrantCheckpoint(
+            chainId,
+            wallet.address as `0x${string}`,
+            agent.managedAgent,
+          );
+        }
+        let recovered = await recoverExistingSession({
+          account: wallet.address as `0x${string}`,
+          manager,
+          scope,
+          signatureCheckers: [],
+          signer: sessionSigner,
         });
+        if (!recovered && relayGrant?.status === 'pending') {
+          throw new Error('The previous session grant is still pending in the account relay history. Retry activation later; no duplicate grant was submitted.');
+        }
+        if (!recovered && grantCheckpoint) {
+          if (grantCheckpoint.status === 'reserved') {
+            throw new Error(`A previous signed session grant has no definitive relay outcome yet. Activation will not submit this manager key twice; retry later. If it remains unresolved, rotate the manager key and retry after ${new Date(grantCheckpoint.expiry * 1_000).toISOString()}.`);
+          }
+          setPhase('Reconciling the previous session grant with the relay…');
+          const outcome = await client.waitForExecution({
+            callsId: grantCheckpoint.callsId,
+            chainId,
+          });
+          if (outcome.status === 'PENDING') {
+            throw new Error('The previous session grant is still pending. It is saved safely; retry activation later without granting again.');
+          }
+          if (outcome.status === 'FAILED') {
+            clearSessionGrantCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+            grantCheckpoint = null;
+            scope = buildManagedScope({ chainId, hours, token });
+            recovered = await recoverExistingSession({
+              account: wallet.address as `0x${string}`,
+              manager,
+              scope,
+              signatureCheckers: [],
+              signer: sessionSigner,
+            });
+          } else {
+            setPhase('Recovering the relay-confirmed session on BNB Chain…');
+            recovered = await recoverExistingSession({
+              account: wallet.address as `0x${string}`,
+              manager,
+              scope,
+              signatureCheckers: [],
+              signer: sessionSigner,
+            });
+            if (!recovered) {
+              throw new Error('The relay confirmed the saved session grant, but independent BSC providers have not indexed it yet. Retry later; no duplicate grant was submitted.');
+            }
+          }
+        }
+        if (!recovered && !grantCheckpoint && relayGrant?.status === 'confirmed') {
+          setPhase('Recovering the relay-confirmed session on BNB Chain…');
+          recovered = await recoverExistingSession({
+            account: wallet.address as `0x${string}`,
+            manager,
+            scope,
+            signatureCheckers: [],
+            signer: sessionSigner,
+          });
+          if (!recovered) {
+            throw new Error('The account relay confirms this manager grant, but independent BSC providers have not indexed it yet. Retry later; no duplicate grant was submitted.');
+          }
+        }
+        const recoveredExisting = recovered !== null;
+        let session: ManagedSession;
+        if (recovered) {
+          setPhase('Recovering the confirmed managed session…');
+          session = recovered.session as ManagedSession;
+          setRecoveredExpiry(recovered.session.expiry);
+        } else {
+          setPhase('Granting the managed session (1 passkey tap)…');
+          let releaseGrantLock: (() => Promise<void>) | null = null;
+          try {
+            session = await client.grantSession({
+              wallet,
+              signer: wallet.signer,
+              chainId,
+              sessionSigner: sessionSigner as never,
+              onBeforeSubmit: async () => {
+                releaseGrantLock = await acquireSessionGrantSubmissionLock(
+                  chainId,
+                  wallet.address as `0x${string}`,
+                  agent.managedAgent,
+                  manager.publicKey,
+                  scope.expiry,
+                );
+                const concurrentGrant = await findRelaySessionGrant({
+                  account: wallet.address as `0x${string}`,
+                  publicKey: manager.publicKey,
+                });
+                if (concurrentGrant) {
+                  throw new Error('This manager grant was submitted by another tab or device. Activation stopped before sending a duplicate; retry to recover it.');
+                }
+                reserveSessionGrantCheckpoint(
+                  chainId,
+                  wallet.address as `0x${string}`,
+                  agent.managedAgent,
+                  manager.publicKey,
+                  scope.expiry,
+                );
+              },
+              onSubmitted: async (callsId) => {
+                submitSessionGrantCheckpoint(
+                  chainId,
+                  wallet.address as `0x${string}`,
+                  agent.managedAgent,
+                  manager.publicKey,
+                  scope.expiry,
+                  callsId,
+                );
+                await releaseGrantLock?.();
+                releaseGrantLock = null;
+              },
+              ...scope,
+            });
+          } finally {
+            await (releaseGrantLock as (() => Promise<void>) | null)?.();
+          }
+        }
+        const summary = describeScope({ ...scope, expiry: session.expiry });
         // Persist the revoke/recovery bundle BEFORE the network handoff. If the
         // POST fails or its response is lost, the live key remains visible and
         // revocable from the dashboard instead of becoming orphaned authority.
@@ -413,26 +560,30 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             scope: { allowlist: [router.address], capFormatted: summary.capFormatted, expiresAt: summary.expiresAt },
             principalUsdt: activationPosition.totalUsdt,
           });
+          clearSessionGrantCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
         } catch (storageError) {
+          if (recoveredExisting) {
+            throw new Error(
+              `The existing on-chain session is valid, but this browser could not save its recovery record. No duplicate grant was submitted. ${storageError instanceof Error ? storageError.message : ''}`.trim(),
+            );
+          }
           // Never leave an invisible live key when browser storage is blocked
-          // or full. Compensate before the runner hears about the mandate.
-          let revoked: { status: string };
-          try {
-            revoked = await client.revokeSession({
+          // or full. Compensate before the runner hears about the mandate, and
+          // discard the submission checkpoint only once revocation is final.
+          return await compensateSessionStorageFailure({
+            storageError,
+            revoke: () => client.revokeSession({
               wallet,
               signer: wallet.signer,
               chainId,
               session: session as Parameters<typeof client.revokeSession>[0]['session'],
-            });
-          } catch (revokeError) {
-            throw new Error(
-              `CRITICAL: local recovery storage failed and automatic revocation also failed. Revoke the new key from the wallet interface immediately. ${revokeError instanceof Error ? revokeError.message : ''}`.trim(),
-            );
-          }
-          if (revoked.status !== 'CONFIRMED') {
-            throw new Error('Local recovery storage failed and the compensating session revocation did not confirm.');
-          }
-          throw new Error(`Local recovery storage failed; the new session was revoked. ${storageError instanceof Error ? storageError.message : ''}`.trim());
+            }),
+            afterConfirmedRevocation: () => clearSessionGrantCheckpoint(
+              chainId,
+              wallet.address as `0x${string}`,
+              agent.managedAgent,
+            ),
+          });
         }
         granted = { session, local };
         setGrantedActivation(granted);
@@ -632,6 +783,11 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               {agent.activeSummary ?? `${agent.name} now reads Venus and Aave each cycle and keeps your ${token} in the higher-yielding venue.`}{' '}
               Your funds never leave your account; track the position and withdraw from your dashboard.
             </p>
+            {recoveredExpiry !== null && (
+              <p className="text-xs text-muted-2">
+                Existing on-chain grant recovered. It expires {new Date(recoveredExpiry * 1000).toLocaleString()}.
+              </p>
+            )}
             <a href="/dashboard" className={`inline-block ${primaryBtn}`}>
               Open dashboard
             </a>

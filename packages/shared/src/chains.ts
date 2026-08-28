@@ -1,14 +1,17 @@
+/** Latest-state RPCs operated by independent organisations. */
+export const BSC_MAINNET_RPC_SOURCES = [
+  { operator: 'BNB Chain', url: 'https://bsc-dataseed.bnbchain.org' },
+  { operator: 'dRPC', url: 'https://bsc.drpc.org' },
+  { operator: 'Blast', url: 'https://bsc-mainnet.public.blastapi.io' },
+  // This endpoint currently rejects some receipt-history calls, but remains a
+  // distinct latest-state vote for authority reads.
+  { operator: 'PublicNode', url: 'https://bsc-rpc.publicnode.com' },
+] as const;
+
 export const BSC_MAINNET = {
   id: 56,
   name: 'BNB Chain',
-  rpcUrls: [
-    'https://bsc-dataseed.bnbchain.org',
-    'https://bsc-dataseed1.binance.org',
-    // PublicNode currently rejects eth_getTransactionReceipt without a paid
-    // archive token, including receipts for freshly confirmed transactions.
-    // Keep it as a last-resort latest-state endpoint, never the browser default.
-    'https://bsc-rpc.publicnode.com',
-  ],
+  rpcUrls: BSC_MAINNET_RPC_SOURCES.map(({ url }) => url),
   explorer: 'https://bscscan.com',
 } as const;
 

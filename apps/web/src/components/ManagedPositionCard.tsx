@@ -340,7 +340,7 @@ export function ManagedPositionCard({
         meta.chainId,
         meta.account as Hex,
         meta.agent.slug,
-        meta.grantedAt,
+        meta.correlatedAt ?? meta.grantedAt,
       );
       setRunnerStatus('checking');
       onChange();
