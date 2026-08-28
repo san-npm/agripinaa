@@ -2,9 +2,12 @@ export const BSC_MAINNET = {
   id: 56,
   name: 'BNB Chain',
   rpcUrls: [
-    'https://bsc-rpc.publicnode.com',
     'https://bsc-dataseed.bnbchain.org',
     'https://bsc-dataseed1.binance.org',
+    // PublicNode currently rejects eth_getTransactionReceipt without a paid
+    // archive token, including receipts for freshly confirmed transactions.
+    // Keep it as a last-resort latest-state endpoint, never the browser default.
+    'https://bsc-rpc.publicnode.com',
   ],
   explorer: 'https://bscscan.com',
 } as const;

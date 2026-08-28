@@ -3,10 +3,10 @@
 import { managedStrategyFor, type ManagedStrategySlug } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
-import { createPublicClient, erc20Abi, http, type Hex } from 'viem';
+import { erc20Abi, type Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
-import { bsc } from '@/lib/bsc-chain';
+import { createBscPublicClient, waitForBscTransactionReceipt } from '@/lib/bsc-public-client';
 import { fetchManagerKey, registerManaged, verifyOnlyStub } from '@/lib/managed';
 import {
   approveStrategyVenues,
@@ -77,7 +77,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
   const [error, setError] = useState<string | null>(null);
 
   const publicClient = useCallback(
-    () => createPublicClient({ chain: bsc, transport: http() }),
+    () => createBscPublicClient(),
     [],
   );
 
@@ -184,10 +184,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
           setPreparedFunding(null);
           throw new Error('The saved funding transaction failed. No strategy funding was recorded; review the quote and retry.');
         }
-        const receipt = await publicClient().waitForTransactionReceipt({
-          hash: resumed.transactionHash,
-          timeout: 30_000,
-        });
+        const receipt = await waitForBscTransactionReceipt(resumed.transactionHash);
         if (
           receipt.status !== 'success'
           || !receiptProvesFundingMainBatch(
@@ -252,10 +249,7 @@ export function StrategyWizard({ agent }: { agent: StrategyAgentProps }) {
         if (!result.transactionHash) {
           throw new Error('The confirmed funding bundle returned no transaction hash.');
         }
-        const receipt = await publicClient().waitForTransactionReceipt({
-          hash: result.transactionHash,
-          timeout: 30_000,
-        });
+        const receipt = await waitForBscTransactionReceipt(result.transactionHash);
         if (
           receipt.status !== 'success'
           || !receiptProvesFundingMainBatch(
