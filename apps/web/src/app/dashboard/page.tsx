@@ -1,19 +1,27 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
-import { agentBySlug, type AgentRecord } from '@agripinaa/shared/agents';
+import { AGENTS, agentBySlug, type AgentRecord } from '@agripinaa/shared/agents';
 import { recoveryRouterFromAllowlist } from '@agripinaa/shared/contracts';
+import { managedStrategyFor } from '@agripinaa/shared/managed-strategies';
 
 import { ManagedPositionCard } from '@/components/ManagedPositionCard';
 import { SessionCard } from '@/components/SessionCard';
-import { ArrowIcon, CoinsIcon, LightningIcon, ShieldIcon } from '@/components/icons';
+import { ArrowIcon, CoinsIcon, LightningIcon, ReceiptIcon, ShieldIcon } from '@/components/icons';
 import {
   listFundingCheckpoints,
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
+import { fundingRecoveryHash } from '@/lib/funding-recovery';
 import { listStoredSessions, type StoredSessionMeta } from '@/lib/session-store';
+
+const RECOVERABLE_AGENTS = Object.values(AGENTS).flatMap((agent) =>
+  agent.managed && agent.tokenId !== null && managedStrategyFor(agent.slug)
+    ? [{ slug: agent.slug, name: agent.name, tokenId: agent.tokenId }]
+    : []);
 
 /** Active and recovery-only managed sessions both retain their funds controls. */
 function isManaged(meta: StoredSessionMeta): boolean {
@@ -68,6 +76,8 @@ export default function DashboardPage() {
         on-chain status read straight from the KeyStore registry.
       </p>
 
+      {dashboard !== null && <MissingActivationRecovery />}
+
       {dashboard == null ? (
         <div className="mt-8 h-32 animate-pulse rounded-2xl border border-border bg-surface" />
       ) : dashboard.sessions.length === 0 && dashboard.pending.length === 0 ? (
@@ -112,6 +122,7 @@ export default function DashboardPage() {
           )}
         </>
       )}
+
     </div>
   );
 }
@@ -221,6 +232,82 @@ function EmptyState() {
         </div>
       </div>
     </div>
+  );
+}
+
+function MissingActivationRecovery() {
+  const router = useRouter();
+  const [tokenId, setTokenId] = useState('');
+  const [transactionHash, setTransactionHash] = useState('');
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
+  return (
+    <section aria-labelledby="missing-activation" className="mt-6 rounded-2xl border border-primary/30 bg-surface p-6">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+          <ReceiptIcon className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 id="missing-activation" className="font-display text-lg font-semibold">
+            Funded an agent but it does not appear?
+          </h2>
+          <p id="missing-activation-help" className="mt-1 max-w-xl text-sm leading-relaxed text-muted">
+            Recover the activation from its successful BNB Chain transaction. Agripinaa verifies
+            the transaction against your passkey account before skipping the completed funding step.
+          </p>
+        </div>
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const hash = fundingRecoveryHash(transactionHash);
+          if (!tokenId || !hash) {
+            setRecoveryError('Choose the funded agent and enter its complete 0x transaction hash.');
+            return;
+          }
+          setRecoveryError(null);
+          router.push(`/agent/56/${tokenId}/activate?recoverTx=${encodeURIComponent(hash)}`);
+        }}
+        className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto] sm:items-end"
+      >
+        <label className="text-xs font-medium text-foreground">
+          Agent
+          <select
+            value={tokenId}
+            onChange={(event) => setTokenId(event.target.value)}
+            aria-describedby="missing-activation-help"
+            className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Choose an agent</option>
+            {RECOVERABLE_AGENTS.map((agent) => (
+              <option key={agent.slug} value={agent.tokenId}>{agent.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs font-medium text-foreground">
+          Funding transaction hash
+          <input
+            value={transactionHash}
+            onChange={(event) => setTransactionHash(event.target.value)}
+            aria-describedby="missing-activation-help"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="0x…"
+            className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface-2 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </label>
+        <button
+          type="submit"
+          className="min-h-11 rounded-lg border border-primary/45 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+        >
+          Continue recovery
+        </button>
+      </form>
+      {recoveryError && (
+        <p role="alert" className="mt-3 text-sm text-danger">{recoveryError}</p>
+      )}
+    </section>
   );
 }
 
