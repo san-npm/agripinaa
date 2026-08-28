@@ -1,0 +1,199 @@
+{
+  "capturedAt": "2026-08-28T20:22:01.164Z",
+  "chainId": 56,
+  "managedAccount": "0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+  "notes": [
+    "Every transaction hash below was re-read from BSC mainnet.",
+    "Relay timestamps come from Altana wallet_getCallsHistory and have one-second resolution.",
+    "Manual read costs are zero because eth_call and block reads do not submit transactions.",
+    "UserCostBnb records the Altana relay payment and any separate KeyStore debit charged to the managed account. NetworkGasCostBnb records gas paid by the relay transaction sender and is not substituted for the user's charge.",
+    "Agripinaa does not sponsor gas or take a service fee. The managed account funds its own activation and execution costs.",
+    "A Pashov review found that the three pairs do not all share identical stopping conditions or timing instrumentation. Each mismatch is explicit below; this artifact must not be presented as a controlled price or latency benchmark."
+  ],
+  "tasks": {
+    "createPancakeLiquidityFromSingleAsset": {
+      "countsTowardRequiredThree": false,
+      "taskBoundaryMatched": false,
+      "boundaryLimitation": "The manual artifact stops after converting WBNB to USDT, while the marketplace flow starts with BNB, prepares two inventory legs, grants Ranger, and mints an LP NFT. This is activation-UX evidence, not a controlled both-ways execution benchmark.",
+      "withoutAgentPartialBaseline": {
+        "artifact": "task1-baseline.json",
+        "wallet": "0x053fff26d28ff4e94dfe862b184f918a50c6f706",
+        "wallTimeMs": 2021,
+        "transactions": 2,
+        "gasCostBnb": "0.0000087873",
+        "amountInWbnb": "0.0008",
+        "amountOutUsdt": "0.482844230664355319",
+        "approvalTx": "0x6b8a369b955a09bbdb155cb3e2478a7e4afef716f0fb27ddc6fc5feca7517dec",
+        "swapTx": "0xa72d0e47e172d490396303b953b5369942e7be1f200f17abba6d9e3b806f40d4"
+      },
+      "withMarketplaceHiringFlow": {
+        "elapsedFromPreparationSubmissionToMintConfirmationSeconds": 24906,
+        "transactions": 4,
+        "totalUserCostBnb": "0.000958880720769938",
+        "ownerPreparationBeforeRangerWasHired": {
+          "relayCallsId": "0x58914f91da1d22ea9c4b2dea0a8db2c5098f4d267db09dbe446b6554a83a1102",
+          "relaySubmittedAt": "2026-08-28T08:27:02.000Z",
+          "confirmedAt": "2026-08-28T08:27:03.000Z",
+          "confirmationSeconds": 1,
+          "gasUsed": "387031",
+          "networkGasCostBnb": "0.00001935155",
+          "relayPaymentUserCostBnb": "0.000048980685",
+          "bnbWrappedToWbnb": "0.012156784025527638",
+          "wbnbSoldForUsdt": "0.006078392012763819",
+          "usdtReceived": "4.309104290455045067",
+          "wbnbRetained": "0.006078392012763819",
+          "transaction": "0x279a32de4a34115057efaa71322ef90944335d384bc303638a0d3491811fb91c"
+        },
+        "rangerSessionGrant": {
+          "relayCallsId": "0xcde88ae20a4afa42c919c00c7513048d5ebeb1ab9aa1b9f23bdc2a6265f398d0",
+          "confirmedAt": "2026-08-28T10:52:52.000Z",
+          "gasUsed": "956916",
+          "networkGasCostBnb": "0.0000478458",
+          "relayPaymentUserCostBnb": "0.00008612981",
+          "keyStoreDebitUserCostBnb": "0.000707979745769938",
+          "transaction": "0xb2d10f8149426dc787901a8438c17435b934e5dbfce1744b281a51b21ae6eb15"
+        },
+        "ophisCheckerGrant": {
+          "relayCallsId": "0x0010baf7295760fd31b14adc99c9550646fda27c319de2673948e471ab40c17a",
+          "confirmedAt": "2026-08-28T11:00:13.000Z",
+          "gasUsed": "138441",
+          "networkGasCostBnb": "0.00000692205",
+          "relayPaymentUserCostBnb": "0.000029583775",
+          "transaction": "0x9acd4913d8894ac03321ab97c0a0b81a55c847d43ba32481734655aa44ab39c6"
+        },
+        "postGrantRangerMint": {
+          "relayCallsId": "0xe892439e03b3d13fd5bd94f28ac0dd00634d1c583474b46c3e473dcf28805d67",
+          "relaySubmittedAt": "2026-08-28T15:22:07.000Z",
+          "confirmedAt": "2026-08-28T15:22:08.000Z",
+          "confirmationSeconds": 1,
+          "gasUsed": "579698",
+          "networkGasCostBnb": "0.0000289849",
+          "relayPaymentUserCostBnb": "0.000086206705",
+          "tokenId": "7271073",
+          "transaction": "0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678"
+        }
+      }
+    },
+    "chooseUsdtSupplyVenue": {
+      "countsTowardRequiredThree": true,
+      "taskBoundaryMatchedForDecisionOnly": true,
+      "timingLimitation": "The manual decision has monotonic wall time. The production log has an end timestamp but no matching monotonic start, so no like-for-like agent computation duration is claimed.",
+      "withoutAgent": {
+        "capturedAt": "2026-08-28T20:18:05.163Z",
+        "wallTimeMs": 454,
+        "rpcReads": 4,
+        "chainCostUsd": 0,
+        "blocksPerYear": 70048867,
+        "venusSupplyBps": 263.7042302982531,
+        "aaveSupplyBps": 239.05345249527227,
+        "choice": "venus"
+      },
+      "withMarketplaceHiredHarvester": {
+        "rawOutputArtifact": "2026-08-21-harvester-managed-output.jsonl",
+        "decisionAt": "2026-08-21T00:02:42.910Z",
+        "venueBefore": "none",
+        "venusSupplyBps": 208.59528933761112,
+        "aaveSupplyBps": 208.29674593491734,
+        "choice": "venus",
+        "action": "toVenus",
+        "amountUsdt": "3",
+        "relayCallsId": "0xe30cf9366fad8f738d2ce6a11535b0c9fef658496035c3bcf1a5f5949815512b",
+        "relaySubmittedAt": "2026-08-21T00:02:40.000Z",
+        "confirmedAt": "2026-08-21T00:02:40.000Z",
+        "confirmationSecondsAtOneSecondTimestampResolution": 0,
+        "finalStructuredLogSecondsAfterBlock": 2.91,
+        "gasUsed": "509470",
+        "effectiveGasPriceWei": "50000000",
+        "networkGasCostBnb": "0.0000254735",
+        "relayPaymentUserCostBnb": "0.000086309925",
+        "firstTaskIncludingSessionGrantUserCostBnb": "0.000931067240678528",
+        "sessionGrant": {
+          "relayCallsId": "0x5e8ba02d51e1ce750101693af538356a448a14953f68914c63138dc56f151da6",
+          "confirmedAt": "2026-08-20T23:58:41.000Z",
+          "gasUsed": "870865",
+          "networkGasCostBnb": "0.00004354325",
+          "relayPaymentUserCostBnb": "0.00008100833",
+          "keyStoreDebitUserCostBnb": "0.000763748985678528",
+          "transaction": "0x6cf958403db7e4f7136664d539becc68f2cb645b5d039280442c414c4f25bfc1"
+        },
+        "vUsdtReceived": "11344002822",
+        "transaction": "0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb"
+      }
+    },
+    "reconcileRangerMint": {
+      "countsTowardRequiredThree": true,
+      "taskBoundaryMatched": true,
+      "taskBoundary": "Given the completed hired-session Ranger mint, report its transaction, NFT token ID, lower tick, and upper tick.",
+      "comparisonLimitation": "The agent reconciled the pending mint live on its next sweep; the manual path decoded it later. This compares reconciliation work and output, not contemporaneous RPC latency or mint execution quality.",
+      "withoutAgent": {
+        "artifact": "2026-08-28-ranger-mint-manual-output.json",
+        "capturedAt": "2026-08-28T20:50:27.554Z",
+        "wallTimeMs": 268.678,
+        "rpcReads": 2,
+        "chainCostBnb": "0",
+        "transaction": "0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678",
+        "success": true,
+        "tokenId": "7271073",
+        "tickLower": -66059,
+        "tickUpper": -65085
+      },
+      "withMarketplaceHiredRanger": {
+        "rawOutputArtifact": "2026-08-28-ranger-mint-recovery-output.jsonl",
+        "structuredOutputAt": "2026-08-28T15:32:03.811Z",
+        "confirmedAt": "2026-08-28T15:22:08.000Z",
+        "secondsFromBlockConfirmationToNextSweepReconciliation": 595.811,
+        "reconciliationChainCostBnb": "0",
+        "transaction": "0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678",
+        "success": true,
+        "tokenId": "7271073",
+        "tickLower": -66059,
+        "tickUpper": -65085
+      }
+    },
+    "decideWhetherRangerNeedsRebalancing": {
+      "countsTowardRequiredThree": true,
+      "taskBoundaryMatchedForSingleDecision": true,
+      "timingLimitation": "The manual decision has monotonic wall time. Ranger's raw outputs prove scheduled decisions but do not contain per-check monotonic duration, so no like-for-like latency win is claimed.",
+      "withoutAgent": {
+        "capturedAt": "2026-08-28T20:18:26.240Z",
+        "wallTimeMs": 376,
+        "rpcReads": 4,
+        "chainCostUsd": 0,
+        "tokenId": "7271073",
+        "owner": "0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+        "pool": "0x172fcD41E0913e95784454622d1c3724f546f849",
+        "fee": 100,
+        "tickLower": -66059,
+        "tickUpper": -65085,
+        "currentTick": -65356,
+        "liquidity": "6457605562311526187",
+        "rangeState": "in-range",
+        "decision": "hold"
+      },
+      "withMarketplaceHiredRanger": {
+        "rawOutputArtifact": "2026-08-28-ranger-managed-checks.jsonl",
+        "monitoringWindowStart": "2026-08-28T15:32:04.154Z",
+        "monitoringWindowEnd": "2026-08-28T20:13:31.648Z",
+        "checks": 30,
+        "inRangeChecks": 30,
+        "outOfRangeChecks": 0,
+        "userAttentionSeconds": 0,
+        "chainCostUsdPerReadOnlyCheck": 0,
+        "firstOutput": {
+          "currentTick": -65539,
+          "tickLower": -66059,
+          "tickUpper": -65085,
+          "inRange": true,
+          "outSinceMs": null
+        },
+        "lastOutput": {
+          "currentTick": -65362,
+          "tickLower": -66059,
+          "tickUpper": -65085,
+          "inRange": true,
+          "outSinceMs": null
+        }
+      }
+    }
+  }
+}

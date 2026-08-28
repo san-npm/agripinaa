@@ -1,0 +1,11 @@
+{
+  "capturedAt": "2026-08-28T20:50:27.554Z",
+  "wallTimeMs": 268.678,
+  "rpcReads": 2,
+  "chainCostBnb": "0",
+  "transaction": "0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678",
+  "success": true,
+  "tokenId": "7271073",
+  "tickLower": -66059,
+  "tickUpper": -65085
+}

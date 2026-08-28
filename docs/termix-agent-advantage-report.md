@@ -1,407 +1,230 @@
 # Agent Advantage Report
 
-Submission for the TermiX partner track of BNB Chain's "Build the Era"
-hackathon. Three tasks executed both ways, manually and through an Agripinaa
-reference agent, with time, cost, and output quality measured and the actual
-outputs attached. Everything below happened on BSC mainnet, with the project's
-own capital except where a managed user account is named.
+TermiX evidence for Agripinaa in BNB Chain's Build the Era hackathon. The
+official track asks for at least three real tasks run both ways—with an agent
+hired through the marketplace and without one—and asks for time, cost, output
+quality, and the actual outputs for each.
 
-First written 2026-08-18. Refreshed 2026-08-25 against a week of live
-settlement and on-chain data: every figure here was re-read from the CoW
-orderbook serving BNB Chain or from BSC mainnet state at block **118027877**
-(2026-08-25T15:58:34Z) unless a different block or timestamp is named on the
-line. The raw pull is attached as `evidence/2026-08-25-refresh.json`, and it
-carries the full order uids the tables below abbreviate.
+## Audit status
 
-## How to read the price figures
+This report now contains three same-boundary comparisons with raw outputs. A
+Pashov review on 2026-08-28 rejected the original third comparison because the
+manual path performed a swap while the marketplace path prepared two assets,
+granted Ranger, and later minted an LP position. Its preparation transaction
+also preceded Ranger's session grant, so it was owner-authorized activation
+work rather than agent execution.
 
-Two different measures of a fill appear below, and they are not
-interchangeable. A third convention governs every dollar figure in the document.
+That rejected comparison remains an explicitly non-counted appendix. It was
+replaced with a post-mint reconciliation task that begins after the same hired-
+session mint and produces the same normalized output on both paths. Pashov's
+follow-up review passed it as distinct from the later range-decision task, with
+the presentation condition that detection latency must not be called compute
+time.
 
-- **Surplus vs the signed limit.** What the wallet received over the buy amount
-  it signed for, computed by `surplusBps` in `@agripinaa/exec-metrics`. This is
-  the number the marketplace and the receipts print.
-- **Price vs the quote at signing.** The same fill with the slippage tolerance
-  taken back out. `@ophis/agent-swap` signs `buyAmount = quote × (1 -
-  slippageBps/10000)`, so `vsQuote = (1 - slippageBps/10000) × (1 +
-  surplus/10000) - 1`. The Grid and the Ranger sign at 100 bps of tolerance
-  (`SLIPPAGE_BPS` in `apps/agents/src/agents/grid.ts` and the `slippageBps: 100`
-  in `lp-range.ts`); the 2026-08-18 order in Task 1 was signed at 50 bps
-  (`packages/spikes/scripts/spike-a.ts`).
-- **Dollars.** BNB moved 16.8% across the week the agents traded, so no amount
-  here is priced at a single spot rate. That figure is the spread of the rates
-  our own fills executed at, 611.4443 to 714.0883 USDT per WBNB between 08-19
-  and 08-25, and it is 18.4% counting the 2026-08-18 fill at 602.8648. Anything
-  a fill produced (its notional, its surplus, its fee) is valued at that fill's
-  own executed USDT/WBNB rate, with the rate applied to the leg denominated in
-  WBNB and a leg already denominated in USDT taken at 1 USDT = 1 USD. Anything
-  else denominated in BNB (gas) names the rate it uses and where that rate comes
-  from, on the line itself. Each fill's rate is in the attached pull under
-  `derived.executedUsdtPerWbnb`, alongside the dollar amounts derived from it.
+The machine-readable accounting is in
+[`evidence/2026-08-28-termix-hired-comparisons.json`](evidence/2026-08-28-termix-hired-comparisons.json).
 
-The two price measures are stated for every fill. A settlement that beats the
-signed limit can still land below the quote it was signed against, and two of
-the eight fills below did.
+## Cost and timing conventions
 
-## Task 1: Execute a WBNB → USDT swap (trading task)
+Altana relays the account's transactions. Two costs therefore appear:
 
-**Manual baseline (executed 2026-08-18, `evidence/task1-baseline.json`).**
-A direct PancakeSwap V3 router swap: single pool, no auction, the standard
-manual path once a person has already found the pool and prepared the wallet.
-Sent from wallet `0x053fff26d28ff4e94dfe862b184f918a50c6f706`.
+- **User cost** is the relay `paymentAmount` charged to the managed account,
+  plus any separately visible KeyStore debit.
+- **Network gas** is `gasUsed × effectiveGasPrice` paid by the relay
+  transaction sender. It is evidence about chain work, not a substitute for
+  the user's charge.
 
-- Executed 0.0008 WBNB into 0.482844230664355319 USDT (603.5553 USDT per WBNB),
-  fee tier 100, at block 116705948 (2026-08-18T18:40:49Z).
-- Cost: two transactions from the wallet, 28,940 gas on the ERC-20 approval plus
-  146,806 on the swap, 175,746 units at 0.05 gwei, so 0.0000087873 BNB, about
-  $0.0053 at this swap's own executed rate of 603.5553. Split out, because the
-  agent comparison below has to count the same items on both sides: the swap leg
-  is 0.0000073403 BNB, about $0.0044, and the approval is 0.000001447 BNB, about
-  $0.0009. That approval covers only the exact amount being sold
-  (`apps/agents/src/baseline-swap.ts` approves `amountIn`), so it recurs with
-  every swap rather than being a one-time setup cost. Both receipts re-read
-  on-chain for this refresh.
-- Time: 2.021 s of transaction latency. A person driving a wallet UI adds
-  minutes of attention on top of that, every single time.
-- Output quality: two transaction hashes (approve
-  `0x6b8a369b955a09bbdb155cb3e2478a7e4afef716f0fb27ddc6fc5feca7517dec`, swap
-  `0xa72d0e47e172d490396303b953b5369942e7be1f200f17abba6d9e3b806f40d4`). By
-  construction the AMM path pays pool price minus the LP fee: price improvement
-  is not available at all, exposure to the mempool is bounded only by a
-  slippage number the user picks, and there is no execution artifact beyond the
-  raw transaction.
+Manual RPC reads submit no transaction and therefore have zero chain cost.
+Manual scripts have monotonic wall-clock timings. Historical production logs
+do not contain a matching monotonic start time for each agent tick, so the
+report does not manufacture like-for-like agent latency figures from block
+timestamps.
 
-**Agent path, same wallet, same day (submitted 2026-08-18T16:24:37Z, settled
-16:24:45Z).** The Ophis batch auction path the agents use: sign an intent
-off-chain, a solver competes for it and settles it.
+Agripinaa does not sponsor these costs and charges no managed-service fee. The
+user-controlled strategy account pays its own activation and execution costs.
 
-- Order uid
-  `0xa2fa52fa97922df8b884345a2959a71209a73957073098c4af76cbd72fa1f02b053fff26d28ff4e94dfe862b184f918a50c6f7066a848e4c`,
-  0.02 WBNB into 12.057295806540799277 USDT.
-- +48.61 bps over the signed limit (+0.058332742861982384 USDT), which at the
-  50 bps tolerance it was signed with is 1.63 bps **below** the quote at
-  signing. Stated plainly because the first draft of this report cited only the
-  first of those two numbers. The attached receipt carries this same fill as
-  `surplusVsQuote: 0.00486148199243626`, which despite the field name divides by
-  the receipt's own `buyAmount`, the signed limit with the 50 bps tolerance
-  already taken out of the quote: the +48.61 bps and the 1.63 bps below the quote
-  are two baselines, not two readings of one (owner review note 7).
-- Settled 7.2 s after submission, in tx
-  `0x4c7b847b75ae82337ac28655db861a5cd512e0de77c820f64dc58bbaa50523d1`
-  (block 116687812) submitted by solver `0x95480d3f…`. The wallet paid no BNB on
-  the settlement: the winning solver submits and pays for it. It did pay gas on
-  its own ERC-20 approval beforehand, the same item the baseline's $0.0009
-  approval covers on the manual side, which is why the cost comparison below
-  leaves the approval out of both sides.
-- Fee: 0.000043920324779203 WBNB taken inside the settlement, 21.96 bps of the
-  amount sold, about $0.0265 at this fill's own executed rate of 602.8648 USDT
-  per WBNB. The surplus figure above is already net of it.
-- Output quality: a downloadable receipt JSON (attached,
-  `evidence/task1-receipt.json`) carrying executed against signed amounts, the
-  settlement transaction and block, and the partner-fee disclosure.
+## Comparison 1: choose the better USDT supply venue
 
-**What the agents have executed since (the week of 2026-08-19 to 2026-08-25).**
-This is the part the first draft could not show. Seven further fills, all
-through Ophis, all from agent wallets with no human in the loop, all fulfilled.
+Shared task boundary: read Venus and Aave's USDT supply rates and choose the
+higher one. Harvester's subsequent supply and monitoring are reported as extra
+output rather than being used to make the decision boundary look better.
 
-| Submitted (UTC) | Agent | Sold | Surplus vs limit | vs quote | Settled in | Settlement |
-| --- | --- | --- | --- | --- | --- | --- |
-| 08-19 15:15 | Grid | 0.00326503 WBNB | +122.65 bps | +21.42 bps | 8.4 s | [`0x666b21c8`](https://bscscan.com/tx/0x666b21c8a82a496a7a88c829618c8e37bb36d06f5bc38ebbd594e2a739d21dd4) |
-| 08-20 08:41 | Ranger | 1.249640 USDT | +152.67 bps | +51.14 bps | 8.3 s | [`0xd6a407f2`](https://bscscan.com/tx/0xd6a407f217011f9af360b9c252406e0b203e983117907857dcca67c6a6bd53c8) |
-| 08-21 08:42 | Ranger | 1.573712 USDT | +150.62 bps | +49.11 bps | 8.3 s | [`0xb306e1b7`](https://bscscan.com/tx/0xb306e1b7de4fae456ce313037974ed2a4e89935d644091c534061b3a58d1216b) |
-| 08-22 05:11 | Grid | 2.000000 USDT | +75.23 bps | -25.52 bps | 168.9 s | [`0x9e914a0b`](https://bscscan.com/tx/0x9e914a0b6473b1f853813b5e3730e20f51672dbace4ce71adc76287f60a24099) |
-| 08-24 15:41 | Ranger | 1.597934 USDT | +117.13 bps | +15.96 bps | 10.6 s | [`0x509f1117`](https://bscscan.com/tx/0x509f1117e07ccb45184785cfe558b4c89cb3c6b6317bd791d45926948b5d6cad) |
-| 08-24 15:45 | Grid | 1.996384 USDT | +118.15 bps | +16.97 bps | 12.5 s | [`0x68642b06`](https://bscscan.com/tx/0x68642b06dac85d650c2c496681c376f84dbba442b2fedf22cc885a0e8170d7a5) |
-| 08-25 10:02 | Grid | 1.500000 USDT | +124.44 bps | +23.20 bps | 12.3 s | [`0x98962f41`](https://bscscan.com/tx/0x98962f41230e756c5fa58f0d1e56e4918703b769aab37ad060552f35d1f67ea2) |
+### Without an agent
 
-- Grid (ERC-8004 token 269703, wallet `0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A`):
-  4 fills, mean +110.12 bps over the signed limit, mean +9.02 bps over the quote,
-  cumulative surplus 0.024190818740329959 USDT plus 0.000080291902987458 WBNB.
-- Ranger (token 269706, wallet `0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6`):
-  3 fills, mean +140.14 bps over the signed limit, mean +38.74 bps over the
-  quote, cumulative surplus 0.000089699201752126 WBNB.
-- Across the seven agent fills: mean +21.75 bps against the quote, worst
-  -25.52 bps, best +51.14 bps. Cumulative surplus over the signed limits is
-  0.024190818740329959 USDT plus 0.000169991104739584 WBNB, which is $0.1415
-  with each fill valued at its own executed rate, on $11.91 of notional
-  (118.8 bps of the amount traded).
-- Settlement latency across all eight Ophis fills in this report: 7.2 s min,
-  9.5 s median, 168.9 s max.
-- Five distinct solver addresses submitted the eight settlements, so no single
-  solver won all of them. That is a count of winners rather than a measure of how
-  many solvers bid: the per-auction ranking is not retrievable for these orders
-  (owner review note 2). Each of these settlements carried exactly one trade, so
-  no other order was batched alongside ours in these particular auctions.
-- Cost per fill: no BNB leaves the agent wallet on the settlement itself, and
-  across the seven agent fills the network fee reported inside the settlement
-  ranged from 27.88 to 63.32 bps of notional, which is $0.0045 to $0.0127 with
-  each fill's fee valued at that fill's own executed rate
-  (`derived.feeUsdAtFillPrice`; the 2026-08-18 fill above sits outside both
-  ranges, at 21.96 bps and $0.0265). At clip sizes of $1.25 to $2.00 that
-  percentage is dominated by the fixed cost of settling, and it is the same
-  order of magnitude as the $0.0044 of gas the manual baseline's swap leg cost.
-- Both sides of that comparison leave out the ERC-20 approval, and neither path
-  avoids one. The manual baseline approves the exact amount it is about to swap
-  ($0.0009 of gas, measured above). The agent path does the same before signing:
-  `@ophis/agent-swap` asks the wallet for an allowance covering the gross sell
-  amount (`swap.js:158`), and the wallet implementations approve exactly that
-  amount when the standing allowance is short
-  (`ChassisOphisWallet.ensureErc20Allowance` in `apps/agents/src/ophis-wallet.ts`
-  for the agents, the same method in `packages/spikes/src/viem-agent-wallet.ts`
-  for the 2026-08-18 order), and a settlement consumes that allowance, so the
-  next order needs a fresh one. Those approval transactions were not re-read for
-  this refresh, so no gas figure is claimed for them, and the line above compares
-  settlement fee against swap gas with the approval excluded on both sides.
-- Every order declares a CIP-75 volume partner fee of 5 bps to the Ophis
-  partner-fee recipient `0x858f0F5eE954846D47155F5203c04aF1819eCeF8`, visible in
-  each order's `appData` and in the attached receipt.
+At 2026-08-28T20:18:05.163Z a manual script read two BSC block timestamps,
+Venus `supplyRatePerBlock()`, and Aave V3 `getReserveData(USDT)` using the same
+exported rate math as Harvester.
 
-**Verdict.** The two 2026-08-18 executions ran two hours apart at different
-sizes, so their rates are not directly comparable, and no claim is made from
-that pair alone. What the week of fills supports: the auction path settled a
-mean of 21.75 bps above the quote the agent held at signing, over seven fills,
-with zero human seconds spent, no gas paid from the wallet on any of the
-settlements, a downloadable receipt per fill, and nothing sitting in the public
-mempool ahead of settlement.
-The AMM path cannot return more than pool price minus the LP fee by
-construction, needs a person and two transactions each time, and leaves nothing
-behind but a transaction hash. The dispersion is stated rather than hidden: one
-of the seven fills landed 25.52 bps below its quote and took 169 s.
+- Time: 454 ms for four RPC reads.
+- User and chain cost: zero.
+- Output: Venus 263.704230 bps, Aave 239.053452 bps, choice `venus`.
+- Quality: a point-in-time recommendation; it created no position.
+- Actual output: `tasks.chooseUsdtSupplyVenue.withoutAgent` in the
+  [machine-readable attachment](evidence/2026-08-28-termix-hired-comparisons.json).
 
-## Task 2: Find and capture the best USDT lending rate (yield task)
+### With marketplace-hired Harvester
 
-**Manual baseline (not executed, assumption stated).** Nobody sat down and
-timed a person doing this, so no time or cost figure is claimed for it, and
-none is invented. What is structural rather than measured: the manual path is
-two dApp visits, a wallet connection at each, an approval and a deposit at the
-winner, repeated every time rates move, and the comparison is stale as soon as
-the tab closes. The edge the agent acted on below was 4.75 bps, which is
-smaller than the rounding on either venue's public dashboard.
+Harvester had been granted a scoped session on the user's Altana account. On
+2026-08-21 it read Venus at 208.595289 bps and Aave at 208.296746 bps and chose
+`venus`.
 
-**Agent, on its own capital (executed 2026-08-18,
-`evidence/2026-08-18-yield-decision-tick.jsonl` and `evidence/task2-log.jsonl`).**
-The Harvester (token 269705) read both venues on-chain inside one tick at
-2026-08-18T18:25:13Z: Venus 202.0258 bps against Aave V3 206.7745 bps, with
-`blocksPerYear` derived live from two block timestamps (70,048,867) rather than
-assumed. It decided "enter aave" and supplied 2.4 USDT (approve
-`0x5794d2f96bf79bf74353166b4ecc1951f7dc4336c2ea3e0d15f53321e82146a7`, supply
-`0xefa6d0840e9974fdd28700116f152d054e3c5f178417e36d06f85399a30e058f`, block
-116703873).
+- Decision time: the production output is timestamped
+  2026-08-21T00:02:42.910Z. No per-tick monotonic start was recorded, so an
+  exact compute duration is unavailable and no latency win is claimed.
+- Decision cost: the reads themselves were off-chain RPC calls with zero chain
+  cost.
+- First executed use after hiring: the session grant confirmed at 23:58:41Z;
+  the Venus supply confirmed 3 minutes 59 seconds later.
+- First-task user cost from a funded account: 0.000931067240678528 BNB. This is
+  0.00008100833 BNB relay payment plus 0.000763748985678528 BNB KeyStore debit
+  for the grant, then 0.000086309925 BNB for the supply relay.
+- Recurring execution user cost without a new grant: 0.000086309925 BNB.
+- Network work: grant 870,865 gas; supply 509,470 gas, both at 0.05 gwei.
+- Extra output quality: Harvester supplied 3 USDT and received 11,344,002,822
+  raw vUSDT units. Five minutes later it read 3.000000588914912606 USDT in
+  Venus and held because Aave's lead was only 0.120179 bps.
+- Actual outputs:
+  [`2026-08-21-harvester-managed-output.jsonl`](evidence/2026-08-21-harvester-managed-output.jsonl),
+  [session grant](https://bscscan.com/tx/0x6cf958403db7e4f7136664d539becc68f2cb645b5d039280442c414c4f25bfc1),
+  and [Venus supply](https://bscscan.com/tx/0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb).
 
-Seven days later, re-read for this refresh:
+The two decisions occurred at different market times, so the rate figures do
+not prove better yield selection. They prove that both paths independently
+chose Venus and that the hired path also executed and monitored the choice.
 
-- The aUSDT position minted at 2.399999999999999999 and reads
-  2.400979956867106525 at block 118027877. That is 0.000979956867106526 USDT
-  accrued over 6.8981 days (2026-08-18T18:25:14Z to the block's 15:58:34Z),
-  216.05 bps annualized on the position.
-- At the same block, Venus quotes 239.02 bps and Aave 239.04 bps on USDT, both
-  rounded to two decimals from the per-block rates the agent reads. The edge in
-  Aave's favour is 0.03 bps (`venueRates.USDT.edgeAaveMinusVenusBps` in the
-  attached pull), taken from the two rates before they were rounded, which is why
-  subtracting the printed figures gives 0.02 instead: those two figures bound the
-  unrounded edge to between 0.01 and 0.03 bps. Anywhere in that range it is far
-  inside the 50 bps hysteresis the agent requires on two consecutive checks, so
-  it has correctly not moved. Zero rotations here is the policy working, not the
-  agent being idle.
+## Comparison 2: recover the position created by a completed mint
 
-**Agent, on a user's funds through the router (executed 2026-08-21).** The part
-that did not exist when this report was first written. A depositor's smart
-account grants a session key scoped to one `AgripinaaYieldRouter` and its three
-selectors, and the router hardcodes every recipient to `msg.sender`, so the
-agent can move that position between Venus, Aave, and idle and nowhere else.
+This task begins after Ranger's hired-session mint transaction
+`0xf042…c5678` has confirmed. Its completion condition is to identify the
+minted NFT and its immutable tick bounds. Mint execution time and cost are
+context, not part of this post-confirmation verification.
 
-- Account `0x47352a5aff2909dcfb46b7f8758c78a868c17988` (an EIP-7702 delegated
-  account; the delegation designator reads
-  `0xef0100c0f16888f4198f53892c53af859f673e23f26fa3` on-chain).
-- One `Rotated` event on the live USDT router
-  `0xD18375cA4d786aED27C567E6cF8cC3D1D66fE3eb`: 2026-08-21T00:02:40Z, block
-  117132749, action `toVenus`, 3 USDT, tx
-  [`0xe00c6c1f`](https://bscscan.com/tx/0xe00c6c1fcd984891cab6f7fcd4f48059caabf42880ff4dd62696910c62b4e2cb).
-  Cost 509,470 gas at 0.05 gwei, 0.0000254735 BNB, about $0.0172. A rotation is
-  not a swap, so it has no executed rate of its own: that dollar figure uses
-  676.6936 USDT per WBNB, the rate our own fill executed at later the same day
-  (the 08-21 Ranger row above). The gas came out of the account's own allowance
-  under the session's native-gas cap.
-- That position reads 113.44 vUSDT at block 118027877, which is
-  3.00085968308128929 USDT of underlying at the market's exchange rate, by
-  integer math on the raw balance (`managed.venusPositionNow` in the attached
-  pull): 0.00085968308128929 USDT accrued over 4.6638 days
-  (2026-08-21T00:02:40Z to the block's 15:58:34Z), 224.27 bps annualized.
-- Scanning every block of both live routers from their deploy blocks to
-  118026258 returns that one event and no other; the USDC router has none. The
-  superseded first router `0x841CF14Dfc0A315115EC5C9714c918210447b260` carries
-  two more, a `toAave` and a `toIdle` five seconds apart on 2026-08-20 from
-  account `0xacf6fc40…`, which is the deployment test of that router and is
-  reported here for completeness rather than as user activity.
+### Without an agent
 
-**Verdict.** Time: the agent's decision cycle is one on-chain read every six
-hours with no human involvement, against a manual comparison that costs
-attention every time it is repeated and is stale immediately. Cost: one
-approval and one supply on entry, then nothing until an edge clears 50 bps
-twice, so the fee floor stays below the yield it is chasing. On the managed
-side one rotation cost $0.0172 of gas to move a position between venues.
-Quality: the choice is a logged on-chain read with both rates, the block cadence
-it derived, and the transaction it produced, and the custody model means the
-agent cannot send the money anywhere except back to its owner.
+A manual verifier read the receipt, decoded the NFT ID, then read
+`positions(7271073)`.
 
-## Task 3: Protect a lending position from liquidation (security-adjacent task)
+- Time: 268.678 ms for two RPC reads.
+- User and chain cost: zero.
+- Output: transaction success, token ID 7271073, tick range -66059 to -65085.
+- Actual output:
+  [`2026-08-28-ranger-mint-manual-output.json`](evidence/2026-08-28-ranger-mint-manual-output.json).
 
-**Manual baseline (not executed, assumption stated).** No person was timed
-babysitting a health factor overnight, so no manual response time is claimed as
-a measurement. The assumption used is that a human asleep responds in hours,
-not seconds. The penalty is not an assumption: Aave V3 on BSC publishes a
-`liquidationBonus` of 11000 for WBNB collateral, meaning a liquidator seizes
-collateral worth 110% of the debt it repays: a 10% premium on the debt repaid,
-which is 9.09% of the value seized (read from `Pool.getConfiguration` at block
-118028579; the same read gives 10500, a 5% premium, on USDT collateral, and a
-7500 liquidation threshold on WBNB).
+### With marketplace-hired Ranger
 
-**Agent execution (executed 2026-08-18 on BSC mainnet,
-`evidence/task3-drill.jsonl`).** The Guardian (token 269704) polls every 60 s
-and repays from a capped budget when the health factor drops below 1.3.
+Ranger reconciled its confirmed pending mint during the next scheduled sweep
+and persisted the position required for later monitoring.
 
-- The drill borrowed 0.65 extra USDT against the agent's own position (tx
-  `0x87024c3c961d8bc0495f9c95b7c45cfd1010f36ad9fe16b37a1e8e560a3c2f49`), taking
-  the health factor from 2.2634 on the tick before it (18:37:12.834Z) to 1.2490
-  at 18:38:12.901Z.
-- The agent detected it on its next tick, planned a repay of
-  0.318059646689966885 USDT at 18:38:13.069Z (`cappedByBudget: false`), and the
-  repay landed at 18:38:14.618Z (tx
-  `0x367cb2dc8ab49a0960077ac0e30b58c2d200bc21ecc2bf184c367050b4b0050a`).
-  1.717 s from detection to repaid, about 62 s from the degradation itself given
-  the 60 s tick. Health factor restored to the 1.600 target. Unattended,
-  budget-capped, repay and supply only: it cannot borrow or withdraw.
+- Detection time: approximately 9 minutes 55.8 seconds after the confirmation
+  block timestamp. This is next-sweep detection latency, not active computation
+  time; Ranger's active computation duration was not recorded.
+- User and chain cost for reconciliation: zero; no transaction was submitted.
+- Normalized output: transaction success, token ID 7271073, tick range -66059
+  to -65085.
+- Actual production output:
+  [`2026-08-28-ranger-mint-recovery-output.jsonl`](evidence/2026-08-28-ranger-mint-recovery-output.jsonl).
 
-Seven days later, re-read for this refresh:
+Both paths produced the same position identity and range. Manual verification
+was faster. Ranger's advantage was unattended, durable recovery that
+automatically supplied state to subsequent range monitoring.
 
-- The position is still open and still unattended. At block 118027877 it holds
-  $2.79958953 of collateral against $1.13254818 of debt, health factor
-  **1.853954**. Those two dollar amounts are Aave's own base-currency figures
-  from `Pool.getUserAccountData`, not a conversion of ours. It drifted up rather
-  than down because the WBNB collateral appreciated over the week.
-- The agent's USDT balance reads 3.131940353310033115. Its balance at the drill
-  was 3.45 and it repaid 0.318059646689966885, and 3.45 minus that repay is
-  exactly 3.131940353310033115. It has therefore spent nothing since: no second
-  repay was needed, and none was made.
+## Comparison 3: decide whether Ranger needs rebalancing
 
-**Verdict.** Time: 1.717 s from detection to an on-chain repay, bounded above
-by the 60 s poll, against an assumed human response measured in hours.
-Cost: one approval and one repay of $0.32, against the 10% premium a liquidator
-would have taken on whatever debt it repaid, 9.09% of the collateral seized, had
-a liquidation triggered instead. Quality: a timestamped journal of every
-health-factor reading, the repair plan with its budget check, and the two
-transaction hashes, plus a position that is still standing a week later with the
-arithmetic to show nothing else touched it.
+Shared task boundary: inspect Pancake V3 position 7271073 and output `hold` or
+`rebalance`. The comparison isolates one decision; the longer unattended
+history is an additional benefit.
 
-## What broke during the week, and what it cost
+### Without an agent
 
-A track record with a gap in it reads better with the gap explained, so this
-section is part of the submission rather than an appendix.
+At 2026-08-28T20:18:26.240Z the manual script read NFT ownership, position
+data, the canonical pool address, and `slot0()`.
 
-- **Grid starved, 2026-08-19 to 2026-08-24.** Its balance guard refuses a trade
-  when the wallet holds less than the clip size. `CLIP_USD` was a constant 2
-  while the wallet held 1.9964 USDT, so it was short of its own clip by about
-  four tenths of a cent and refused every crossing it detected. The runner
-  journal logged **1,559 blocked attempts** with reason `insufficient-balance`
-  over those five days (diagnosed 2026-08-24, recorded in commit `33bec21` and
-  in the plan's operations log). The code was doing exactly what it was told to
-  do; the constant was wrong for the capital available.
-- **Ranger stuck, 2026-08-22 to 2026-08-24.** It removed liquidity mid
-  rebalance, never re-minted, and kept range-checking the emptied position. All
-  three of its position NFTs read `liquidity 0` at diagnosis. The orderbook
-  shows the gap directly: no Ranger fill between 2026-08-21T08:42Z and
-  2026-08-24T15:41Z. The Grid did fill on 08-22 inside that window; the Ranger
-  did not.
-- **Both recovered by one deploy on 2026-08-24 at 15:41Z.** The Ranger's
-  inventory-prep order was submitted at 15:41:24Z and settled at 15:41:35Z, and
-  it minted position **#7248592**, which reads
-  `liquidity = 2451189888573570005` at block 118027877 against the three older
-  positions still at 0, and sits in range (pool tick -65511 inside its -66170 to
-  -65180 band, which is 677.00 to 747.45 USDT per WBNB against a spot of
-  699.78). The Grid submitted at 15:45:23Z and settled at 15:45:36Z, with
-  `desiredClipUsd: 2, effectiveClipUsd: 1.9963839118921194` in the runner journal
-  as quoted in the plan's operations log, selling the whole balance it could
-  afford instead of refusing a fixed clip, and it has filled again since
-  (2026-08-25 at +124.44 bps).
-- **The capital ceiling is the live constraint, not the code.** At block
-  118027877 the Grid wallet holds 0.008520134207854582 WBNB and 79 wei of USDT.
-  That WBNB balance is exactly its 0.004 WBNB funding leg minus the 0.00326503 it
-  sold on 08-19 plus the three amounts it bought on 08-22, 08-24 and 08-25,
-  which accounts for every unit of it and leaves the buy side with nothing to
-  trade until the sell side fills or the wallet is topped up.
+- Time: 376 ms for four RPC reads.
+- User and chain cost: zero.
+- Output: current tick -65356 inside -66059 to -65085, liquidity
+  6457605562311526187, decision `hold`.
+- Actual output: `tasks.decideWhetherRangerNeedsRebalancing.withoutAgent` in
+  the [machine-readable attachment](evidence/2026-08-28-termix-hired-comparisons.json).
 
-## Evidence index
+### With marketplace-hired Ranger
 
-Everything cited above is in this repository under `docs/evidence/`:
+Ranger checked the same position at 20:13:31.648Z, 4 minutes 54.592 seconds
+before the manual read.
 
-- `2026-08-25-refresh.json`: the full pull behind this refresh. Per-fill order
-  uids, signed and executed amounts, fees, surplus and vs-quote figures, each
-  fill's own executed rate and the dollar amounts derived from it (`derived`),
-  settlement transactions, solvers and latencies; the Ranger's four positions
-  with pool ticks; agent balances and Aave account data; the Harvester's
-  accrual; live Venus and Aave rates; the router rotations; the four ERC-8004
-  identities; the baseline swap's gas; Aave's reserve parameters.
-- `task1-baseline.json`: the manual AMM swap.
-- `task1-receipt.json`: the Ophis settlement receipt for the 2026-08-18 order.
-  Its `surplusVsQuote` field is measured against the signed limit rather than
-  against the quote (owner review note 7).
-- `2026-08-18-yield-decision-tick.jsonl`: the Harvester tick holding both venue
-  rates, the derived block cadence, and the decision.
-- `task2-log.jsonl`: the approval and supply that tick produced.
-- `task3-drill.jsonl`: the liquidation drill, tick by tick.
+- Per-check time: the output has an end timestamp but no monotonic start, so no
+  like-for-like process latency is claimed. Checks are scheduled approximately
+  every ten minutes.
+- Recurring read cost: zero chain cost.
+- Output: current tick -65362 inside -66059 to -65085, decision `hold`.
+- Extra output quality: the attached production window contains all 30 raw
+  checks from 15:32:04.154Z through 20:13:31.648Z. All were in range, so Ranger
+  submitted no no-op transaction and incurred no monitoring gas.
+- Actual outputs:
+  [`2026-08-28-ranger-managed-checks.jsonl`](evidence/2026-08-28-ranger-managed-checks.jsonl),
+  [session grant](https://bscscan.com/tx/0xb2d10f8149426dc787901a8438c17435b934e5dbfce1744b281a51b21ae6eb15),
+  [checker grant](https://bscscan.com/tx/0x9acd4913d8894ac03321ab97c0a0b81a55c847d43ba32481734655aa44ab39c6),
+  and [agent mint](https://bscscan.com/tx/0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678).
 
-## Scoring inputs (TermiX rubric)
+The in-range window proves monitoring without unnecessary churn. It does not
+prove the configured 30-minute out-of-range persistence rule because no check
+in this window was out of range.
 
-- **Value of services (30%).** Eight agents built across four categories. Four
-  carry ERC-8004 identities on BSC mainnet, each owned by its own agent wallet
-  and serving its manifest at its `tokenURI`, re-read at block 118027877: Grid
-  269703, Guardian 269704, Harvester 269705, Ranger 269706. Four more are built
-  and tested and wait on the owner's sign-off on their display names before
-  registration. Status calls are priced at 0.05 USDT over x402. Execution runs
-  at solver-competed prices, and user funds are managed through a router that
-  can only ever pay them back to their owner.
-- **Proven agent advantage (30%).** This report: eight settlements, one
-  liquidation drill, one managed rotation, one week of holding, receipts and
-  transactions attached, dispersion and downtime reported alongside the wins.
-- **High-stakes categories (20%).** Task 1 is trading, Task 3 is liquidation
-  protection with a live drill against the position.
-- **Marketplace quality (20%).** Find, compare and hire without instructions at
-  https://agripinaa.vercel.app.
+## Activation UX appendix: not counted as the third task
 
-## Owner review notes
+On 2026-08-28 the user selected Ranger and funded once with BNB. The owner
+authorized a preparation bundle that wrapped 0.012156784025527638 BNB, sold
+half, and left 0.006078392012763819 WBNB plus 4.309104290455045067 USDT. That
+transaction confirmed before Ranger's key was registered, so it demonstrates
+the activation UX rather than agent execution.
 
-Open items, all of them things this refresh could not settle from here:
+Ranger was then granted, its Ophis checker was added, and it minted user-owned
+Pancake position 7271073. From preparation submission to mint confirmation the
+full flow took 24,906 seconds (6 h 55 min 6 s), four transactions, and
+0.000958880720769938 BNB of user-visible Altana/KeyStore charges.
 
-1. **Ophis fee model.** Every live order's `appData` declares a flat 5 bps
-   volume partner fee, which is what the pinned `@ophis/sdk` 0.3.0 emits for a
-   non-stable pair (1 bp for stable-to-stable). If Ophis's published model has
-   moved to a base rate plus price-improvement capture, this report should not
-   quote the newer model until the SDK is upgraded and a fresh order shows it.
-2. **Solver competition data.** `GET /solver_competition/by_tx_hash` returned
-   404 for all eight of our settlements, including the one from 2026-08-25, so
-   the per-auction solver ranking is not available to link. The report claims
-   only what is on-chain: five distinct solvers across eight settlements. The
-   earlier draft's line about solver competition being resolvable on-chain has
-   been removed.
-3. **The 2026-08-18 Venus and Aave rates** (202.0258 and 206.7745 bps) come
-   from the runner journal line attached as evidence. They cannot be re-derived
-   today because the public RPCs prune state at that depth, so they are carried
-   with their original date and source.
-4. **The 1,559 blocked attempts** come from the runner journal on the VM as
-   quoted in commit `33bec21` and the plan's operations log, both dated
-   2026-08-24. The journal itself is not in the repository (the data directory
-   is gitignored and lives on the host).
-5. **The 2026-08-25 Grid fill sold 1.5 USDT**, and the wallet held no USDT after
-   the 08-24 recovery, so USDT reached it between those two dates. The transfer
-   was not traced, and no claim is made about where it came from.
-6. **Manual baselines for Tasks 2 and 3 were never executed.** Their comparison
-   rests on the stated assumptions, which is why no minutes or dollars are
-   quoted for the human side of either.
-7. **The receipt's field name.** `evidence/task1-receipt.json` reports the
-   +48.61 bps under the key `surplusVsQuote`, but the `buyAmount` it divides by
-   is the signed limit, which is the quote with the 50 bps slippage tolerance
-   already taken out. The field measures surplus over the signed limit, so it is
-   not comparable with the vs-quote column in this report, and both baselines are
-   printed wherever that fill appears. The receipt is left exactly as the tool
-   wrote it; the field name is worth raising with Ophis rather than editing the
-   artifact here.
+The available manual artifact started from 0.0008 WBNB, approved Pancake, and
+swapped it for 0.482844230664355319 USDT in 2.021 seconds. It used two
+transactions, 175,746 gas, and 0.0000087873 BNB. It did not prepare two balanced
+legs or mint an LP NFT. These outputs are real, but they are different tasks and
+must not be sold as a controlled agent win.
+
+Actual outputs:
+
+- [`task1-baseline.json`](evidence/task1-baseline.json)
+- [manual approval](https://bscscan.com/tx/0x6b8a369b955a09bbdb155cb3e2478a7e4afef716f0fb27ddc6fc5feca7517dec)
+- [manual swap](https://bscscan.com/tx/0xa72d0e47e172d490396303b953b5369942e7be1f200f17abba6d9e3b806f40d4)
+- [owner preparation](https://bscscan.com/tx/0x279a32de4a34115057efaa71322ef90944335d384bc303638a0d3491811fb91c)
+- [Ranger mint](https://bscscan.com/tx/0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678)
+
+## Trading history appendix
+
+Seven fills were executed by the Grid and Ranger agent wallets from 2026-08-19
+through 2026-08-25. One earlier Ophis fill came from the separate comparison
+wallet. Across all eight fills, six beat the independent quote held at signing:
+75%, mean about +18.83 bps, worst -25.52 bps, best +51.14 bps, and five winning
+solver addresses. Two—not one—finished below the signing quote.
+
+Risk and limitations:
+
+- fill notionals ranged from about $1.25 to $12.06;
+- signed tolerance was 0.5% for the comparison-wallet fill and 1% for the seven
+  agent-wallet fills;
+- Grid has a 5% inventory drawdown halt;
+- Ranger's 30-minute persistence rule and four-actions-per-week breaker are
+  runner-local strategy controls, not KeyStore-enforced authority limits;
+- one fill took 168.9 seconds.
+
+Full per-fill data is in
+[`evidence/2026-08-25-refresh.json`](evidence/2026-08-25-refresh.json).
+
+## Rubric coverage
+
+| Requirement | Evidence |
+| --- | --- |
+| Three real tasks, both ways | Venue choice, post-mint reconciliation, and live range decision each use a shared stopping condition. |
+| Marketplace-hired agent | Harvester and Ranger acted through sessions granted from Agripinaa's activation flow. |
+| Time | Manual monotonic timings are reported; agent detection/cadence is reported separately where active compute time was not instrumented. |
+| Cost | User relay/KeyStore charges, network gas, and zero-cost reads are kept separate. |
+| Output quality | Agent execution, durable recovery, and unattended repetition are separated from the normalized task outputs. |
+| Actual outputs | Manual JSON, raw production JSONL, relay IDs, and BSC receipts are linked. |
+| Trading or security | Ranger's Pancake V3 position reconciliation and rebalance decision are trading/LP-management tasks. |

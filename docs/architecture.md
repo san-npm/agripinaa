@@ -6,9 +6,11 @@ Agripinaa is a pnpm monorepo with two deployables and one chain.
 - `apps/agents` is one Node process running every reference agent tick loop plus
   their paid x402 status server, on an Aleph Cloud VM behind a Cloudflare quick
   tunnel.
-- Everything either of them says about an agent is read back from BNB Smart
-  Chain, an ERC-8004 registry, an indexer, or the Ophis settlement layer, and is
-  labeled with the source it came from.
+- Material identity, reputation, authority, and execution claims carry their
+  provenance from BNB Smart Chain, an ERC-8004 registry, an indexer, the Ophis
+  settlement layer, or a bounded application evidence artifact. First-party
+  manifests, strategy descriptions, and runner-local policy remain explicitly
+  application-authored.
 
 ## The map
 
@@ -150,8 +152,9 @@ chain, so trust surfaces are reputation-based and the UI says so.
 **The two router deployments.** `AgripinaaYieldRouter` has immutable USDT and
 USDC version-3 deployments (`packages/shared/src/contracts.ts`). Their pinned
 runtime hashes and live version getters are checked before activation or runner
-execution; older version-2 and version-1 addresses remain recovery-only. Source in
-`contracts/src/AgripinaaYieldRouter.sol`, threat model and migration evidence in
+execution; older version-2 and version-1 addresses are recovery-only in the app
+and runner. Retirement does not itself revoke a still-valid on-chain session.
+Source in `contracts/src/AgripinaaYieldRouter.sol`, threat model and migration evidence in
 [security-router.md](./security-router.md), contract custody and bounded recent
 permissionless activity on `/funds`.
 

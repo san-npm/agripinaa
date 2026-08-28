@@ -50,7 +50,7 @@ dedicated passkey strategy account with agent-specific venue and selector policy
 | **Functionality**: land, browse, understand, activate, no dead ends | `/` to `/agents` to `/c/<category>` to a profile to activation to `/dashboard`. All eight first-party agents have a real runner handoff; third-party registrations remain inspectable until a versioned handoff is implemented. |
 | **Data quality**: live data beyond counts | One score per agent with per-field provenance and a freshness stamp; execution quality computed from Ophis settlement; [`/leaderboard`](https://agripinaa.vercel.app/leaderboard) ranked on settlement-derived surplus with a squared sample-depth discount; [`/funds`](https://agripinaa.vercel.app/funds) with live router custody and bounded recent permissionless activity; a proof feed that is populated at first paint. |
 | **Agent diversity**: the four mandated categories | Grid, health-factor, yield and rebalancing hubs, each with a first-party agent live on mainnet, plus the indexed BSC population sorted into the same taxonomy by the shared classifier. |
-| **Agent advantage**: the TermiX rubric | [`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md): eight settlements, a live liquidation drill, a managed rotation, receipts and transactions attached, dispersion and downtime reported alongside the wins. |
+| **Agent advantage**: the TermiX rubric | [`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md): three Pashov-reviewed same-boundary tasks with raw outputs and honest activation accounting. The trading appendix reports win rate, window and risk. |
 
 ## The zero-friction hire
 
@@ -61,15 +61,17 @@ passkey confirmations, depending on the venues. The dashboard
 reads session validity live from the KeyStore registry and revokes with one
 passkey confirmation.
 
-For managed yield, the session key is scoped to one contract whose entrypoints
-take no arguments at all: `AgripinaaYieldRouter`. Every recipient inside it is
-hardcoded to the calling account, so a stolen key can move the user's funds
-between the user's own positions or back to the user, and cannot name a third
-party. The corrected source also leaves Aave or Venus receipt tokens untouched
+For managed yield, the session key is scoped to one contract and exactly three
+zero-argument state-changing entrypoints: `AgripinaaYieldRouter`. Every terminal
+beneficiary is hardcoded to the calling account, so a stolen key can move the
+user's funds between the user's own positions or back to the user, and cannot
+name a third party. The corrected source also leaves Aave or Venus receipt tokens untouched
 while that venue reports any supported debt ledger. The active immutable
 routers are the verified version-3 deployments: they also cover Venus's
 separate VAI debt ledger, and their runtime hashes are pinned and checked live
-before activation or execution. Superseded routers remain recovery-only. The
+before activation or execution. Superseded routers are recovery-only in the app
+and runner; an old on-chain session remains capable until confirmed revocation
+or expiry, and its token allowances must be reviewed separately. The
 threat model, fuzz invariants, finding, and deployment state are in
 [`docs/security-router.md`](docs/security-router.md).
 
@@ -145,13 +147,8 @@ partner-fee entries decoded out of that order's own `appData`
 (`extractPartnerFees` in `packages/exec-metrics/src/receipt/build.ts`), and
 every order the agents sign is built by the pinned `@ophis/sdk` 0.3.0, which
 declares a flat 5 bps volume partner fee on a non-stable pair (1 bp stable to
-stable). So a downloaded receipt reads 5 bps under a paragraph that opens with
-1 bp, and the gap is the SDK pin rather than a second fee. The same
-reconciliation is in
-[`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md),
-which records the 5 bps declaration and its recipient per order alongside the
-fee each settlement took, and keeps the schedule change as the first of its
-owner review notes.
+stable). The downloadable receipt and the raw trading refresh preserve the
+order-level declaration and settlement fee without merging the two measures.
 
 Trust surfaces are reputation-based: no ValidationRegistry is deployed for
 ERC-8004 yet, and the UI says so rather than pretending.
@@ -162,8 +159,11 @@ ERC-8004 yet, and the UI says so rather than pretending.
 - [`docs/security-router.md`](docs/security-router.md): the router threat model,
   cited test by test
 - [`docs/termix-agent-advantage-report.md`](docs/termix-agent-advantage-report.md):
-  three tasks executed with and without an agent, on mainnet, receipts attached
-  (`docs/evidence/`)
+  three audited TermiX comparisons with mainnet receipts and raw outputs
+  attached (`docs/evidence/`)
+- [`docs/sponsor-evidence.md`](docs/sponsor-evidence.md): form-ready copy and
+  requirement-by-requirement evidence for Altana, TermiX, PancakeSwap and
+  AltLayer/8004scan
 - [`docs/demo-video-script.md`](docs/demo-video-script.md): the 3-minute demo storyboard
 - [`ops/launch.md`](ops/launch.md): how the agents run, deploy, and migrate hosts
 
