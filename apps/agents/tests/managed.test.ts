@@ -19,6 +19,14 @@ const AAVE_POOL = '0x6807dc923806fE8Fd134338EABCA509979a7e0cB';
 const ATOKEN = '0xa9251ca9DE909CB71783723713B21E4233fbf1B1';
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as const;
 
+test('managed status exposes only a valid Ranger-minted position id', async () => {
+  const { managedRangerTokenId } = await import('../src/managed');
+  assert.equal(managedRangerTokenId('lp-range', { tokenId: '7271073' }), '7271073');
+  assert.equal(managedRangerTokenId('grid', { tokenId: '7271073' }), null);
+  assert.equal(managedRangerTokenId('lp-range', { tokenId: '0' }), null);
+  assert.equal(managedRangerTokenId('lp-range', { tokenId: '../wallets/facilitator.json' }), null);
+});
+
 // --- Registry round-trip (bigint-safe persistence) ------------------------
 
 /** One storable registry entry, with a bigint spend limit to exercise the codec. */

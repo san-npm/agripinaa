@@ -40,9 +40,9 @@ export interface SessionScopeInput {
   callScopes?: readonly CallScope[];
   spendCap: { token: SpendCapToken; amount: string; period: 'day' };
   /**
-   * A native (gas-token) daily cap. Managed sessions REQUIRE this: the
-   * account pays its own gas in BNB, and without a native spend permission
-   * the relay rejects execute with NoSpendPermissions.
+   * A native-BNB daily cap. Managed sessions REQUIRE this because the account
+   * pays its own gas in BNB; the same permission also caps native value that a
+   * session may attach to an allowlisted payable call.
    */
   nativeGasCap?: { amount: string; period: 'day' };
   expiresInSeconds: number;
@@ -182,7 +182,8 @@ export function buildSessionScope(input: SessionScopeInput): SessionScope {
         `buildSessionScope rule "day-period-only": native gas cap period "${String(nativeGasCap.period)}" is not supported; only 'day' is`,
       );
     }
-    // Native token (BNB) is 18 decimals; a spend entry with no token caps it.
+    // Native token (BNB) is 18 decimals; a token-less entry caps all native
+    // value spent by the session, including transaction gas.
     spend.push({ limit: toBaseUnits(nativeGasCap.amount, 18), period: 'day' });
   }
 

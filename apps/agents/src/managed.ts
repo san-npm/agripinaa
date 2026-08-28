@@ -62,6 +62,17 @@ export function managedAccountStateKey(account: Address, key: string): string {
   return `managed:${account.toLowerCase()}:${key}`;
 }
 
+/**
+ * Public identity of the exact Ranger NFT held in per-account runner state.
+ * Pair matching is not enough: anyone can donate an unrelated Pancake NFT to
+ * the account, while the runner adopts only IDs it minted itself.
+ */
+export function managedRangerTokenId(agent: string, state: unknown): string | null {
+  if (agent !== 'lp-range' || typeof state !== 'object' || state === null) return null;
+  const tokenId = (state as { tokenId?: unknown }).tokenId;
+  return typeof tokenId === 'string' && /^[1-9]\d*$/.test(tokenId) ? tokenId : null;
+}
+
 function file(agent: string, dir: string): string {
   return join(dir, `${agent}.managed.json`);
 }

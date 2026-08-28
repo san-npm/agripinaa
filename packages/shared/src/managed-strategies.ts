@@ -167,7 +167,9 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
 };
 
 export function managedStrategyFor(slug: string): ManagedStrategyDefinition | undefined {
-  return MANAGED_STRATEGIES[slug as ManagedStrategySlug];
+  return Object.hasOwn(MANAGED_STRATEGIES, slug)
+    ? MANAGED_STRATEGIES[slug as ManagedStrategySlug]
+    : undefined;
 }
 
 /** Yield and non-yield sessions share one canonical permission lookup. */

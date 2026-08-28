@@ -1,4 +1,7 @@
 import type { Category } from "@agripinaa/agent-index";
+import Image from "next/image";
+
+import { tokenLogoAsset } from "@/lib/token-logo-assets";
 
 type IconProps = { className?: string };
 
@@ -32,92 +35,23 @@ export const CATEGORY_ICON: Record<Category, (p: IconProps) => React.ReactNode> 
   rebalancing: RangeIcon,
 };
 
-// --- Token logos (full-colour brand marks, not currentColor) ----------------
-// Self-contained SVGs so a stablecoin is identifiable at a glance. 32-unit box,
-// coloured coin + white symbol; sized by the className the caller passes.
-
-/** Tether (USDT): green coin, white ₮ (top bar + stem + crossbar). */
-export const USDTLogo = ({ className }: IconProps) => (
-  <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
-    <circle cx="16" cy="16" r="16" fill="#26A17B" />
-    <g fill="#fff">
-      <rect x="8.5" y="9" width="15" height="3.1" rx="0.6" />
-      <rect x="14.3" y="9" width="3.4" height="14" rx="0.6" />
-      <rect x="11" y="14.4" width="10" height="2.6" rx="0.6" />
-    </g>
-  </svg>
-);
-
-/** USD Coin (USDC): blue coin, white $. */
-export const USDCLogo = ({ className }: IconProps) => (
-  <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
-    <circle cx="16" cy="16" r="16" fill="#2775CA" />
-    <text
-      x="16"
-      y="16.5"
-      textAnchor="middle"
-      dominantBaseline="central"
-      fontFamily="Arial, Helvetica, sans-serif"
-      fontSize="20"
-      fontWeight="700"
-      fill="#fff"
-    >
-      $
-    </text>
-  </svg>
-);
-
-/** BNB: gold coin, white Binance diamonds (N/E/S/W + centre). */
-export const BNBLogo = ({ className }: IconProps) => {
-  const d = (cx: number, cy: number, r: number) =>
-    `M${cx} ${cy - r}L${cx + r} ${cy}L${cx} ${cy + r}L${cx - r} ${cy}Z`;
-  return (
-    <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
-      <circle cx="16" cy="16" r="16" fill="#F0B90B" />
-      <path
-        fill="#fff"
-        d={`${d(16, 10.6, 2.6)} ${d(21.4, 16, 2.6)} ${d(16, 21.4, 2.6)} ${d(10.6, 16, 2.6)} ${d(16, 16, 2.4)}`}
-        fillRule="evenodd"
-      />
-    </svg>
-  );
-};
-
-/** BTCB: Binance-Peg Bitcoin uses Bitcoin's orange coin mark. */
-export const BTCBLogo = ({ className }: IconProps) => (
-  <svg viewBox="0 0 32 32" className={className ?? "h-full w-full"} aria-hidden>
-    <circle cx="16" cy="16" r="16" fill="#F7931A" />
-    <text
-      x="16"
-      y="16.8"
-      textAnchor="middle"
-      dominantBaseline="central"
-      fontFamily="Arial, Helvetica, sans-serif"
-      fontSize="21"
-      fontWeight="700"
-      fill="#fff"
-    >
-      ₿
-    </text>
-  </svg>
-);
-
-/** Pure mapping kept testable so a listed asset never silently gets a generic mark. */
-export function tokenLogoKind(symbol: string): 'usdt' | 'usdc' | 'bnb' | 'btcb' | 'generic' {
-  const s = symbol.toUpperCase();
-  if (s === "USDT") return 'usdt';
-  if (s === "USDC") return 'usdc';
-  if (s === "BNB" || s === "TBNB" || s === "WBNB") return 'bnb';
-  if (s === "BTCB") return 'btcb';
-  return 'generic';
-}
+// --- Token logos (official full-colour assets) -------------------------------
+// CryptoLogos source filenames are deliberately preserved in /public/tokens.
+// BTCB is Binance-Peg BTC, so it uses Bitcoin's mark; WBNB uses BNB's mark.
 
 /** Pick the logo for a token symbol. */
 export function TokenLogo({ symbol, className }: { symbol: string; className?: string }) {
-  const kind = tokenLogoKind(symbol);
-  if (kind === 'usdt') return <USDTLogo className={className} />;
-  if (kind === 'usdc') return <USDCLogo className={className} />;
-  if (kind === 'bnb') return <BNBLogo className={className} />;
-  if (kind === 'btcb') return <BTCBLogo className={className} />;
-  return <CoinsIcon className={className} />;
+  const asset = tokenLogoAsset(symbol);
+  if (!asset) return <CoinsIcon className={className} />;
+  return (
+    <Image
+      src={asset}
+      alt=""
+      aria-hidden
+      width={32}
+      height={32}
+      unoptimized
+      className={className ?? "h-full w-full"}
+    />
+  );
 }
