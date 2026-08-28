@@ -15,6 +15,8 @@ export interface StoredSessionMeta {
   agent: { chainId: number; tokenId: string; name: string; slug?: string };
   scope: { allowlist: string[]; capFormatted: string; expiresAt: string };
   grantedAt: string;
+  /** Latest activation attempt this grant was correlated with. */
+  correlatedAt?: string;
   revokedAt: string | null;
   /** Whether the runner acknowledged this locally recoverable session. */
   registrationStatus?: 'pending' | 'registered';
@@ -89,20 +91,43 @@ export function storeSession(input: {
     publicKey?: string;
     walletAddress?: string;
   };
+  const sessions = read();
+  const sameGrant = (candidate: StoredSessionMeta) =>
+    s.walletAddress !== undefined
+    && s.publicKey !== undefined
+    && candidate.revokedAt === null
+    && candidate.chainId === input.chainId
+    && candidate.account.toLowerCase() === (s.walletAddress ?? 'unknown').toLowerCase()
+    && candidate.publicKey?.toLowerCase() === s.publicKey?.toLowerCase()
+    && (
+      input.agent.slug !== undefined
+        ? candidate.agent.slug === input.agent.slug
+        : candidate.agent.chainId === input.agent.chainId
+          && candidate.agent.tokenId === input.agent.tokenId
+    );
+  // A confirmed grant may already have been persisted before the runner
+  // handoff failed. Recovery rebuilds the public session from exact on-chain
+  // state, then refreshes that record instead of leaving two dashboard cards
+  // whose revoke buttons target the same irreversible key registration.
+  const existing = sessions.find((candidate) => sameGrant(candidate)
+    && candidate.registrationStatus === 'registered')
+    ?? sessions.find(sameGrant);
+  const correlatedAt = new Date().toISOString();
   const meta: StoredSessionMeta = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: existing?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     chainId: input.chainId,
     account: s.walletAddress ?? 'unknown',
     publicKey: s.publicKey ?? null,
     agent: input.agent,
     scope: input.scope,
-    grantedAt: new Date().toISOString(),
+    grantedAt: existing?.grantedAt ?? correlatedAt,
+    correlatedAt,
     revokedAt: null,
-    registrationStatus: 'pending',
-    principalUsdt: input.principalUsdt,
+    registrationStatus: existing?.registrationStatus ?? 'pending',
+    principalUsdt: existing?.principalUsdt ?? input.principalUsdt,
     raw,
   };
-  write([...read(), meta]);
+  write([...sessions.filter((candidate) => !sameGrant(candidate)), meta]);
   return meta;
 }
 

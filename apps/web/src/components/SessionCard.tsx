@@ -128,7 +128,7 @@ export function SessionCard({
         meta.chainId,
         meta.account as `0x${string}`,
         slug,
-        meta.grantedAt,
+        meta.correlatedAt ?? meta.grantedAt,
       );
       onChange();
       toast({

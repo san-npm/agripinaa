@@ -39,6 +39,19 @@ import {
 } from '@/lib/funding-recovery';
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
 import { markRegistered, storeSession } from '@/lib/session-store';
+import {
+  acquireSessionGrantSubmissionLock,
+  clearSessionGrantCheckpoint,
+  loadSessionGrantCheckpoint,
+  retireExpiredRotatedManagerCheckpoint,
+  reserveSessionGrantCheckpoint,
+  submitSessionGrantCheckpoint,
+} from '@/lib/session-grant-checkpoint';
+import { findRelaySessionGrant } from '@/lib/session-relay-recovery';
+import {
+  lifetimeOptionForExistingSession,
+  recoverExistingSession,
+} from '@/lib/session-recovery';
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
 import { FundingDeposit } from './FundingDeposit';
@@ -65,7 +78,7 @@ type StrategySession = Awaited<ReturnType<ReturnType<typeof altanaClient>['grant
 interface GrantedStrategyActivation {
   session: StrategySession;
   local: ReturnType<typeof storeSession>;
-  approvedCheckerCount: number;
+  approvedSignatureCheckers: readonly Hex[];
 }
 
 interface RecoveredFunding {
@@ -97,6 +110,7 @@ export function StrategyWizard({
   const [recoveryTxHash, setRecoveryTxHash] = useState(initialRecoveryTxHash);
   const [recoveredFunding, setRecoveredFunding] = useState<RecoveredFunding | null>(null);
   const [grantedActivation, setGrantedActivation] = useState<GrantedStrategyActivation | null>(null);
+  const [recoveredExpiry, setRecoveredExpiry] = useState<number | null>(null);
   const [hours, setHours] = useState(168);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
@@ -166,11 +180,32 @@ export function StrategyWizard({
         if (changedApprovals.length > 0) {
           throw new Error('One or more strategy venue approvals changed after funding. Recovery cannot safely skip that owner step.');
         }
-        if (registrationFee > FUNDING_MAX_REGISTRATION_FEE_WEI) {
+        // A lost grant response has already consumed the second registration
+        // fee from the funding reserve. Prove whether that exact grant exists
+        // before requiring money for another registration; otherwise the
+        // recovery path rejects the very state it is meant to repair.
+        setPhase('Checking for an existing agent session…');
+        const manager = await fetchManagerKey(agent.slug, 'USDT');
+        const recoveredSession = await recoverExistingSession({
+          account: next.address as Hex,
+          manager,
+          scope: buildStrategyScope(agent.slug, hours),
+          signatureCheckers: strategy.signatureCheckers,
+          signer: verifyOnlyStub(manager.address, manager.publicKey),
+          maximumExpiry: null,
+        });
+        if (recoveredSession) {
+          setHours(lifetimeOptionForExistingSession(recoveredSession.session.expiry));
+        }
+        if (!recoveredSession && registrationFee > FUNDING_MAX_REGISTRATION_FEE_WEI) {
           throw new Error('The live Altana key-registration fee is above Agripinaa\'s safety ceiling.');
         }
-        if (nativeBalance < FUNDING_GAS_RESERVE_WEI + registrationFee) {
-          throw new Error('The recovered account no longer holds enough native BNB for session registration and its execution reserve.');
+        const requiredNativeBalance = FUNDING_GAS_RESERVE_WEI
+          + (recoveredSession ? 0n : registrationFee);
+        if (nativeBalance < requiredNativeBalance) {
+          throw new Error(recoveredSession
+            ? 'The recovered account no longer holds the native BNB reserve required for agent execution.'
+            : 'The recovered account no longer holds enough native BNB for session registration and its execution reserve.');
         }
         setPreparedFunding(null);
         setRecoveredFunding({ transactionHash, receiptBlockNumber: receipt.blockNumber });
@@ -372,17 +407,154 @@ export function StrategyWizard({
       const client = altanaClient();
       let granted = grantedActivation;
       if (!granted) {
-        setPhase('Granting the agent-specific session (1 passkey tap)…');
+        setPhase('Checking for an existing agent session…');
         const manager = await fetchManagerKey(agent.slug, 'USDT');
-        const scope = buildStrategyScope(agent.slug, hours);
-        const summary = describeScope(scope);
-        const session = await client.grantSession({
-          wallet,
-          signer: wallet.signer,
-          chainId: 56,
-          sessionSigner: verifyOnlyStub(manager.address, manager.publicKey) as never,
-          ...scope,
+        let scope = buildStrategyScope(agent.slug, hours);
+        const sessionSigner = verifyOnlyStub(manager.address, manager.publicKey);
+        let grantCheckpoint = retireExpiredRotatedManagerCheckpoint(
+          56,
+          wallet.address as Hex,
+          agent.slug,
+          manager.publicKey,
+        );
+        if (grantCheckpoint) scope = { ...scope, expiry: grantCheckpoint.expiry };
+        const relayGrant = grantCheckpoint?.status === 'submitted'
+          ? null
+          : await findRelaySessionGrant({
+            account: wallet.address as Hex,
+            publicKey: manager.publicKey,
+          });
+        if (grantCheckpoint?.status === 'reserved' && relayGrant) {
+          submitSessionGrantCheckpoint(
+            56,
+            wallet.address as Hex,
+            agent.slug,
+            manager.publicKey,
+            grantCheckpoint.expiry,
+            relayGrant.callsId,
+          );
+          grantCheckpoint = loadSessionGrantCheckpoint(56, wallet.address as Hex, agent.slug);
+        }
+        let recovered = await recoverExistingSession({
+          account: wallet.address as Hex,
+          manager,
+          scope,
+          signatureCheckers: strategy.signatureCheckers,
+          signer: sessionSigner,
         });
+        if (!recovered && relayGrant?.status === 'pending') {
+          throw new Error('The previous session grant is still pending in the account relay history. Retry activation later; no duplicate grant was submitted.');
+        }
+        if (!recovered && grantCheckpoint) {
+          if (grantCheckpoint.status === 'reserved') {
+            throw new Error(`A previous signed session grant has no definitive relay outcome yet. Activation will not submit this manager key twice; retry later. If it remains unresolved, rotate the manager key and retry after ${new Date(grantCheckpoint.expiry * 1_000).toISOString()}.`);
+          }
+          setPhase('Reconciling the previous session grant with the relay…');
+          const outcome = await client.waitForExecution({
+            callsId: grantCheckpoint.callsId,
+            chainId: 56,
+          });
+          if (outcome.status === 'PENDING') {
+            throw new Error('The previous session grant is still pending. It is saved safely; retry activation later without granting again.');
+          }
+          if (outcome.status === 'FAILED') {
+            clearSessionGrantCheckpoint(56, wallet.address as Hex, agent.slug);
+            grantCheckpoint = null;
+            scope = buildStrategyScope(agent.slug, hours);
+            recovered = await recoverExistingSession({
+              account: wallet.address as Hex,
+              manager,
+              scope,
+              signatureCheckers: strategy.signatureCheckers,
+              signer: sessionSigner,
+            });
+          } else {
+            setPhase('Recovering the relay-confirmed session on BNB Chain…');
+            recovered = await recoverExistingSession({
+              account: wallet.address as Hex,
+              manager,
+              scope,
+              signatureCheckers: strategy.signatureCheckers,
+              signer: sessionSigner,
+            });
+            if (!recovered) {
+              throw new Error('The relay confirmed the saved session grant, but independent BSC providers have not indexed it yet. Retry later; no duplicate grant was submitted.');
+            }
+          }
+        }
+        if (!recovered && !grantCheckpoint && relayGrant?.status === 'confirmed') {
+          setPhase('Recovering the relay-confirmed session on BNB Chain…');
+          recovered = await recoverExistingSession({
+            account: wallet.address as Hex,
+            manager,
+            scope,
+            signatureCheckers: strategy.signatureCheckers,
+            signer: sessionSigner,
+          });
+          if (!recovered) {
+            throw new Error('The account relay confirms this manager grant, but independent BSC providers have not indexed it yet. Retry later; no duplicate grant was submitted.');
+          }
+        }
+        const recoveredExisting = recovered !== null;
+        let session: StrategySession;
+        let approvedSignatureCheckers: readonly Hex[];
+        if (recovered) {
+          setPhase('Recovering the confirmed agent session…');
+          session = recovered.session as StrategySession;
+          approvedSignatureCheckers = recovered.approvedSignatureCheckers;
+          setRecoveredExpiry(recovered.session.expiry);
+        } else {
+          setPhase('Granting the agent-specific session (1 passkey tap)…');
+          let releaseGrantLock: (() => Promise<void>) | null = null;
+          try {
+            session = await client.grantSession({
+              wallet,
+              signer: wallet.signer,
+              chainId: 56,
+              sessionSigner: sessionSigner as never,
+              onBeforeSubmit: async () => {
+                releaseGrantLock = await acquireSessionGrantSubmissionLock(
+                  56,
+                  wallet.address as Hex,
+                  agent.slug,
+                  manager.publicKey,
+                  scope.expiry,
+                );
+                const concurrentGrant = await findRelaySessionGrant({
+                  account: wallet.address as Hex,
+                  publicKey: manager.publicKey,
+                });
+                if (concurrentGrant) {
+                  throw new Error('This manager grant was submitted by another tab or device. Activation stopped before sending a duplicate; retry to recover it.');
+                }
+                reserveSessionGrantCheckpoint(
+                  56,
+                  wallet.address as Hex,
+                  agent.slug,
+                  manager.publicKey,
+                  scope.expiry,
+                );
+              },
+              onSubmitted: async (callsId) => {
+                submitSessionGrantCheckpoint(
+                  56,
+                  wallet.address as Hex,
+                  agent.slug,
+                  manager.publicKey,
+                  scope.expiry,
+                  callsId,
+                );
+                await releaseGrantLock?.();
+                releaseGrantLock = null;
+              },
+              ...scope,
+            });
+          } finally {
+            await (releaseGrantLock as (() => Promise<void>) | null)?.();
+          }
+          approvedSignatureCheckers = [];
+        }
+        const summary = describeScope({ ...scope, expiry: session.expiry });
         let local: ReturnType<typeof storeSession>;
         try {
           local = storeSession({
@@ -395,7 +567,13 @@ export function StrategyWizard({
               expiresAt: summary.expiresAt,
             },
           });
+          clearSessionGrantCheckpoint(56, wallet.address as Hex, agent.slug);
         } catch (storageError) {
+          if (recoveredExisting) {
+            throw new Error(
+              `The existing on-chain session is valid, but this browser could not save its recovery record. No duplicate grant was submitted. ${storageError instanceof Error ? storageError.message : ''}`.trim(),
+            );
+          }
           return await compensateSessionStorageFailure({
             storageError,
             revoke: () => client.revokeSession({
@@ -404,32 +582,42 @@ export function StrategyWizard({
               chainId: 56,
               session: session as Parameters<typeof client.revokeSession>[0]['session'],
             }),
+            afterConfirmedRevocation: () => clearSessionGrantCheckpoint(
+              56,
+              wallet.address as Hex,
+              agent.slug,
+            ),
           });
         }
-        granted = { session, local, approvedCheckerCount: 0 };
+        granted = { session, local, approvedSignatureCheckers };
         setGrantedActivation(granted);
       }
+      if (!granted) throw new Error('Agent session recovery did not produce a usable mandate.');
+      let activeGrant = granted;
 
-      if (granted.approvedCheckerCount < strategy.signatureCheckers.length) {
+      const missingSignatureCheckers = strategy.signatureCheckers.filter((checker) =>
+        !activeGrant.approvedSignatureCheckers.some((approved) =>
+          approved.toLowerCase() === checker.toLowerCase(),
+        ),
+      );
+      if (missingSignatureCheckers.length > 0) {
         setPhase('Authorizing Ophis order validation (1 passkey tap)…');
-        for (
-          let index = granted.approvedCheckerCount;
-          index < strategy.signatureCheckers.length;
-          index += 1
-        ) {
-          const checker = strategy.signatureCheckers[index]!;
+        for (const checker of missingSignatureCheckers) {
           const approved = await client.approveSignatureChecker({
             wallet,
             signer: wallet.signer,
-            session: granted.session as Parameters<typeof client.approveSignatureChecker>[0]['session'],
+            session: activeGrant.session as Parameters<typeof client.approveSignatureChecker>[0]['session'],
             checker,
             chainId: 56,
           });
           if (approved.status !== 'CONFIRMED') {
             throw new Error('Ophis signature-checker approval did not confirm. The saved session remains revocable from your dashboard.');
           }
-          granted = { ...granted, approvedCheckerCount: index + 1 };
-          setGrantedActivation(granted);
+          activeGrant = {
+            ...activeGrant,
+            approvedSignatureCheckers: [...activeGrant.approvedSignatureCheckers, checker],
+          };
+          setGrantedActivation(activeGrant);
         }
       }
 
@@ -437,9 +625,9 @@ export function StrategyWizard({
       await registerManaged(agent.slug, {
         account: wallet.address as Hex,
         chainId: 56,
-        session: granted.session,
+        session: activeGrant.session,
       });
-      markRegistered(granted.local.id);
+      markRegistered(activeGrant.local.id);
       clearFundingCheckpoint(56, wallet.address as Hex, agent.slug);
       setStep('active');
       toast({ title: `${agent.name} activated`, detail: 'The runner accepted your mandate', kind: 'success' });
@@ -634,6 +822,11 @@ export function StrategyWizard({
               <h2 className="font-display text-lg font-semibold text-success">Agent active</h2>
             </div>
             <p className="text-sm text-muted">{agent.activeSummary ?? strategy.summary} The grant is saved locally and can be revoked from your dashboard.</p>
+            {recoveredExpiry !== null && (
+              <p className="text-xs text-muted-2">
+                Existing on-chain grant recovered. It expires {new Date(recoveredExpiry * 1000).toLocaleString()}.
+              </p>
+            )}
             <a href="/dashboard" className={`inline-block ${primaryBtn}`}>Open dashboard</a>
           </section>
         )}

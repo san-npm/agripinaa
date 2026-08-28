@@ -45,7 +45,8 @@ export default function DashboardPage() {
         && session.revokedAt === null);
       const followsCheckpoint = (session: StoredSessionMeta) => {
         const savedAt = entry.checkpoint.savedAt;
-        return savedAt === undefined || Date.parse(session.grantedAt) >= savedAt;
+        return savedAt === undefined
+          || Date.parse(session.correlatedAt ?? session.grantedAt) >= savedAt;
       };
       const completedSession = matchingSessions.find((session) =>
         session.registrationStatus === 'registered' && followsCheckpoint(session));

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   KEYSTORE_ADDRESSES,
   accountKeyDescriptorMatches,
+  accountKeyIdentityMatches,
   accountSessionPermissionsMatch,
   isSessionKeyValid,
   keyIdFromPublicKey,
@@ -28,6 +29,7 @@ test('KeyStore deployments are pinned for 56 and 97', () => {
 
 const ROUTER = '0x1111111111111111111111111111111111111111' as const;
 const TOKEN = '0x2222222222222222222222222222222222222222' as const;
+const ORCHESTRATOR = '0x3333333333333333333333333333333333333333' as const;
 const EXPECTED_PERMISSIONS = {
   calls: [
     { to: ROUTER, signature: 'toAave()' },
@@ -85,6 +87,34 @@ test('account permissions require the exact granted call and spend mappings', ()
   }), false);
 });
 
+test('the Porto relay execute is accepted only for the exact pinned orchestrator', () => {
+  const relayExecute =
+    '0x3333333333333333333333333333333333333333000000000000000032323232' as const;
+  const base = {
+    expected: { ...EXPECTED_PERMISSIONS, relayOrchestrator: ORCHESTRATOR },
+    executes: [...EXECUTES, relayExecute],
+    spends: SPENDS,
+    callCheckers: [],
+    signatureCheckers: [],
+    globalExecutes: [],
+    globalCallCheckers: [],
+    globalSignatureCheckers: [],
+  };
+  assert.equal(accountSessionPermissionsMatch(base), true);
+  assert.equal(accountSessionPermissionsMatch({ ...base, executes: EXECUTES }), false);
+  assert.equal(accountSessionPermissionsMatch({
+    ...base,
+    expected: {
+      ...EXPECTED_PERMISSIONS,
+      relayOrchestrator: '0x4444444444444444444444444444444444444444',
+    },
+  }), false);
+  assert.equal(accountSessionPermissionsMatch({
+    ...base,
+    executes: [...base.executes, relayExecute],
+  }), false);
+});
+
 test('account key identity requires Porto canonical secp256k1 encoding', () => {
   const address = '0x1234567890123456789012345678901234567890' as const;
   const expiry = 1_900_000_000;
@@ -94,7 +124,9 @@ test('account key identity requires Porto canonical secp256k1 encoding', () => {
     isSuperAdmin: false,
     publicKey: `0x${'00'.repeat(12)}${address.slice(2)}` as const,
   };
+  assert.equal(accountKeyIdentityMatches(canonical, address), true);
   assert.equal(accountKeyDescriptorMatches(canonical, address, expiry), true);
+  assert.equal(accountKeyDescriptorMatches(canonical, address, expiry + 1), false);
   assert.equal(accountKeyDescriptorMatches({
     ...canonical,
     keyType: 3,
