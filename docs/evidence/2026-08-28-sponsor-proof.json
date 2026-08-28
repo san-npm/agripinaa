@@ -1,0 +1,113 @@
+{
+  "capturedAt": "2026-08-28T20:22:01.164Z",
+  "chainId": 56,
+  "altana": {
+    "account": "0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+    "explorer": "https://explorer.altana.network/account/0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+    "keyStore": "0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a",
+    "manager": "0xC00EEBc7D6cB9Db3249B24d8f6F92E207e494EdF",
+    "keyStoreKeyId": "0xbd6adfb89f5e34e876369b2141352e4bac3f0a36de849f3428f417fab312a55c",
+    "accountKeyHash": "0x747fbfbcd9f9c1656da2242903d20f5c333ecea064fe1c327f7ec8aae29d7f00",
+    "validAtCapture": true,
+    "expiresAt": "2026-08-29T10:52:44.000Z",
+    "isSuperAdmin": false,
+    "registrationTransaction": "0xb2d10f8149426dc787901a8438c17435b934e5dbfce1744b281a51b21ae6eb15",
+    "sessionExecutionTransaction": "0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678",
+    "priorRevocationTransaction": "0xa777b423663de7ae8c021e8ab95c9adafbb880b65a5870fbd906f6941c93ddef",
+    "logicalCallScope": [
+      {
+        "target": "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364",
+        "signature": "mint((address,address,uint24,int24,int24,uint256,uint256,uint256,uint256,address,uint256))",
+        "selector": "0x88316456"
+      },
+      {
+        "target": "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364",
+        "signature": "decreaseLiquidity((uint256,uint128,uint256,uint256,uint256))",
+        "selector": "0x0c49ccbe"
+      },
+      {
+        "target": "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364",
+        "signature": "collect((uint256,address,uint128,uint128))",
+        "selector": "0xfc6f7865"
+      }
+    ],
+    "relayPermission": {
+      "target": "0xaf140d0416a994aebb3fa6212b16ce6700f09751",
+      "selector": "any",
+      "purpose": "Pinned Altana orchestrator permission injected by the account implementation"
+    },
+    "callCheckerInfos": [],
+    "spendCaps": [
+      {
+        "token": "USDT",
+        "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+        "period": "day",
+        "limit": "1000000",
+        "spentAtCapture": "4.104673789349687825"
+      },
+      {
+        "token": "WBNB",
+        "tokenAddress": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+        "period": "day",
+        "limit": "100",
+        "spentAtCapture": "0.005878392012763819"
+      },
+      {
+        "token": "BNB",
+        "tokenAddress": "0x0000000000000000000000000000000000000000",
+        "period": "day",
+        "limit": "0.005",
+        "spentAtCapture": "0.00006631285"
+      }
+    ],
+    "spendCapAssessment": "USDT 1,000,000/day and WBNB 100/day are enforceable but broad inventory ceilings relative to this account. BNB 0.005/day is the tight native-value-and-gas ceiling. Selector scope, expiry, and the dedicated account provide additional containment.",
+    "signatureCheckers": [
+      "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"
+    ],
+    "authorityLimitations": [
+      "The three Pancake position-manager selectors accept arguments, including recipient or position fields; no argument checker is installed.",
+      "A compromised manager can redirect inventory and LP principal inside this dedicated account, and NFT principal is not bounded by the ERC-20 spend counters.",
+      "The CoW Settlement ERC-1271 checker authorizes canonical Ophis orders over inventory already approved from the dedicated account.",
+      "The runner's 30-minute persistence rule and four-actions-per-week breaker are off-chain strategy controls, not KeyStore-enforced limits."
+    ]
+  },
+  "pancakeSwap": {
+    "positionManager": "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364",
+    "pool": "0x172fcD41E0913e95784454622d1c3724f546f849",
+    "pair": "WBNB/USDT",
+    "fee": 100,
+    "positionTokenId": "7271073",
+    "owner": "0x47352a5aff2909dcfb46b7f8758c78a868c17988",
+    "mintTransaction": "0xf0429b522926bb9b87835d7435ef4974beb6ad50cea59d9924334559db2c5678",
+    "tickLower": -66059,
+    "tickUpper": -65085,
+    "currentTickAtCapture": -65356,
+    "liquidityAtCapture": "6457605562311526187",
+    "rangeStateAtCapture": "in-range",
+    "managedChecks": 30,
+    "rawChecksArtifact": "2026-08-28-ranger-managed-checks.jsonl",
+    "managedChecksWindow": {
+      "start": "2026-08-28T15:32:04.154Z",
+      "end": "2026-08-28T20:13:31.648Z"
+    },
+    "evidenceBoundary": "This capture proves preparation, mint, owner, liquidity, and 30 in-range checks. It does not contain a completed decrease/collect/Ophis-rebalance/re-mint lifecycle because the position did not leave range."
+  },
+  "scan8004": {
+    "endpoint": "https://agripinaa.vercel.app/api/index/agents?limit=1",
+    "source": "8004scan-pro",
+    "bscTotal": 288944,
+    "asOf": "2026-08-28T20:21:08.998Z",
+    "sampleAgentId": "56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:315721",
+    "sampleTrustSource": "8004scan"
+  },
+  "firstPartyAgents": [
+    { "name": "Agripinaa Grid", "category": "grid", "tokenId": "269703", "verified": true },
+    { "name": "Agripinaa BTC Grid", "category": "grid", "tokenId": "307485", "verified": false },
+    { "name": "Agripinaa Guardian", "category": "health-factor", "tokenId": "269704", "verified": true },
+    { "name": "Agripinaa Venus Guardian", "category": "health-factor", "tokenId": "307486", "verified": true },
+    { "name": "Agripinaa Harvester", "category": "yield", "tokenId": "269705", "verified": true },
+    { "name": "Agripinaa Steward", "category": "yield", "tokenId": "307487", "verified": true },
+    { "name": "Agripinaa Ranger", "category": "rebalancing", "tokenId": "269706", "verified": true },
+    { "name": "Agripinaa Rebalancer", "category": "rebalancing", "tokenId": "307488", "verified": false }
+  ]
+}

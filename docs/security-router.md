@@ -1,12 +1,14 @@
 # Router security
 
-Managed yield is the only Agripinaa feature that touches a user's own capital.
-It works by granting an agent a session key on the user's smart account, scoped
-to one contract: `AgripinaaYieldRouter`
+Managed yield is Agripinaa's recipient-bound router path. It works by granting
+an agent a session key on the user's smart account, scoped to one contract:
+`AgripinaaYieldRouter`
 ([`contracts/src/AgripinaaYieldRouter.sol`](../contracts/src/AgripinaaYieldRouter.sol)).
 This document states what that session key can do if it is stolen outright, and
 cites the file, the test, or the address behind each claim so a reviewer can
-check it rather than take it.
+check it rather than take it. The other six managed agents also touch user
+capital, but only inside dedicated user-controlled strategy accounts and
+without this router's recipient-bound guarantee.
 
 Debt-complete version-3 deployments on BNB Smart Chain
 (`packages/shared/src/contracts.ts`):
@@ -49,8 +51,10 @@ directly to Aave's `withdraw(asset, amount, to)` or to ERC-20 `transfer(to,
 amount)` would leave `to` under the attacker's control, which is a drain with
 extra steps.
 
-The router removes the argument surface. It exposes exactly three selectors,
-each taking nothing at all (`packages/shared/src/contracts.ts`, `ROUTER_ACTIONS`):
+The router removes the argument surface from the session authority. The session
+authorizes exactly three state-changing selectors, each taking nothing at all
+(`packages/shared/src/contracts.ts`, `ROUTER_ACTIONS`). Public immutable and
+version getters expose additional read-only selectors:
 
 | Signature | Selector | Effect |
 | --- | --- | --- |
@@ -58,10 +62,10 @@ each taking nothing at all (`packages/shared/src/contracts.ts`, `ROUTER_ACTIONS`
 | `toVenus()` | `0x88b480df` | Collect idle stablecoin and any safe Aave source leg, then mint Venus receipts; an existing Venus target leg is untouched |
 | `toIdle()` | `0x18b5e866` | Return idle stablecoin and unwind each debt-free source leg; encumbered collateral remains where it is |
 
-Every recipient in the contract is `msg.sender`, hardcoded. There is no calldata
-that names a destination, because there is no calldata. The account that calls
-is the account that receives, in all three paths and in the private
-`_collectUsdt` helper they share.
+Every terminal beneficiary in the contract is `msg.sender`, hardcoded. There is
+no calldata that names a terminal destination. Intermediate transfers may send
+assets to the router during the same transaction, but the calling account is
+the only account that can receive the final idle or receipt-token output.
 
 Supporting properties, all readable in the source: no owner, no admin role, no
 upgrade path, no `selfdestruct`, no `delegatecall`, a `nonReentrant` guard on
@@ -117,9 +121,10 @@ lets the two properties be strict:
   they deposited. An attacker with zero deposits ends at zero; nobody sweeps
   another actor's principal or a donation. This is L-1 as an executable
   property.
-- `echidna_router_holds_only_donations`: the router never custodies more than
-  what was donated to it, so the "ends every call at a zero balance" claim is a
-  bound rather than a comment.
+- `echidna_router_holds_only_donations`: after every successful external call,
+  the router never custodies more than what was donated to it. Caller funds are
+  held transiently during a rotation, so this is a transaction-boundary
+  invariant rather than a statement about every internal instruction.
 
 Both engines run the same harness against the same prefix:
 
@@ -291,12 +296,13 @@ percent WBNB move, attacker profit about $125. Those figures come from the
 audit's proof of concept, run on 2026-08-24, and the PoC itself is not
 committed here, so they are reported rather than re-runnable from this repo.
 
-Three things follow, and none of them are softened here:
+For the superseded pre-v3 implementation, three things followed, and none of
+them are softened here:
 
-1. **The precondition is load-bearing.** The claim "a compromised session key
-   cannot cost this user value" holds only for an account with no debt in the
-   venue its receipt token sits in. It is not a property of the contract in
-   general.
+1. **The precondition was load-bearing.** Before the v3 structural guard, the
+   claim "a compromised session key cannot cost this user value" held only for
+   an account with no debt in the venue its receipt token sat in. It was not a
+   property of that implementation in general.
 2. **Checked on-chain, not assumed:** read back on 2026-08-24, the single live
    managed account has zero debt in both venues and has entered no Venus market
    as collateral, so no user is exposed. No transcript of that read is
@@ -314,9 +320,14 @@ Three things follow, and none of them are softened here:
 The source now implements the structural fix: it refuses an Aave unwind when
 `getUserAccountData` reports debt and refuses a Venus unwind when any entered
 market reports a borrow, including Venus's separate `mintedVAIs` ledger.
-Encumbered source legs are left untouched instead of reverting unrelated safe
-funds, and constructor checks bind the comptroller and receipt tokens to their
-configured dependencies. The fork suite proves these paths.
+Encumbered source legs are normally left untouched instead of reverting
+unrelated safe funds, and constructor checks bind the comptroller and receipt
+tokens to their configured dependencies. One availability exception is
+intentional and fail-closed: if Venus migrates the controller returned by the
+configured vToken, a donated raw vToken balance can make the controller-mismatch
+check abort the whole call, including an otherwise safe Aave or idle leg. The
+fork suite proves debt safety; it does not promise independent-leg availability
+during that controller-migration condition.
 
 The version-3 deployments at the top of this document check Aave aggregate
 debt, ordinary entered Venus-market borrows, and VAI. Their creation
@@ -331,8 +342,11 @@ fail closed on older deployments or a live-code mismatch.
 The superseded version-2 addresses `0xE69503b2…3C02` (USDT) and
 `0x0DD7B744…6167` (USDC), plus the earlier version-1 addresses, remain in the
 recovery registry. A prior session cannot authorize a replacement address: an
-owner who wants managed execution through version 3 must approve the new
-router and grant a fresh mandate. Old scopes remain recovery-only.
+owner who wants managed execution through version 3 must approve the new router
+and grant a fresh mandate. Old scopes are recovery-only in the Agripinaa app and
+runner, but retirement does not revoke an already-valid on-chain session. The
+owner must confirm revocation or expiry and review token allowances before
+treating the old authority as stopped.
 
 ## Reproduce it
 
