@@ -29,7 +29,11 @@ import {
   reserveSessionGrantCheckpoint,
   submitSessionGrantCheckpoint,
 } from '@/lib/session-grant-checkpoint';
-import { findRelaySessionGrant } from '@/lib/session-relay-recovery';
+import {
+  findRelaySessionGrant,
+  readRelayCallStatus,
+  type RelayCallStatus,
+} from '@/lib/session-relay-recovery';
 import { recoverExistingSession } from '@/lib/session-recovery';
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { waitForManagedPrincipal } from '@/lib/managed-principal';
@@ -52,7 +56,7 @@ import {
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
-import { ActivationProgress, FundingDeposit } from './FundingDeposit';
+import { ActivationProgress, FundingDeposit, RelayGrantNotice } from './FundingDeposit';
 import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
@@ -94,6 +98,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [preparedFunding, setPreparedFunding] = useState<FundingCheckpoint | null>(null);
   const [grantedActivation, setGrantedActivation] = useState<GrantedManagedActivation | null>(null);
+  const [relayGrantStatus, setRelayGrantStatus] = useState<RelayCallStatus | null>(null);
   const [recoveredExpiry, setRecoveredExpiry] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(168);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +134,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     }
     setBusy(true);
     setError(null);
+    setRelayGrantStatus(null);
     try {
       const client = altanaClient();
       const w =
@@ -452,22 +458,32 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           signer: sessionSigner,
         });
         if (!recovered && relayGrant?.status === 'pending') {
-          throw new Error('The previous session grant is still pending in the account relay history. Retry activation later; no duplicate grant was submitted.');
+          setRelayGrantStatus(relayGrant);
+          toast({
+            title: 'Agent mandate is waiting at the relay',
+            detail: 'Funding is confirmed and no duplicate grant was submitted.',
+          });
+          return;
         }
         if (!recovered && grantCheckpoint) {
           if (grantCheckpoint.status === 'reserved') {
             throw new Error(`A previous signed session grant has no definitive relay outcome yet. Activation will not submit this manager key twice; retry later. If it remains unresolved, rotate the manager key and retry after ${new Date(grantCheckpoint.expiry * 1_000).toISOString()}.`);
           }
           setPhase('Reconciling the previous session grant with the relay…');
-          const outcome = await client.waitForExecution({
+          const outcome = await readRelayCallStatus({
             callsId: grantCheckpoint.callsId,
-            chainId,
           });
-          if (outcome.status === 'PENDING') {
-            throw new Error('The previous session grant is still pending. It is saved safely; retry activation later without granting again.');
+          if (outcome.status === 'pending') {
+            setRelayGrantStatus(outcome);
+            return;
           }
-          if (outcome.status === 'FAILED') {
+          if (outcome.status === 'failed') {
             clearSessionGrantCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+            if (relayGrantStatus?.status !== 'failed') {
+              setRelayGrantStatus(outcome);
+              return;
+            }
+            setRelayGrantStatus(null);
             grantCheckpoint = null;
             scope = buildManagedScope({ chainId, hours, token });
             recovered = await recoverExistingSession({
@@ -478,6 +494,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               signer: sessionSigner,
             });
           } else {
+            setRelayGrantStatus(outcome);
             setPhase('Recovering the relay-confirmed session on BNB Chain…');
             recovered = await recoverExistingSession({
               account: wallet.address as `0x${string}`,
@@ -487,11 +504,12 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               signer: sessionSigner,
             });
             if (!recovered) {
-              throw new Error('The relay confirmed the saved session grant, but independent BSC providers have not indexed it yet. Retry later; no duplicate grant was submitted.');
+              return;
             }
           }
         }
         if (!recovered && !grantCheckpoint && relayGrant?.status === 'confirmed') {
+          setRelayGrantStatus(relayGrant);
           setPhase('Recovering the relay-confirmed session on BNB Chain…');
           recovered = await recoverExistingSession({
             account: wallet.address as `0x${string}`,
@@ -501,61 +519,98 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             signer: sessionSigner,
           });
           if (!recovered) {
-            throw new Error('The account relay confirms this manager grant, but independent BSC providers have not indexed it yet. Retry later; no duplicate grant was submitted.');
+            return;
           }
         }
         const recoveredExisting = recovered !== null;
         let session: ManagedSession;
         if (recovered) {
+          setRelayGrantStatus(null);
           setPhase('Recovering the confirmed managed session…');
           session = recovered.session as ManagedSession;
           setRecoveredExpiry(recovered.session.expiry);
         } else {
+          setRelayGrantStatus(null);
           setPhase('Granting the managed session (1 passkey tap)…');
           let releaseGrantLock: (() => Promise<void>) | null = null;
           try {
-            session = await client.grantSession({
-              wallet,
-              signer: wallet.signer,
-              chainId,
-              sessionSigner: sessionSigner as never,
-              onBeforeSubmit: async () => {
-                releaseGrantLock = await acquireSessionGrantSubmissionLock(
-                  chainId,
-                  wallet.address as `0x${string}`,
-                  agent.managedAgent,
-                  manager.publicKey,
-                  scope.expiry,
-                );
-                const concurrentGrant = await findRelaySessionGrant({
-                  account: wallet.address as `0x${string}`,
-                  publicKey: manager.publicKey,
-                });
-                if (concurrentGrant) {
-                  throw new Error('This manager grant was submitted by another tab or device. Activation stopped before sending a duplicate; retry to recover it.');
+            try {
+              session = await client.grantSession({
+                wallet,
+                signer: wallet.signer,
+                chainId,
+                sessionSigner: sessionSigner as never,
+                onBeforeSubmit: async () => {
+                  releaseGrantLock = await acquireSessionGrantSubmissionLock(
+                    chainId,
+                    wallet.address as `0x${string}`,
+                    agent.managedAgent,
+                    manager.publicKey,
+                    scope.expiry,
+                  );
+                  const concurrentGrant = await findRelaySessionGrant({
+                    account: wallet.address as `0x${string}`,
+                    publicKey: manager.publicKey,
+                  });
+                  if (concurrentGrant) {
+                    throw new Error('This manager grant was submitted by another tab or device. Activation stopped before sending a duplicate; retry to recover it.');
+                  }
+                  reserveSessionGrantCheckpoint(
+                    chainId,
+                    wallet.address as `0x${string}`,
+                    agent.managedAgent,
+                    manager.publicKey,
+                    scope.expiry,
+                  );
+                },
+                onSubmitted: async (callsId) => {
+                  submitSessionGrantCheckpoint(
+                    chainId,
+                    wallet.address as `0x${string}`,
+                    agent.managedAgent,
+                    manager.publicKey,
+                    scope.expiry,
+                    callsId,
+                  );
+                  setRelayGrantStatus({ callsId, status: 'pending' });
+                  await releaseGrantLock?.();
+                  releaseGrantLock = null;
+                },
+                ...scope,
+              });
+              const submitted = loadSessionGrantCheckpoint(
+                chainId,
+                wallet.address as `0x${string}`,
+                agent.managedAgent,
+              );
+              if (submitted?.status !== 'submitted') {
+                throw new Error('The confirmed agent mandate has no saved relay reference. Activation stopped before handoff.');
+              }
+              const outcome = await readRelayCallStatus({ callsId: submitted.callsId })
+                .catch((): RelayCallStatus => ({ callsId: submitted.callsId, status: 'pending' }));
+              if (outcome.status !== 'confirmed') {
+                if (outcome.status === 'failed') {
+                  clearSessionGrantCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
                 }
-                reserveSessionGrantCheckpoint(
-                  chainId,
-                  wallet.address as `0x${string}`,
-                  agent.managedAgent,
-                  manager.publicKey,
-                  scope.expiry,
-                );
-              },
-              onSubmitted: async (callsId) => {
-                submitSessionGrantCheckpoint(
-                  chainId,
-                  wallet.address as `0x${string}`,
-                  agent.managedAgent,
-                  manager.publicKey,
-                  scope.expiry,
-                  callsId,
-                );
-                await releaseGrantLock?.();
-                releaseGrantLock = null;
-              },
-              ...scope,
-            });
+                setRelayGrantStatus(outcome);
+                return;
+              }
+              setRelayGrantStatus(null);
+            } catch (grantError) {
+              const submitted = loadSessionGrantCheckpoint(
+                chainId,
+                wallet.address as `0x${string}`,
+                agent.managedAgent,
+              );
+              if (submitted?.status !== 'submitted') throw grantError;
+              const outcome = await readRelayCallStatus({ callsId: submitted.callsId })
+                .catch((): RelayCallStatus => ({ callsId: submitted.callsId, status: 'pending' }));
+              if (outcome.status === 'failed') {
+                clearSessionGrantCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
+              }
+              setRelayGrantStatus(outcome);
+              return;
+            }
           } finally {
             await (releaseGrantLock as (() => Promise<void>) | null)?.();
           }
@@ -638,11 +693,17 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const stepIndex = { wallet: 0, deposit: 1, active: 2 }[step];
   const activationLabel = preparedFunding?.status === 'submitted'
     ? 'Check funding status'
-    : preparedFunding?.status === 'confirmed' && !grantedActivation
-      ? 'Continue: grant agent mandate'
-      : grantedActivation
-        ? 'Retry agent handoff'
-        : agent.submitLabel ?? 'Put funds under management';
+    : relayGrantStatus?.status === 'pending'
+      ? 'Check mandate status'
+      : relayGrantStatus?.status === 'confirmed'
+        ? 'Finish activation'
+        : relayGrantStatus?.status === 'failed'
+          ? 'Retry agent mandate'
+          : preparedFunding?.status === 'confirmed' && !grantedActivation
+            ? 'Continue: grant agent mandate'
+            : grantedActivation
+              ? 'Retry agent handoff'
+              : agent.submitLabel ?? 'Put funds under management';
   const primaryBtn =
     'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
@@ -781,6 +842,9 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               </div>
             </label>
             {busy && <ActivationProgress phase={phase} />}
+            {relayGrantStatus && (
+              <RelayGrantNotice grant={relayGrantStatus} onStatusChange={setRelayGrantStatus} />
+            )}
             <button
               onClick={activate}
               disabled={busy || !automationReady || (!preparedFunding && (!activeGasQuote || !fundingReady))}
