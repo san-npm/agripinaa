@@ -7,7 +7,11 @@ import {
   type FundingBootstrapPlan,
   type FundingGasQuote,
 } from '@/lib/funding-bootstrap';
-import { useState } from 'react';
+import {
+  readRelayCallStatus,
+  type RelayCallStatus,
+} from '@/lib/session-relay-recovery';
+import { useEffect, useState } from 'react';
 
 import { TokenLogo } from './icons';
 
@@ -185,6 +189,78 @@ export function ActivationProgress({ phase }: { phase: string }) {
       <p className="font-semibold text-primary">Activation in progress</p>
       <p className="mt-1 text-foreground">{phase || 'Working…'}</p>
       <p className="mt-1 text-muted">The action below is temporarily locked to prevent a duplicate transaction.</p>
+    </div>
+  );
+}
+
+export function RelayGrantNotice({
+  grant,
+  onStatusChange,
+}: {
+  grant: RelayCallStatus;
+  onStatusChange(grant: RelayCallStatus): void;
+}) {
+  useEffect(() => {
+    if (grant.status !== 'pending') return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void readRelayCallStatus({ callsId: grant.callsId })
+        .then((next) => {
+          if (!cancelled && next.status !== grant.status) onStatusChange(next);
+        })
+        .catch(() => {
+          // Keep the known pending result; the next interval retries.
+        });
+    }, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [grant.callsId, grant.status, onStatusChange]);
+
+  const confirmed = grant.status === 'confirmed';
+  const failed = grant.status === 'failed';
+  return (
+    <div
+      role={failed ? 'alert' : 'status'}
+      aria-live="polite"
+      aria-atomic="true"
+      className={`rounded-lg border p-3 text-xs leading-relaxed ${
+        confirmed
+          ? 'border-success/25 bg-success/10'
+          : failed
+            ? 'border-danger/30 bg-danger/10'
+            : 'border-primary/30 bg-primary/10'
+      }`}
+    >
+      <p className={`font-semibold ${confirmed ? 'text-success' : failed ? 'text-danger' : 'text-primary'}`}>
+        {confirmed
+          ? 'Agent mandate confirmed by the relay'
+          : failed
+            ? 'Agent mandate was not submitted on-chain'
+            : 'Agent mandate waiting at the relay'}
+      </p>
+      <p className="mt-1 text-foreground">
+        {confirmed
+          ? 'Continue below to verify the mandate on BNB Chain and finish the agent handoff.'
+          : failed
+            ? 'No mandate transaction was created. Use “Retry agent mandate” below when you are ready to sign again.'
+            : 'Your funding is confirmed. Altana accepted the signed mandate but has not produced a BNB Chain transaction yet. Agripinaa will not submit a duplicate while the outcome is unknown.'}
+      </p>
+      {grant.status === 'pending' && (
+        <p className="mt-1 text-muted">Checking automatically every 5 seconds. “Check mandate status” remains available below.</p>
+      )}
+      <code className="mt-2 block break-all text-muted-2">Relay reference: {grant.callsId}</code>
+      {confirmed && grant.transactionHash && (
+        <a
+          href={`https://bscscan.com/tx/${grant.transactionHash}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-block font-medium text-success underline decoration-success/50 underline-offset-2 hover:text-foreground"
+        >
+          View mandate transaction on BscScan ↗
+        </a>
+      )}
     </div>
   );
 }
