@@ -7,11 +7,14 @@ import type { Hex, TransactionReceipt } from 'viem';
 import {
   BSC_RECEIPT_RPC_SOURCES,
   fundingReceiptFingerprint,
+  readBscNonceQuorum,
   waitForBscTransactionReceipt,
+  type BscNonceClient,
   type BscReceiptClient,
 } from '../src/lib/bsc-public-client';
 
 const HASH = '0x279a32de4a34115057efaa71322ef90944335d384bc303638a0d3491811fb91c' as Hex;
+const ACCOUNT = '0x47352a5aff2909dcfb46b7f8758c78a868c17988' as const;
 
 function receipt(data = '0x01' as Hex): TransactionReceipt {
   return {
@@ -108,6 +111,45 @@ describe('BSC funding receipt quorum', () => {
         pollMs: 0,
       }),
       /two BSC RPC providers have not agreed/,
+    );
+  });
+});
+
+describe('BSC nonce quorum', () => {
+  function nonceClient(head: bigint, value: bigint | Error, blocks: bigint[]): BscNonceClient {
+    return {
+      async getBlockNumber() { return head; },
+      async readContract({ blockNumber }) {
+        blocks.push(blockNumber);
+        if (value instanceof Error) throw value;
+        return value;
+      },
+    };
+  }
+
+  it('uses a common block and rejects one provider forging advancement', async () => {
+    const blocks: bigint[] = [];
+    const value = await readBscNonceQuorum(ACCOUNT, 0n, {
+      clients: [
+        nonceClient(100n, 12n, blocks),
+        nonceClient(101n, 11n, blocks),
+        nonceClient(102n, 11n, blocks),
+      ],
+    });
+    assert.equal(value, 11n);
+    assert.deepEqual(blocks, [101n, 101n, 101n]);
+  });
+
+  it('fails closed without two matching nonce reads', async () => {
+    await assert.rejects(
+      readBscNonceQuorum(ACCOUNT, 0n, {
+        clients: [
+          nonceClient(100n, 12n, []),
+          nonceClient(100n, 11n, []),
+          nonceClient(100n, new Error('offline'), []),
+        ],
+      }),
+      /nonce quorum mismatch/,
     );
   });
 });

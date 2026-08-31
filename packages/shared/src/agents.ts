@@ -111,6 +111,23 @@ export interface AgentFunding {
   btcb?: string;
 }
 
+/**
+ * One account-specific grant made to a manager key that has since been
+ * rotated out of service. This is public recovery policy, never key material:
+ * it lets a clean browser revoke the exact old mandate and lets the runner
+ * refuse an overlapping replacement even when no /manage handoff was saved.
+ */
+export interface RetiredManagerGrant {
+  token: ManagedToken;
+  account: `0x${string}`;
+  publicKey: `0x${string}`;
+  address: `0x${string}`;
+  expiry: number;
+  grantCallsId: `0x${string}`;
+  /** Full Ithaca account nonce used by the stalled grant intent. */
+  nonce: string;
+}
+
 export interface AgentRecord {
   slug: AgentSlug;
   /** ERC-8004 token id on BSC mainnet, or null before registration. */
@@ -138,6 +155,8 @@ export interface AgentRecord {
    * the private half lives only in wallets/agent-<slug>-session.json.
    */
   managerKeys?: Partial<Record<ManagedToken, `0x${string}`>>;
+  /** Unexpired pre-rotation grants that still need an explicit safe reset. */
+  retiredManagerGrants?: readonly RetiredManagerGrant[];
   /** Whether to backfill this wallet's Ophis settlements into the proof feed. */
   backfillOphisTrades: boolean;
   manifest: ManifestBase;
@@ -408,9 +427,20 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     walletFile: 'agent-yield-b.json',
     managed: true,
     managerKeys: {
-      USDT: '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01',
-      USDC: '0x66641f1c347bc9D4310166890636531CCbFcEF70',
+      // Rotated 2026-08-29 after Altana left the first user mandate pending
+      // without a transaction. The retired key stays offline until expiry.
+      USDT: '0xFC194cec123CBeb323951813c932800c4A86DD03',
+      USDC: '0xac6a37C49A2875c37f1a70A249D9080482ffF346',
     },
+    retiredManagerGrants: [{
+      token: 'USDT',
+      account: '0x47352a5aff2909dcfb46b7f8758c78a868c17988',
+      publicKey: '0x04386e48756dfcda04f7dfa42f8bd749506c635392f9854f9220f78f8fa4ad669681b8df925e021af5e462366c43948b7e42522c937b5eeba102fb64c42ae8d941',
+      address: '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01',
+      expiry: 1_788_562_703,
+      grantCallsId: '0xa17195ab0e796c52ca56e3eb8d899aa0a3b9e3f0ecee7c9ef6141a49f8ba6bf4',
+      nonce: '11',
+    }],
     backfillOphisTrades: false,
     manifest: {
       name: 'Agripinaa Steward',

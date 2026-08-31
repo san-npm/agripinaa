@@ -203,9 +203,11 @@ async function main() {
     }
     const byToken = new Map<string, ManagerIdentity>();
     for (const [sym, k] of keySet.byToken) byToken.set(sym, { publicKey: k.publicKey, address: k.address });
+    const record = agentBySlug(name);
     managers.set(name, {
       master: { publicKey: keySet.master.publicKey, address: keySet.master.address },
       byToken,
+      ...(record?.retiredManagerGrants?.length ? { retired: record.retiredManagerGrants } : {}),
     });
     if (policy) managerKeySets.set(name, { keySet, policy });
     if (strategy) strategyKeySets.set(name, { keySet, module: agents.get(name)!.module });

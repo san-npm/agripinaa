@@ -20,6 +20,13 @@ const LIVE_YIELD_USDT = {
   address: '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2' as Hex,
 };
 
+const LIVE_STEWARD_USDT = {
+  publicKey:
+    '0x04862958f5eccbe9385742ba5f49f7d9ecdab5187dc89c508a5c37af03e7228b0bb14da55917b84c970ebbe8c516b385b82ad4073dde195495e5291e9af4d9b92c' as Hex,
+  address: '0xFC194cec123CBeb323951813c932800c4A86DD03' as Hex,
+};
+const RETIRED_STEWARD = agentBySlug('yield-b')!.retiredManagerGrants!;
+
 /** A synthetic key pair that is well-formed but belongs to nobody we trust. */
 const stranger = privateKeyToAccount(keccak256(stringToHex('agripinaa manager-key web test vector')));
 
@@ -43,7 +50,25 @@ async function capturingWarn<T>(run: () => Promise<T>): Promise<{ result: T; war
 
 test('the pinned Harvester key is accepted', () => {
   const info = validateManagerKey('yield', 'USDT', { agent: 'yield', ...LIVE_YIELD_USDT });
-  assert.deepEqual(info, { agent: 'yield', ...LIVE_YIELD_USDT });
+  assert.deepEqual(info, { agent: 'yield', ...LIVE_YIELD_USDT, retired: [] });
+});
+
+test('the pinned Steward key requires and accepts its exact retired-grant policy', () => {
+  assert.throws(
+    () => validateManagerKey('yield-b', 'USDT', LIVE_STEWARD_USDT),
+    /incomplete retired USDT manager policy/,
+  );
+  assert.deepEqual(
+    validateManagerKey('yield-b', 'USDT', { ...LIVE_STEWARD_USDT, retired: RETIRED_STEWARD }),
+    { agent: 'yield-b', ...LIVE_STEWARD_USDT, retired: RETIRED_STEWARD },
+  );
+  assert.throws(
+    () => validateManagerKey('yield-b', 'USDT', {
+      ...LIVE_STEWARD_USDT,
+      retired: [{ ...RETIRED_STEWARD[0]!, grantCallsId: `0x${'11'.repeat(32)}` }],
+    }),
+    /does not match its pin/,
+  );
 });
 
 test('a well-formed key that is not the pinned one is refused (mocked runner)', async () => {

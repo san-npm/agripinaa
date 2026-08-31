@@ -160,9 +160,21 @@ test('each managed agent pins the manager key each managed token grants to', () 
   // Rotated 2026-08-26; USDT is the master key and USDC is derived.
   assert.equal(pinnedManagerKeyAddress('yield', 'USDT'), '0x085f9F61ff6d65a3632Fe0a4443a33d1E10341a2');
   assert.equal(pinnedManagerKeyAddress('yield', 'USDC'), '0x1A06C18C97B891E4d9F89829E74b08A3e0891646');
-  assert.equal(pinnedManagerKeyAddress('yield-b', 'USDT'), '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01');
-  assert.equal(pinnedManagerKeyAddress('yield-b', 'USDC'), '0x66641f1c347bc9D4310166890636531CCbFcEF70');
+  assert.equal(pinnedManagerKeyAddress('yield-b', 'USDT'), '0xFC194cec123CBeb323951813c932800c4A86DD03');
+  assert.equal(pinnedManagerKeyAddress('yield-b', 'USDC'), '0xac6a37C49A2875c37f1a70A249D9080482ffF346');
   assert.equal(pinnedManagerKeyAddress('nope', 'USDT'), undefined);
+});
+
+test('the stalled Steward grant is pinned as public rotation recovery policy', () => {
+  assert.deepEqual(AGENTS['yield-b'].retiredManagerGrants, [{
+    token: 'USDT',
+    account: '0x47352a5aff2909dcfb46b7f8758c78a868c17988',
+    publicKey: '0x04386e48756dfcda04f7dfa42f8bd749506c635392f9854f9220f78f8fa4ad669681b8df925e021af5e462366c43948b7e42522c937b5eeba102fb64c42ae8d941',
+    address: '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01',
+    expiry: 1_788_562_703,
+    grantCallsId: '0xa17195ab0e796c52ca56e3eb8d899aa0a3b9e3f0ecee7c9ef6141a49f8ba6bf4',
+    nonce: '11',
+  }]);
 });
 
 test('every managed agent that is registered on chain carries its manager-key pins', () => {

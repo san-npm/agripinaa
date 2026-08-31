@@ -8,6 +8,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 import {
   buildManagerKeySet,
+  assertManagerKeyPins,
   deriveManagerKey,
   managerKeySetFrom,
   type ManagerKey,
@@ -115,4 +116,13 @@ test('a primary that is not among the symbols is rejected, not silently derived'
   // master key holds no mandate at all, which fails only at tick time.
   assert.throws(() => managerKeySetFrom(master, MANAGED_TOKENS, 'BUSD'), /BUSD/);
   assert.throws(() => buildManagerKeySet('yield', MANAGED_TOKENS, 'BUSD'), /BUSD/);
+});
+
+test('a stale synced manager wallet cannot boot a registered agent', () => {
+  const wrong = managerKeySetFrom(testMaster(), MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN);
+  assert.throws(
+    () => assertManagerKeyPins('yield-b', wrong),
+    /yield-b\/USDT: manager wallet does not match the pinned manager key/,
+  );
+  assert.doesNotThrow(() => assertManagerKeyPins('not-registered', wrong));
 });

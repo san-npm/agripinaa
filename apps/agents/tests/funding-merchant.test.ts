@@ -157,10 +157,15 @@ describe('reimbursed funding merchant', () => {
     assert.match(relaySource, /preCalls: true/);
     assert.match(relaySource, /preCalls: signedPreCalls/);
     assert.match(relaySource, /const preCallSignature = await signCalls\(preparedPreCall/);
+    assert.match(relaySource, /opts\.nonce !== undefined \? \{ nonce: opts\.nonce \} : \{\}/);
 
     const executeSource = await readFile(new URL('./execute.js', altanaEntry), 'utf8');
     assert.match(executeSource, /await opts\.onSubmitted\?\.\(callsId\)/);
     assert.match(executeSource, /export async function waitForExecution\(callsId, opts\)/);
+    assert.match(executeSource, /opts\.nonce !== undefined \? \{ nonce: opts\.nonce \} : \{\}/);
+
+    const revokeSource = await readFile(new URL('./revokeSession.js', altanaEntry), 'utf8');
+    assert.match(revokeSource, /await config\.onSubmitted\?\.\(callsId\)/);
   });
 
   it('hard-rejects a policy miss instead of requesting user-paid fallback', async () => {

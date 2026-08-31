@@ -148,6 +148,31 @@ test('the managed registry file lands at 0600 inside a data dir tightened to 070
   }
 });
 
+test('pruning a stale entry cannot delete a concurrent replacement for the same router', async () => {
+  const { loadManaged, removeManagedEntry, upsertManaged } = await import('../src/managed');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'agripinaa-managed-cas-'));
+  try {
+    const old = registryEntry();
+    const replacement = {
+      ...old,
+      session: {
+        ...old.session,
+        publicKey: '0x04replacement',
+        expiry: old.session.expiry + 1,
+      },
+    };
+    upsertManaged('yield', old as never, dir);
+    upsertManaged('yield', replacement as never, dir);
+    removeManagedEntry('yield', old as never, dir);
+    assert.equal(loadManaged('yield', dir)[0]?.session.publicKey, replacement.session.publicKey);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- per-token manager key isolation (Medium fix) -------------------------
 
 test('deriveManagerKey: distinct on-chain identity per token, deterministic', async () => {

@@ -1,11 +1,11 @@
-diff --git a/dist/client.d.ts b/dist/client.d.ts
-index 07352bb0f3ebaed23aac8511690c570f091c476d..c5725d0f91d2642d4a47b666289d2fea764d11eb 100644
 --- a/dist/client.d.ts
 +++ b/dist/client.d.ts
-@@ -51,11 +51,23 @@ export type ClientExecuteOptions = ({
+@@ -51,11 +51,27 @@
      signer: Signer;
      calls: Call | readonly Call[];
      feeToken?: Address;
++    /** Exact Ithaca account nonce to use for this execution. */
++    nonce?: bigint;
 +    /** Merchant RPC that signs as fee payer for this execution. */
 +    merchantUrl?: string;
 +    /** Calls signed separately and executed before fee payment and the main batch. */
@@ -17,6 +17,8 @@ index 07352bb0f3ebaed23aac8511690c570f091c476d..c5725d0f91d2642d4a47b666289d2fea
      session: Session;
      calls: Call | readonly Call[];
      feeToken?: Address;
++    /** Exact Ithaca account nonce to use for this execution. */
++    nonce?: bigint;
 +    /** Merchant RPC that signs as fee payer for this execution. */
 +    merchantUrl?: string;
 +    /** Calls signed separately and executed before fee payment and the main batch. */
@@ -26,7 +28,16 @@ index 07352bb0f3ebaed23aac8511690c570f091c476d..c5725d0f91d2642d4a47b666289d2fea
      noWait?: boolean;
  } & ChainSelector);
  export type ClientGrantSessionOptions = {
-@@ -80,6 +92,9 @@ export type ClientBalancesOptions = {
+@@ -68,6 +84,8 @@
+     signer: Signer;
+     session: Session | Hex;
+     feeToken?: Address;
++    /** Runs with the durable relay id immediately after submission, before polling. */
++    onSubmitted?: (callsId: Hex) => void | Promise<void>;
+ } & ChainSelector;
+ export type ClientRegisterSessionKeyOptions = {
+     wallet: Wallet;
+@@ -80,6 +98,9 @@
      /** ERC-20 tokens to include. BEP-677 display scaling is applied automatically. */
      tokens?: readonly Address[];
  } & ChainSelector;
@@ -36,7 +47,7 @@ index 07352bb0f3ebaed23aac8511690c570f091c476d..c5725d0f91d2642d4a47b666289d2fea
  export type ClientApproveSignatureCheckerOptions = {
      wallet: Wallet;
      signer: Signer;
-@@ -114,6 +129,7 @@ export type Client = {
+@@ -114,6 +135,7 @@
          signer: PasskeySigner;
      }>;
      execute(opts: ClientExecuteOptions): Promise<ExecuteResult>;
@@ -44,11 +55,9 @@ index 07352bb0f3ebaed23aac8511690c570f091c476d..c5725d0f91d2642d4a47b666289d2fea
      grantSession(opts: ClientGrantSessionOptions): Promise<Session>;
      revokeSession(opts: ClientRevokeSessionOptions): Promise<ExecuteResult>;
      /** Lazily register a session key granted with `register: false`. Idempotent. */
-diff --git a/dist/client.js b/dist/client.js
-index f6ec4b020f5b904c3a3173feef9d7fa1396235a6..2ec2dfbdf72b109dcc338ded3ca48558670a2bb4 100644
 --- a/dist/client.js
 +++ b/dist/client.js
-@@ -11,7 +11,7 @@ import {} from "./config.js";
+@@ -11,7 +11,7 @@
  import { createWallet as createWalletImpl, } from "./createWallet.js";
  import { createPasskeyWallet as createPasskeyWalletImpl } from "./createPasskeyWallet.js";
  import { recoverFromPasskey as recoverFromPasskeyImpl } from "./recoverFromPasskey.js";
@@ -57,17 +66,18 @@ index f6ec4b020f5b904c3a3173feef9d7fa1396235a6..2ec2dfbdf72b109dcc338ded3ca48558
  import { grantSession as grantSessionImpl } from "./grantSession.js";
  import { revokeSession as revokeSessionImpl } from "./revokeSession.js";
  import { registerSessionKey as registerSessionKeyImpl } from "./registerSessionKey.js";
-@@ -80,6 +80,9 @@ export function createClient(opts) {
+@@ -80,6 +80,10 @@
              const execOpts = {
                  network: resolve(o.chainId),
                  ...(o.feeToken ? { feeToken: o.feeToken } : {}),
++                ...(o.nonce !== undefined ? { nonce: o.nonce } : {}),
 +                ...(o.merchantUrl ? { merchantUrl: o.merchantUrl } : {}),
 +                ...(o.preCalls?.length ? { preCalls: o.preCalls } : {}),
 +                ...(o.onSubmitted ? { onSubmitted: o.onSubmitted } : {}),
                  ...(o.noWait ? { noWait: o.noWait } : {}),
              };
              if ("session" in o) {
-@@ -87,6 +90,9 @@ export function createClient(opts) {
+@@ -87,10 +91,15 @@
              }
              return executeImpl(o.wallet, o.signer, o.calls, execOpts);
          },
@@ -77,20 +87,25 @@ index f6ec4b020f5b904c3a3173feef9d7fa1396235a6..2ec2dfbdf72b109dcc338ded3ca48558
          grantSession(o) {
              return grantSessionImpl(o.wallet, o.signer, {
                  permissions: o.permissions,
-@@ -93,6 +99,8 @@ export function createClient(opts) {
                  expiry: o.expiry,
 +                ...(o.onBeforeSubmit ? { onBeforeSubmit: o.onBeforeSubmit } : {}),
 +                ...(o.onSubmitted ? { onSubmitted: o.onSubmitted } : {}),
                  ...(o.sessionSigner ? { sessionSigner: o.sessionSigner } : {}),
                  ...(o.register !== undefined ? { register: o.register } : {}),
              }, {
+@@ -102,6 +111,7 @@
+             return revokeSessionImpl(o.wallet, o.signer, o.session, {
                  network: resolve(o.chainId),
                  ...(o.feeToken ? { feeToken: o.feeToken } : {}),
-diff --git a/dist/grantSession.js b/dist/grantSession.js
-index 0b1fcb37ca72c30a4aa50c91d8f9a8edcf4f8c75..9db752048450433476021478e192045981bfe30f 100644
++                ...(o.onSubmitted ? { onSubmitted: o.onSubmitted } : {}),
+             });
+         },
+         registerSessionKey(o) {
 --- a/dist/grantSession.js
 +++ b/dist/grantSession.js
-@@ -62,8 +62,10 @@ export async function grantSession(wallet, adminSigner, opts, config) {
+@@ -60,10 +60,12 @@
+     //   [ initialRegisterKey(admin)?, registerKey(session)?, authorizeKeys=[session] ]
+     const callsId = await submitCalls(relayClient, wallet.address, adminSigner, registerCalls, {
          feeToken,
 +        ...(opts.onBeforeSubmit ? { onBeforeSubmit: opts.onBeforeSubmit } : {}),
          submittingKey: adminKeyDesc,
@@ -101,11 +116,9 @@ index 0b1fcb37ca72c30a4aa50c91d8f9a8edcf4f8c75..9db752048450433476021478e1920459
      const result = await waitForCalls(relayClient, callsId);
      if (result.status !== "CONFIRMED") {
          throw new Error(`Session grant did not confirm: status=${result.status}`);
-diff --git a/dist/internal/sessions.d.ts b/dist/internal/sessions.d.ts
-index 402db3e58b960eefcf748e52a42cae6b978d87b3..aeff2c2d6ef62ac24c86017d423d532618921a9d 100644
 --- a/dist/internal/sessions.d.ts
 +++ b/dist/internal/sessions.d.ts
-@@ -56,6 +56,10 @@ export type GrantSessionOptions = {
+@@ -56,6 +56,10 @@
      permissions: SessionPermissions;
      /** Unix epoch seconds. Most apps use Date.now()/1000 + N. */
      expiry: number;
@@ -116,8 +129,6 @@ index 402db3e58b960eefcf748e52a42cae6b978d87b3..aeff2c2d6ef62ac24c86017d423d5326
      /**
       * Provide your own session signer (e.g., generated by your backend and
       * stored alongside user state). If omitted, the SDK generates a fresh
-diff --git a/dist/execute.d.ts b/dist/execute.d.ts
-index 8efc178ad07c53a4348761fcc3e08a54ec1e152e..19a0ec5f2b622a8646be18ee55281e4299870e26 100644
 --- a/dist/execute.d.ts
 +++ b/dist/execute.d.ts
 @@ -1,4 +1,4 @@
@@ -126,10 +137,12 @@ index 8efc178ad07c53a4348761fcc3e08a54ec1e152e..19a0ec5f2b622a8646be18ee55281e42
  import { type NetworkConfig } from "./config.js";
  import { type Signer } from "./internal/signer.js";
  import { type Call } from "./internal/relay.js";
-@@ -8,6 +8,12 @@ export type ExecuteOptions = {
+@@ -8,6 +8,14 @@
      /** Which chain to run on. Resolved by the client from a chainId. */
      network: NetworkConfig;
      feeToken?: Address;
++    /** Exact Ithaca account nonce to use for this execution. */
++    nonce?: bigint;
 +    /** Merchant RPC that signs as fee payer for this execution. */
 +    merchantUrl?: string;
 +    /** Calls signed separately and executed before fee payment and the main batch. */
@@ -139,7 +152,7 @@ index 8efc178ad07c53a4348761fcc3e08a54ec1e152e..19a0ec5f2b622a8646be18ee55281e42
      noWait?: boolean;
  };
  /**
-@@ -23,5 +29,6 @@ export type ExecuteOptions = {
+@@ -23,5 +31,6 @@
   */
  export declare function execute(wallet: Wallet, signer: Signer, calls: Call | readonly Call[], opts: ExecuteOptions): Promise<ExecuteResult>;
  export declare function execute(session: Session, calls: Call | readonly Call[], opts: ExecuteOptions): Promise<ExecuteResult>;
@@ -147,14 +160,13 @@ index 8efc178ad07c53a4348761fcc3e08a54ec1e152e..19a0ec5f2b622a8646be18ee55281e42
  export type { Call };
  //# sourceMappingURL=execute.d.ts.map
 \ No newline at end of file
-diff --git a/dist/execute.js b/dist/execute.js
-index 6dcd5ce428bfb52f722f0c10a88f25544180149b..615c1ee16ec9bed7e1ff9f9c47b4f741c0d63ca5 100644
 --- a/dist/execute.js
 +++ b/dist/execute.js
-@@ -34,9 +34,12 @@ export async function execute(walletOrSession, signerOrCalls, callsOrOpts, maybe
+@@ -34,9 +34,13 @@
          };
      const callsId = await submitCalls(relayClient, walletAddress, signer, userCalls, {
          feeToken,
++        ...(opts.nonce !== undefined ? { nonce: opts.nonce } : {}),
 +        ...(opts.merchantUrl ? { merchantUrl: opts.merchantUrl } : {}),
 +        ...(opts.preCalls?.length ? { preCalls: opts.preCalls } : {}),
          submittingKey,
@@ -164,7 +176,7 @@ index 6dcd5ce428bfb52f722f0c10a88f25544180149b..615c1ee16ec9bed7e1ff9f9c47b4f741
      if (opts?.noWait) {
          return { callsId, status: "PENDING" };
      }
-@@ -47,6 +50,14 @@ export async function execute(walletOrSession, signerOrCalls, callsOrOpts, maybe
+@@ -47,6 +51,14 @@
          ...(result.transactionHash ? { transactionHash: result.transactionHash } : {}),
      };
  }
@@ -179,14 +191,14 @@ index 6dcd5ce428bfb52f722f0c10a88f25544180149b..615c1ee16ec9bed7e1ff9f9c47b4f741
  function isSession(x) {
      return "walletAddress" in x;
  }
-diff --git a/dist/internal/relay.d.ts b/dist/internal/relay.d.ts
-index 4d616bf5016ae8f20f93f8d7f292ad2ecd6a09bc..ed4ac3927286398b1543474600bf1def5c33e621 100644
 --- a/dist/internal/relay.d.ts
 +++ b/dist/internal/relay.d.ts
-@@ -578,6 +578,12 @@ export declare function keyDescriptorFromSigner(signer: Signer, opts: {
+@@ -578,6 +578,14 @@
   */
  export declare function submitCalls(client: ReturnType<typeof buildRelayClient>, walletAddress: Address, signer: Signer, calls: readonly Call[], opts: {
      feeToken: Address;
++    /** Exact Ithaca account nonce to use for this execution. */
++    nonce?: bigint;
 +    /** Optional merchant RPC that signs the relay fee-payer digest. */
 +    merchantUrl?: string;
 +    /** Calls signed as a pre-call and executed before fee payment. */
@@ -196,11 +208,9 @@ index 4d616bf5016ae8f20f93f8d7f292ad2ecd6a09bc..ed4ac3927286398b1543474600bf1def
      submittingKey: KeyDescriptor;
      authorizeKeys?: readonly KeyDescriptor[];
      revokeKeys?: readonly KeyDescriptor[];
-diff --git a/dist/internal/relay.js b/dist/internal/relay.js
-index 42973a1a4d160c83cbc206a11d76d2e166fbbf6d..e06f83d3633f648f98de95005512f30bbdb61570 100644
 --- a/dist/internal/relay.js
 +++ b/dist/internal/relay.js
-@@ -161,7 +161,14 @@ export async function submitCalls(client, walletAddress, signer, calls, opts) {
+@@ -161,7 +161,14 @@
              adminPublicKey: signer.publicKey,
          });
          if (prepend.length > 0) {
@@ -216,7 +226,7 @@ index 42973a1a4d160c83cbc206a11d76d2e166fbbf6d..e06f83d3633f648f98de95005512f30b
          }
      }
      // Build the signing Porto Key. The descriptor (role + expiry + permissions)
-@@ -205,10 +212,32 @@ export async function submitCalls(client, walletAddress, signer, calls, opts) {
+@@ -205,10 +212,33 @@
      else {
          throw new Error(unsupportedSignerMessage(signer.type, "sign a transaction"));
      }
@@ -244,12 +254,13 @@ index 42973a1a4d160c83cbc206a11d76d2e166fbbf6d..e06f83d3633f648f98de95005512f30b
          account: accountForPrepare,
          calls: effectiveCalls,
          feeToken: opts.feeToken,
++        ...(opts.nonce !== undefined ? { nonce: opts.nonce } : {}),
 +        ...(opts.merchantUrl ? { merchantUrl: opts.merchantUrl } : {}),
 +        ...(signedPreCalls ? { preCalls: signedPreCalls } : {}),
      };
      // Tell Porto which key will sign whenever it's not the implicit admin EOA
      // (i.e. session path always, and passkey path always — there's no EOA for
-@@ -229,6 +258,7 @@ export async function submitCalls(client, walletAddress, signer, calls, opts) {
+@@ -229,6 +259,7 @@
      const signature = await signCalls(prepared, {
          key: signingKeyForPorto,
      });
@@ -257,3 +268,24 @@ index 42973a1a4d160c83cbc206a11d76d2e166fbbf6d..e06f83d3633f648f98de95005512f30b
      // For non-EOA paths (sessions, passkey admin), the relay needs to know
      // which key authority signed so it can verify with the right scheme.
      // The privateKey admin path can omit this — Porto infers from the EOA.
+--- a/dist/revokeSession.d.ts
++++ b/dist/revokeSession.d.ts
+@@ -13,5 +13,7 @@
+ export declare function revokeSession(wallet: Wallet, adminSigner: Signer, sessionOrPublicKey: Session | Hex, config: {
+     network: NetworkConfig;
+     feeToken?: Address;
++    /** Runs with the durable relay id immediately after submission, before polling. */
++    onSubmitted?: (callsId: Hex) => void | Promise<void>;
+ }): Promise<ExecuteResult>;
+ //# sourceMappingURL=revokeSession.d.ts.map
+\ No newline at end of file
+--- a/dist/revokeSession.js
++++ b/dist/revokeSession.js
+@@ -48,6 +48,7 @@
+         revokeKeys: [sessionKeyDesc],
+         network,
+     });
++    await config.onSubmitted?.(callsId);
+     const result = await waitForCalls(relayClient, callsId);
+     return {
+         callsId,

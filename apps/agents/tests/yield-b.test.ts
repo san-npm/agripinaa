@@ -166,8 +166,8 @@ test('the registry record pins its registered identity, wallet and manager ident
   assert.equal(record.proofs[0]?.label, 'supply');
   assert.equal(record.managed, true);
   assert.deepEqual(record.managerKeys, {
-    USDT: '0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01',
-    USDC: '0x66641f1c347bc9D4310166890636531CCbFcEF70',
+    USDT: '0xFC194cec123CBeb323951813c932800c4A86DD03',
+    USDC: '0xac6a37C49A2875c37f1a70A249D9080482ffF346',
   });
   assert.equal(record.category, 'yield');
   assert.equal(record.category, yieldBAgent.category);

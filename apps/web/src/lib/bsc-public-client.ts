@@ -5,6 +5,8 @@ import {
   createPublicClient,
   fallback,
   http,
+  parseAbi,
+  type Address,
   type Hex,
   type TransactionReceipt,
 } from 'viem';
@@ -14,6 +16,19 @@ import { bsc } from './bsc-chain';
 export interface BscReceiptClient {
   getTransactionReceipt(args: { hash: Hex }): Promise<TransactionReceipt>;
 }
+
+export interface BscNonceClient {
+  getBlockNumber(): Promise<bigint>;
+  readContract(args: {
+    address: Address;
+    abi: typeof ACCOUNT_NONCE_ABI;
+    functionName: 'getNonce';
+    args: readonly [bigint];
+    blockNumber: bigint;
+  }): Promise<unknown>;
+}
+
+const ACCOUNT_NONCE_ABI = parseAbi(['function getNonce(uint192 seqKey) view returns (uint256)']);
 
 /**
  * Receipt-capable endpoints operated by distinct organisations. The two BNB
@@ -46,6 +61,50 @@ function receiptClients(): BscReceiptClient[] {
     chain: bsc,
     transport: http(url, { retryCount: 0, timeout: 5_000 }),
   }));
+}
+
+function nonceClients(): BscNonceClient[] {
+  return BSC_RECEIPT_RPC_SOURCES.map(({ url }) => createPublicClient({
+    chain: bsc,
+    transport: http(url, { retryCount: 0, timeout: 5_000 }),
+  }) as BscNonceClient);
+}
+
+/** Read one account nonce at a common block and require two matching providers. */
+export async function readBscNonceQuorum(
+  account: Address,
+  seqKey: bigint,
+  options: { clients?: readonly BscNonceClient[]; quorum?: number } = {},
+): Promise<bigint> {
+  const clients = options.clients ?? nonceClients();
+  const quorum = options.quorum ?? 2;
+  if (!Number.isSafeInteger(quorum) || quorum < 1 || quorum > clients.length) {
+    throw new Error('invalid BSC nonce quorum policy');
+  }
+  const heads = (await Promise.allSettled(clients.map((client) => client.getBlockNumber())))
+    .flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+    .sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  if (heads.length < quorum) throw new Error('BSC nonce quorum unavailable');
+  const blockNumber = heads[Math.floor(heads.length / 2)]!;
+  const values = (await Promise.allSettled(clients.map((client) => client.readContract({
+    address: account,
+    abi: ACCOUNT_NONCE_ABI,
+    functionName: 'getNonce',
+    args: [seqKey],
+    blockNumber,
+  }))))
+    .flatMap((result) => result.status === 'fulfilled' && typeof result.value === 'bigint'
+      ? [result.value]
+      : []);
+  const counts = new Map<string, { value: bigint; count: number }>();
+  for (const value of values) {
+    const key = value.toString();
+    const group = counts.get(key) ?? { value, count: 0 };
+    group.count += 1;
+    counts.set(key, group);
+    if (group.count >= quorum) return group.value;
+  }
+  throw new Error('BSC nonce quorum mismatch');
 }
 
 /** Stable comparison of the inclusion and every log the funding proof reads. */

@@ -65,6 +65,41 @@ export function listStoredSessions(): StoredSessionMeta[] {
   return read().sort((a, b) => b.grantedAt.localeCompare(a.grantedAt));
 }
 
+const SESSION_PUBLIC_KEY_RE = /^0x04[0-9a-fA-F]{128}$/;
+
+/**
+ * Find still-unexpired local mandates for a manager identity that has rotated.
+ * The caller confirms each candidate on-chain before treating it as authority.
+ */
+export function listStoredRotatedManagerSessions(input: {
+  chainId: number;
+  account: string;
+  agent: string;
+  agentTokenId: string;
+  target: string;
+  currentPublicKey: string;
+  now?: number;
+}): Array<StoredSessionMeta & { publicKey: `0x${string}`; expiry: number }> {
+  const now = input.now ?? Date.now();
+  return listStoredSessions().flatMap((session) => {
+    const expiryMs = Date.parse(session.scope.expiresAt);
+    if (
+      session.chainId !== input.chainId
+      || session.account.toLowerCase() !== input.account.toLowerCase()
+      || (session.agent.slug !== input.agent
+        && !(session.agent.slug === undefined && session.agent.tokenId === input.agentTokenId))
+      || session.revokedAt !== null
+      || typeof session.publicKey !== 'string'
+      || !SESSION_PUBLIC_KEY_RE.test(session.publicKey)
+      || session.publicKey.toLowerCase() === input.currentPublicKey.toLowerCase()
+      || !session.scope.allowlist.some((target) => target.toLowerCase() === input.target.toLowerCase())
+      || !Number.isFinite(expiryMs)
+      || expiryMs <= now
+    ) return [];
+    return [{ ...session, publicKey: session.publicKey as `0x${string}`, expiry: Math.floor(expiryMs / 1_000) }];
+  });
+}
+
 /**
  * The Altana SDK embeds the freshly generated session signer, including its
  * raw `_privateKey`, on the returned session object. That key must NEVER be

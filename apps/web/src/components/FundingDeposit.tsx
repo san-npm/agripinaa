@@ -196,9 +196,11 @@ export function ActivationProgress({ phase }: { phase: string }) {
 export function RelayGrantNotice({
   grant,
   onStatusChange,
+  operation = 'grant',
 }: {
   grant: RelayCallStatus;
   onStatusChange(grant: RelayCallStatus): void;
+  operation?: 'grant' | 'revocation' | 'cancellation';
 }) {
   useEffect(() => {
     if (grant.status !== 'pending') return;
@@ -220,6 +222,8 @@ export function RelayGrantNotice({
 
   const confirmed = grant.status === 'confirmed';
   const failed = grant.status === 'failed';
+  const revocation = operation === 'revocation';
+  const cancellation = operation === 'cancellation';
   return (
     <div
       role={failed ? 'alert' : 'status'}
@@ -235,22 +239,34 @@ export function RelayGrantNotice({
     >
       <p className={`font-semibold ${confirmed ? 'text-success' : failed ? 'text-danger' : 'text-primary'}`}>
         {confirmed
-          ? 'Agent mandate confirmed by the relay'
+          ? cancellation ? 'Stalled mandate cancellation confirmed by the relay' : revocation ? 'Old mandate revocation confirmed by the relay' : 'Agent mandate confirmed by the relay'
           : failed
-            ? 'Agent mandate was not submitted on-chain'
-            : 'Agent mandate waiting at the relay'}
+            ? cancellation ? 'Stalled mandate cancellation failed' : revocation ? 'Old mandate revocation failed' : 'Agent mandate was not submitted on-chain'
+            : cancellation ? 'Stalled mandate cancellation waiting at the relay' : revocation ? 'Old mandate revocation waiting at the relay' : 'Agent mandate waiting at the relay'}
       </p>
       <p className="mt-1 text-foreground">
         {confirmed
-          ? 'Continue below to verify the mandate on BNB Chain and finish the agent handoff.'
+          ? cancellation
+            ? 'Continue below to verify the stalled nonce is permanently invalid and sign the replacement mandate.'
+            : revocation
+            ? 'Continue below to verify the old key is inactive and sign the replacement mandate.'
+            : 'Continue below to verify the mandate on BNB Chain and finish the agent handoff.'
           : failed
-            ? 'No mandate transaction was created. Use “Retry agent mandate” below when you are ready to sign again.'
-            : 'Your funding is confirmed. Altana accepted the signed mandate but has not produced a BNB Chain transaction yet. Agripinaa will not submit a duplicate while the outcome is unknown.'}
+            ? cancellation
+              ? 'The stalled mandate remains tracked. Retry below only after this definitive failure; no replacement was submitted.'
+              : revocation
+              ? 'The old key remains tracked. Retry below only after this definitive failure; no replacement was submitted.'
+              : 'No mandate transaction was created. Use “Retry agent mandate” below when you are ready to sign again.'
+            : cancellation
+              ? 'The old relay request and this cancellation are saved. Agripinaa will not submit a replacement while the cancellation outcome is unknown.'
+              : revocation
+              ? 'The old key and this relay reference are saved. Agripinaa will not submit another revocation or a replacement while the outcome is unknown.'
+              : 'Your funding is confirmed. Altana accepted the signed mandate but has not produced a BNB Chain transaction yet. Agripinaa will not submit a duplicate while the outcome is unknown.'}
       </p>
       {grant.status === 'pending' && (
-        <p className="mt-1 text-muted">Checking automatically every 5 seconds. “Check mandate status” remains available below.</p>
+        <p className="mt-1 text-muted">Checking automatically every 5 seconds. The status action remains available below.</p>
       )}
-      <code className="mt-2 block break-all text-muted-2">Relay reference: {grant.callsId}</code>
+      <code className="mt-2 block break-all text-muted-2">{cancellation ? 'Cancellation' : revocation ? 'Revocation' : 'Relay'} reference: {grant.callsId}</code>
       {confirmed && grant.transactionHash && (
         <a
           href={`https://bscscan.com/tx/${grant.transactionHash}`}

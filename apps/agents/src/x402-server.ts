@@ -12,6 +12,7 @@ import {
   routerByAddress,
   toBaseUnits,
   type FundingAsset,
+  type RetiredManagerGrant,
 } from '@agripinaa/shared';
 import { deserializeSession } from '@agripinaa/session-kit/persist';
 import { MANAGED_NATIVE_CAP, MANAGED_STABLE_CAP, MAX_SESSION_SECONDS } from '@agripinaa/session-kit/scope';
@@ -35,12 +36,14 @@ import {
   type FundingQuoteResponse,
 } from './funding-merchant';
 import { RequestGate } from './request-gate';
+import { retiredManagerConflict } from './retired-manager-grant';
 import {
   loadManaged,
   managedAccountStateKey,
   managedHealthKey,
   managedRangerTokenId,
   MANAGED_HEALTH_MAX_AGE_MS,
+  removeManagedEntry,
   upsertManaged,
   type ManagedAccount,
   type ManagedHealth,
@@ -62,6 +65,7 @@ export interface ManagerIdentity {
 export interface ManagerSet {
   master: ManagerIdentity;
   byToken: Map<string, ManagerIdentity>;
+  retired?: readonly RetiredManagerGrant[];
 }
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -201,6 +205,52 @@ function firstScopedTarget(entry: ManagedAccount): Hex | undefined {
   const first = entry.session.permissions.calls?.[0];
   const target = first && 'to' in first ? first.to : undefined;
   return typeof target === 'string' && ADDRESS_RE.test(target) ? target as Hex : undefined;
+}
+
+/**
+ * A revocation can confirm between runner sweeps. Reconcile the exact stale
+ * registry entry here so the immediately following replacement grant is not
+ * rejected until the next sweep; a still-live old key continues to block it.
+ */
+export async function livePersistedManagerConflict(input: {
+  agent: string;
+  account: string;
+  publicKey: string;
+  managerToken: string;
+  managerSet: ManagerSet;
+  nowSeconds?: number;
+}, deps: {
+  load?: typeof loadManaged;
+  remove?: typeof removeManagedEntry;
+  isValid?: typeof isSessionKeyValid;
+} = {}): Promise<boolean> {
+  const load = deps.load ?? loadManaged;
+  const remove = deps.remove ?? removeManagedEntry;
+  const isValid = deps.isValid ?? isSessionKeyValid;
+  const nowSeconds = input.nowSeconds ?? Math.floor(Date.now() / 1_000);
+  const candidates = load(input.agent).filter((candidate) => {
+    if (
+      candidate.account.toLowerCase() !== input.account
+      || candidate.session.expiry <= nowSeconds
+      || candidate.session.publicKey.toLowerCase() === input.publicKey
+    ) return false;
+    const target = firstScopedTarget(candidate);
+    const priorToken = managerTokenFor(input.managerSet, candidate.session.publicKey)
+      ?? (target
+        ? canonicalPermissionsFor(input.agent, candidate.chainId, target)?.managerToken
+        : undefined);
+    return priorToken === undefined || priorToken === input.managerToken;
+  });
+  for (const candidate of candidates) {
+    const live = await isValid({
+      chainId: candidate.chainId,
+      account: candidate.account,
+      sessionPublicKey: candidate.session.publicKey,
+    });
+    if (live) return true;
+    remove(input.agent, candidate);
+  }
+  return false;
 }
 
 /**
@@ -593,15 +643,22 @@ export function startX402Server(opts: {
       // manager while its previous on-chain authorization may still be live.
       let persistedConflict = false;
       try {
-        persistedConflict = loadManaged(agent).some((candidate) => {
-          if (
-            candidate.account.toLowerCase() !== account
-            || candidate.session.expiry <= nowSeconds
-            || candidate.session.publicKey.toLowerCase() === publicKey
-          ) return false;
-          const priorToken = managerTokenFor(managerSet, candidate.session.publicKey);
-          return priorToken === undefined || priorToken === managerToken;
+        persistedConflict = await livePersistedManagerConflict({
+          agent,
+          account,
+          publicKey,
+          managerToken,
+          managerSet,
+          nowSeconds,
         });
+        if (!persistedConflict && managerSet.retired?.length) {
+          persistedConflict = await retiredManagerConflict({
+            account: account as Hex,
+            managerToken,
+            retired: managerSet.retired,
+            nowSeconds,
+          });
+        }
       } catch {
         res.writeHead(503, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'activation lease state unavailable' }));
@@ -817,7 +874,16 @@ export function startX402Server(opts: {
         return;
       }
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ agent, token: token ?? null, publicKey: identity.publicKey, address: identity.address }));
+      const retired = token
+        ? (managerSet.retired ?? []).filter((grant) => grant.token === token)
+        : [];
+      res.end(JSON.stringify({
+        agent,
+        token: token ?? null,
+        publicKey: identity.publicKey,
+        address: identity.address,
+        ...(retired.length ? { retired } : {}),
+      }));
       return;
     }
 

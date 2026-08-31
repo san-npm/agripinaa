@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { agentBySlug, pinnedManagerKeyAddress } from '@agripinaa/shared/agents';
 import { concat, keccak256, stringToHex, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
@@ -68,6 +69,19 @@ export interface ManagerKeySet {
   byPublicKey: Map<string, ManagerKey>;
 }
 
+/** Fail at boot when a synced manager wallet is not the public key we ship. */
+export function assertManagerKeyPins(agent: string, keySet: ManagerKeySet): void {
+  const record = agentBySlug(agent);
+  if (!record?.managed || record.tokenId === null) return;
+  for (const [symbol, key] of keySet.byToken) {
+    const pin = pinnedManagerKeyAddress(agent, symbol);
+    if (!pin) throw new Error(`${agent}/${symbol}: registered managed agent has no manager-key pin`);
+    if (pin.toLowerCase() !== key.address.toLowerCase()) {
+      throw new Error(`${agent}/${symbol}: manager wallet does not match the pinned manager key`);
+    }
+  }
+}
+
 /**
  * The primary MUST be one of the symbols being built. If it is not, no token
  * holds the master key: every symbol gets a derived key, every mandate granted
@@ -121,5 +135,7 @@ export function buildManagerKeySet(
   assertPrimaryIsMember(symbols, primary);
   const master = loadManagerKey(agent);
   if (!master) return null;
-  return managerKeySetFrom(master, symbols, primary);
+  const keySet = managerKeySetFrom(master, symbols, primary);
+  assertManagerKeyPins(agent, keySet);
+  return keySet;
 }

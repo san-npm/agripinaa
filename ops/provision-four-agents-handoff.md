@@ -17,8 +17,16 @@ commit, regenerate, or copy those keys outside the deployment workflow.
 
 The Steward manager pins are public configuration:
 
-- USDT master: `0xB11A2D73C6c52dd0d375785Bfb32B9f1c3E70D01`
-- USDC derived key: `0x66641f1c347bc9D4310166890636531CCbFcEF70`
+- USDT master: `0xFC194cec123CBeb323951813c932800c4A86DD03`
+- USDC derived key: `0xac6a37C49A2875c37f1a70A249D9080482ffF346`
+
+These pins were rotated on 2026-08-29 after relay call
+`0xa17195ab0e796c52ca56e3eb8d899aa0a3b9e3f0ecee7c9ef6141a49f8ba6bf4`
+remained pending without a BNB Chain transaction. The retired manager wallet is
+kept locally at `wallets/retired/agent-yield-b-session.pre-reset-20260829.json`
+and is excluded from VM sync. Its signed mandate expires at
+`2026-09-04T22:58:23Z`; keep it offline unless that call lands and revocation is
+required.
 
 The dedicated verifier is
 `0x80c545ef426aa9e46543E5ac2BA4B9728CeB58A1`.
