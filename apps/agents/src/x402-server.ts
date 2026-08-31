@@ -420,7 +420,6 @@ export async function readBody(
       () => fail(new Error('body read timed out'), true),
       timeoutMs,
     );
-    timer.unref();
     req.on('data', onData);
     req.on('end', onEnd);
     req.on('error', onError);
