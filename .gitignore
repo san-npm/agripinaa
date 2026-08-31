@@ -17,6 +17,8 @@ apps/agents/data/
 contracts/lib/
 contracts/out/
 contracts/cache/
+packages/spikes/contracts/out/
+packages/spikes/contracts/cache/
 contracts/.echidna-corpus/
 contracts/.medusa-corpus/
 contracts/crytic-export/

@@ -1,5 +1,7 @@
 # Agripinaa
 
+[![CI](https://github.com/san-npm/agripinaa/actions/workflows/ci.yml/badge.svg)](https://github.com/san-npm/agripinaa/actions/workflows/ci.yml)
+
 **The front door for every agent on BSC.** Agripinaa is an open-source
 marketplace where users discover, evaluate, and hire AI agents registered
 under [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) on BNB Smart
