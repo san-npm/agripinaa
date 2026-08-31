@@ -165,8 +165,15 @@ export function removeManagedEntry(
 ): ManagedAccount[] {
   const account = entry.account.toLowerCase();
   const router = routerKey(entry);
+  const publicKey = entry.session.publicKey.toLowerCase();
+  const expiry = entry.session.expiry;
   const next = loadManaged(agent, dir).filter(
-    (candidate) => !(candidate.account.toLowerCase() === account && routerKey(candidate) === router),
+    (candidate) => !(
+      candidate.account.toLowerCase() === account
+      && routerKey(candidate) === router
+      && candidate.session.publicKey.toLowerCase() === publicKey
+      && candidate.session.expiry === expiry
+    ),
   );
   save(agent, next, dir);
   return next;

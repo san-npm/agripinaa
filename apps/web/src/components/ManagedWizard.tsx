@@ -1,14 +1,19 @@
 'use client';
 
+import { isSessionKeyValid, wasSessionKeyRegistered } from '@agripinaa/session-kit/verify';
 import { isDebtCompleteRouter, routerFor } from '@agripinaa/shared/contracts';
-import type { AgentSlug } from '@agripinaa/shared/agents';
+import type { AgentSlug, RetiredManagerGrant } from '@agripinaa/shared/agents';
 import { managedTokenForFunding } from '@agripinaa/shared/funding';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
-import { erc20Abi } from 'viem';
+import { encodeFunctionData, erc20Abi, parseAbi, type Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
-import { createBscPublicClient, waitForBscTransactionReceipt } from '@/lib/bsc-public-client';
+import {
+  createBscPublicClient,
+  readBscNonceQuorum,
+  waitForBscTransactionReceipt,
+} from '@/lib/bsc-public-client';
 import {
   approveRouter,
   buildManagedScope,
@@ -20,14 +25,25 @@ import {
   verifyOnlyStub,
   type VenueApys,
 } from '@/lib/managed';
-import { markRegistered, storeSession } from '@/lib/session-store';
+import {
+  listStoredRotatedManagerSessions,
+  markRegistered,
+  storeSession,
+} from '@/lib/session-store';
 import {
   acquireSessionGrantSubmissionLock,
+  acquireSessionGrantBrowserLock,
   clearSessionGrantCheckpoint,
   loadSessionGrantCheckpoint,
+  resetRotatedManagerCheckpoint,
   retireExpiredRotatedManagerCheckpoint,
+  rotatedManagerCheckpoint,
   reserveSessionGrantCheckpoint,
+  restoreRetiredManagerGrantCheckpoint,
+  saveRotatedManagerRevocationCheckpoint,
+  sameSessionGrantCheckpoint,
   submitSessionGrantCheckpoint,
+  type SessionGrantCheckpoint,
 } from '@/lib/session-grant-checkpoint';
 import {
   findRelaySessionGrant,
@@ -61,6 +77,12 @@ import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from '.
 
 type Step = 'wallet' | 'deposit' | 'active';
 
+const ACCOUNT_NONCE_ABI = parseAbi([
+  'function getNonce(uint192 seqKey) view returns (uint256)',
+  'function invalidateNonce(uint256 nonce)',
+]);
+const RESET_NONCE_LANE = 1n;
+
 interface ManagedAgentProps {
   chainId: number;
   tokenId: string;
@@ -82,6 +104,13 @@ interface GrantedManagedActivation {
   local: ReturnType<typeof storeSession>;
 }
 
+interface RotatedGrantReset {
+  checkpoint: SessionGrantCheckpoint;
+  currentPublicKey: Hex;
+  requiresRevocation: boolean;
+  cancellation?: boolean;
+}
+
 export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [step, setStep] = useState<Step>('wallet');
   const chainId = 56;
@@ -99,6 +128,8 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const [preparedFunding, setPreparedFunding] = useState<FundingCheckpoint | null>(null);
   const [grantedActivation, setGrantedActivation] = useState<GrantedManagedActivation | null>(null);
   const [relayGrantStatus, setRelayGrantStatus] = useState<RelayCallStatus | null>(null);
+  const [relayRevocationStatus, setRelayRevocationStatus] = useState<RelayCallStatus | null>(null);
+  const [rotatedGrantReset, setRotatedGrantReset] = useState<RotatedGrantReset | null>(null);
   const [recoveredExpiry, setRecoveredExpiry] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(168);
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +166,8 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     setBusy(true);
     setError(null);
     setRelayGrantStatus(null);
+    setRelayRevocationStatus(null);
+    setRotatedGrantReset(null);
     try {
       const client = altanaClient();
       const w =
@@ -219,7 +252,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     };
   }, [fundingAsset, step]);
 
-  async function activate() {
+  async function activate(resetRequest?: RotatedGrantReset) {
     if (!wallet) return;
     if (!automationReady) {
       setError('Managed activation is paused while the debt-complete router is deployed.');
@@ -403,14 +436,357 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       }
 
       const client = altanaClient();
+      setPhase('Checking for an existing managed session…');
+      const manager = await fetchManagerKey(agent.managedAgent, token);
+      const account = wallet.address as `0x${string}`;
+      const retiredNonceIsInvalid = async (grant: RetiredManagerGrant): Promise<boolean> => {
+        const nonce = BigInt(grant.nonce);
+        const current = await readBscNonceQuorum(account, nonce >> 64n);
+        return current > nonce;
+      };
+      const pinnedRetiredGrant = manager.retired.find((grant) =>
+        grant.account.toLowerCase() === account.toLowerCase()
+        && grant.expiry > Math.floor(Date.now() / 1_000));
+      if (pinnedRetiredGrant && !loadSessionGrantCheckpoint(chainId, account, agent.managedAgent)) {
+        const retiredStillLive = await isSessionKeyValid({
+          chainId,
+          account,
+          sessionPublicKey: pinnedRetiredGrant.publicKey,
+        });
+        if (!await retiredNonceIsInvalid(pinnedRetiredGrant) || retiredStillLive) {
+          await restoreRetiredManagerGrantCheckpoint(
+            chainId,
+            account,
+            agent.managedAgent,
+            pinnedRetiredGrant,
+          );
+        }
+      }
       let granted = grantedActivation;
+      if (
+        granted
+        && granted.local.publicKey?.toLowerCase() !== manager.publicKey.toLowerCase()
+      ) {
+        // The runner rotated while this tab retained a grant whose handoff had
+        // failed. Re-enter recovery instead of retrying that stale key forever.
+        granted = null;
+        setGrantedActivation(null);
+      }
       if (!granted) {
         // 2. Fetch the pinned manager key, recovering an exact on-chain grant
         // first if a relay confirmation was lost before browser persistence.
-        setPhase('Checking for an existing managed session…');
-        const manager = await fetchManagerKey(agent.managedAgent, token);
+        const inspectPreviousGrant = async (checkpoint: SessionGrantCheckpoint) => {
+          const previousStillLive = await isSessionKeyValid({
+            chainId,
+            account,
+            sessionPublicKey: checkpoint.publicKey,
+          });
+          const priorOutcome = checkpoint.status === 'submitted'
+            ? await readRelayCallStatus({ callsId: checkpoint.callsId })
+            : await findRelaySessionGrant({ account, publicKey: checkpoint.publicKey });
+          const previousWasRegistered = previousStillLive
+            || (priorOutcome?.status === 'confirmed' && await wasSessionKeyRegistered({
+              chainId,
+              account,
+              sessionPublicKey: checkpoint.publicKey,
+            }));
+          return { previousStillLive, previousWasRegistered, priorOutcome };
+        };
+
+        const retiredGrantFor = (checkpoint: SessionGrantCheckpoint): RetiredManagerGrant | undefined =>
+          manager.retired.find((grant) =>
+            grant.account.toLowerCase() === account.toLowerCase()
+            && grant.publicKey.toLowerCase() === checkpoint.publicKey.toLowerCase()
+            && grant.expiry === checkpoint.expiry);
+
+        const cancelPendingRetiredGrant = async (
+          checkpoint: SessionGrantCheckpoint,
+          grant: RetiredManagerGrant,
+        ): Promise<SessionGrantCheckpoint> => {
+          setPhase('Canceling the stalled mandate (1 passkey tap)…');
+          let releaseTransitionLock: (() => Promise<void>) | null = await acquireSessionGrantBrowserLock(
+            chainId,
+            account,
+            agent.managedAgent,
+          );
+          let canceling: SessionGrantCheckpoint | null = null;
+          try {
+            const current = loadSessionGrantCheckpoint(chainId, account, agent.managedAgent);
+            if (!sameSessionGrantCheckpoint(current, checkpoint)) {
+              throw new Error('Another tab already changed the stalled mandate checkpoint. No duplicate cancellation was submitted.');
+            }
+            const resetNonce = await fundingClient.readContract({
+              address: account,
+              abi: ACCOUNT_NONCE_ABI,
+              functionName: 'getNonce',
+              args: [RESET_NONCE_LANE],
+            });
+            await client.execute({
+              wallet,
+              signer: wallet.signer,
+              chainId,
+              nonce: resetNonce,
+              noWait: true,
+              calls: {
+                to: account,
+                data: encodeFunctionData({
+                  abi: ACCOUNT_NONCE_ABI,
+                  functionName: 'invalidateNonce',
+                  args: [BigInt(grant.nonce)],
+                }),
+              },
+              onSubmitted: async (callsId) => {
+                canceling = saveRotatedManagerRevocationCheckpoint(
+                  chainId,
+                  account,
+                  agent.managedAgent,
+                  checkpoint,
+                  manager.publicKey,
+                  callsId,
+                );
+                setRotatedGrantReset({
+                  checkpoint: canceling,
+                  currentPublicKey: manager.publicKey,
+                  requiresRevocation: true,
+                  cancellation: true,
+                });
+                setRelayGrantStatus(null);
+                setRelayRevocationStatus({ callsId, status: 'pending' });
+                await releaseTransitionLock?.();
+                releaseTransitionLock = null;
+              },
+            });
+          } finally {
+            await (releaseTransitionLock as (() => Promise<void>) | null)?.();
+          }
+          if (!canceling) {
+            throw new Error('The stalled mandate cancellation returned without a saved relay reference. No replacement was submitted.');
+          }
+          return canceling;
+        };
+
+        const revokePreviousGrant = async (
+          checkpoint: SessionGrantCheckpoint,
+        ): Promise<SessionGrantCheckpoint | null> => {
+          setPhase('Revoking the previous manager mandate (1 passkey tap)…');
+          let releaseTransitionLock: (() => Promise<void>) | null = await acquireSessionGrantBrowserLock(
+            chainId,
+            account,
+            agent.managedAgent,
+          );
+          let revoking: SessionGrantCheckpoint | null = null;
+          let revoked: Awaited<ReturnType<typeof client.revokeSession>>;
+          try {
+            const current = loadSessionGrantCheckpoint(
+              chainId,
+              account,
+              agent.managedAgent,
+            );
+            if (!sameSessionGrantCheckpoint(current, checkpoint)) {
+              throw new Error('Another tab already changed the old mandate checkpoint. No duplicate revocation was submitted.');
+            }
+            revoked = await client.revokeSession({
+              wallet,
+              signer: wallet.signer,
+              chainId,
+              session: checkpoint.publicKey,
+              onSubmitted: async (callsId) => {
+                revoking = saveRotatedManagerRevocationCheckpoint(
+                  chainId,
+                  account,
+                  agent.managedAgent,
+                  checkpoint,
+                  manager.publicKey,
+                  callsId,
+                );
+                setRotatedGrantReset({
+                  checkpoint: revoking,
+                  currentPublicKey: manager.publicKey,
+                  requiresRevocation: true,
+                });
+                setRelayGrantStatus(null);
+                setRelayRevocationStatus({ callsId, status: 'pending' });
+                await releaseTransitionLock?.();
+                releaseTransitionLock = null;
+              },
+            });
+          } finally {
+            await (releaseTransitionLock as (() => Promise<void>) | null)?.();
+          }
+          if (revoking === null) {
+            throw new Error('The previous mandate revocation returned without a saved relay reference. No replacement was submitted.');
+          }
+          const outcome: RelayCallStatus = {
+            callsId: revoked.callsId,
+            status: revoked.status === 'CONFIRMED'
+              ? 'confirmed'
+              : revoked.status === 'FAILED'
+                ? 'failed'
+                : 'pending',
+            ...(revoked.transactionHash ? { transactionHash: revoked.transactionHash } : {}),
+          };
+          setRelayRevocationStatus(outcome);
+          if (outcome.status !== 'confirmed') return revoking;
+          if (await isSessionKeyValid({
+            chainId,
+            account,
+            sessionPublicKey: checkpoint.publicKey,
+          })) {
+            throw new Error('The relay confirmed the old mandate revocation, but BNB Chain still reports that key as active. Retry shortly; no replacement was submitted.');
+          }
+          await resetRotatedManagerCheckpoint(
+            chainId,
+            account,
+            agent.managedAgent,
+            revoking,
+            manager.publicKey,
+          );
+          return null;
+        };
+
+        if (resetRequest) {
+          if (manager.publicKey.toLowerCase() !== resetRequest.currentPublicKey.toLowerCase()) {
+            throw new Error(`${agent.name}'s manager key changed again before reset. Nothing was submitted; reload and review the new key.`);
+          }
+          const resetRetiredGrant = retiredGrantFor(resetRequest.checkpoint);
+          const resetPreviousStillLive = resetRetiredGrant && await isSessionKeyValid({
+            chainId,
+            account,
+            sessionPublicKey: resetRequest.checkpoint.publicKey,
+          });
+          if (
+            resetRetiredGrant
+            && await retiredNonceIsInvalid(resetRetiredGrant)
+            && !resetPreviousStillLive
+          ) {
+            await resetRotatedManagerCheckpoint(
+              chainId,
+              account,
+              agent.managedAgent,
+              resetRequest.checkpoint,
+              manager.publicKey,
+            );
+          } else if (resetRequest.checkpoint.status === 'revoking') {
+            const revocation = await readRelayCallStatus({ callsId: resetRequest.checkpoint.callsId });
+            setRelayRevocationStatus(revocation);
+            const retiredGrant = resetRetiredGrant;
+            const previousStillLive = await isSessionKeyValid({
+              chainId,
+              account,
+              sessionPublicKey: resetRequest.checkpoint.publicKey,
+            });
+            if (revocation.status === 'pending') return;
+            if (revocation.status === 'confirmed') {
+              if (retiredGrant ? !await retiredNonceIsInvalid(retiredGrant) || previousStillLive : previousStillLive) {
+                throw new Error(retiredGrant
+                  ? 'The relay confirmed the cancellation, but BNB Chain has not advanced the stalled nonce yet. Retry shortly; no replacement was submitted.'
+                  : 'The relay confirmed the old mandate revocation, but BNB Chain still reports that key as active. Retry shortly; no replacement was submitted.');
+              }
+              await resetRotatedManagerCheckpoint(
+                chainId,
+                account,
+                agent.managedAgent,
+                resetRequest.checkpoint,
+                manager.publicKey,
+              );
+            } else {
+              const oldGrant = await findRelaySessionGrant({
+                account,
+                publicKey: resetRequest.checkpoint.publicKey,
+              });
+              if (previousStillLive) {
+                const pending = await revokePreviousGrant(resetRequest.checkpoint);
+                if (pending) return;
+              } else if (oldGrant && retiredGrant) {
+                await cancelPendingRetiredGrant(resetRequest.checkpoint, retiredGrant);
+                return;
+              } else if (oldGrant) {
+                throw new Error(`The previous pending mandate cannot be canceled automatically. No replacement will be submitted before ${new Date(resetRequest.checkpoint.expiry * 1_000).toISOString()}.`);
+              } else {
+                await resetRotatedManagerCheckpoint(
+                  chainId,
+                  account,
+                  agent.managedAgent,
+                  resetRequest.checkpoint,
+                  manager.publicKey,
+                );
+              }
+            }
+          } else {
+            const previous = await inspectPreviousGrant(resetRequest.checkpoint);
+            if (previous.priorOutcome) setRelayGrantStatus(previous.priorOutcome);
+            if (previous.priorOutcome?.status === 'confirmed' && !previous.previousWasRegistered) {
+              throw new Error('The relay confirmed the previous mandate, but BNB Chain has not indexed it yet. Retry shortly; no replacement was submitted.');
+            }
+            if (previous.previousStillLive) {
+              const pending = await revokePreviousGrant(resetRequest.checkpoint);
+              if (pending) return;
+            } else if (previous.priorOutcome?.status === 'pending') {
+              const retiredGrant = retiredGrantFor(resetRequest.checkpoint);
+              if (!retiredGrant) {
+                throw new Error(`The previous pending mandate cannot be canceled automatically. No replacement will be submitted before ${new Date(resetRequest.checkpoint.expiry * 1_000).toISOString()}.`);
+              }
+              await cancelPendingRetiredGrant(resetRequest.checkpoint, retiredGrant);
+              return;
+            } else {
+              await resetRotatedManagerCheckpoint(
+                chainId,
+                account,
+                agent.managedAgent,
+                resetRequest.checkpoint,
+                manager.publicKey,
+              );
+            }
+          }
+          setRelayRevocationStatus(null);
+          if (rotatedManagerCheckpoint(chainId, account, agent.managedAgent, manager.publicKey)) {
+            throw new Error('The previous manager checkpoint remains present. No replacement was submitted.');
+          }
+          setRotatedGrantReset(null);
+          setRelayGrantStatus(null);
+        }
         let scope = buildManagedScope({ chainId, hours, token });
         const sessionSigner = verifyOnlyStub(manager.address, manager.publicKey);
+        let rotatedCheckpoint = rotatedManagerCheckpoint(
+          chainId,
+          account,
+          agent.managedAgent,
+          manager.publicKey,
+        );
+        if (!rotatedCheckpoint) {
+          // A confirmed grant checkpoint is cleared after the browser saves the
+          // revocation record, before runner handoff. Recover that record too:
+          // a failed handoff must not make a still-live old key invisible.
+          const savedOldSessions = listStoredRotatedManagerSessions({
+            chainId,
+            account,
+            agent: agent.managedAgent,
+            agentTokenId: agent.tokenId,
+            target: router.address,
+            currentPublicKey: manager.publicKey,
+          });
+          for (const saved of savedOldSessions) {
+            if (!await isSessionKeyValid({
+              chainId,
+              account,
+              sessionPublicKey: saved.publicKey,
+            })) continue;
+            reserveSessionGrantCheckpoint(
+              chainId,
+              account,
+              agent.managedAgent,
+              saved.publicKey,
+              saved.expiry,
+            );
+            rotatedCheckpoint = rotatedManagerCheckpoint(
+              chainId,
+              account,
+              agent.managedAgent,
+              manager.publicKey,
+            );
+            break;
+          }
+        }
         const activationPosition = await waitForManagedPrincipal(
           () => readManagedPosition(
             wallet.address as `0x${string}`,
@@ -422,7 +798,82 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           ),
           expectedTotalWei,
         );
-        let grantCheckpoint = retireExpiredRotatedManagerCheckpoint(
+        if (rotatedCheckpoint && rotatedCheckpoint.expiry > Math.floor(Date.now() / 1_000)) {
+          const retiredGrant = retiredGrantFor(rotatedCheckpoint);
+          const retiredStillLive = retiredGrant && await isSessionKeyValid({
+            chainId,
+            account,
+            sessionPublicKey: rotatedCheckpoint.publicKey,
+          });
+          if (retiredGrant && await retiredNonceIsInvalid(retiredGrant) && !retiredStillLive) {
+            await resetRotatedManagerCheckpoint(
+              chainId,
+              account,
+              agent.managedAgent,
+              rotatedCheckpoint,
+              manager.publicKey,
+            );
+          } else if (rotatedCheckpoint.status === 'revoking') {
+            const revocation = await readRelayCallStatus({ callsId: rotatedCheckpoint.callsId });
+            setRelayRevocationStatus(revocation);
+            const previousStillLive = await isSessionKeyValid({
+              chainId,
+              account,
+              sessionPublicKey: rotatedCheckpoint.publicKey,
+            });
+            const transitionConfirmed = revocation.status === 'confirmed'
+              && (retiredGrant ? await retiredNonceIsInvalid(retiredGrant) && !previousStillLive : !previousStillLive);
+            if (transitionConfirmed) {
+              await resetRotatedManagerCheckpoint(
+                chainId,
+                account,
+                agent.managedAgent,
+                rotatedCheckpoint,
+                manager.publicKey,
+              );
+            } else {
+              setRotatedGrantReset({
+                checkpoint: rotatedCheckpoint,
+                currentPublicKey: manager.publicKey,
+                requiresRevocation: true,
+                ...(retiredGrant && !previousStillLive ? { cancellation: true } : {}),
+              });
+              return;
+            }
+          } else {
+            const previous = await inspectPreviousGrant(rotatedCheckpoint);
+            if (previous.priorOutcome) setRelayGrantStatus(previous.priorOutcome);
+            if (previous.priorOutcome?.status === 'confirmed' && !previous.previousWasRegistered) {
+              throw new Error('The relay confirmed the previous mandate, but BNB Chain has not indexed it yet. Retry shortly; no replacement was submitted.');
+            }
+            if (
+              previous.previousStillLive
+              || previous.priorOutcome?.status === 'pending'
+              || rotatedCheckpoint.status === 'reserved'
+            ) {
+              const cancellation = !previous.previousStillLive
+                && previous.priorOutcome?.status === 'pending'
+                && retiredGrantFor(rotatedCheckpoint) !== undefined;
+              setRotatedGrantReset({
+                checkpoint: rotatedCheckpoint,
+                currentPublicKey: manager.publicKey,
+                requiresRevocation: previous.previousStillLive || previous.priorOutcome?.status === 'pending',
+                ...(cancellation ? { cancellation: true } : {}),
+              });
+              return;
+            }
+            await resetRotatedManagerCheckpoint(
+              chainId,
+              account,
+              agent.managedAgent,
+              rotatedCheckpoint,
+              manager.publicKey,
+            );
+          }
+          setRelayGrantStatus(null);
+          setRelayRevocationStatus(null);
+        }
+        let grantCheckpoint = await retireExpiredRotatedManagerCheckpoint(
           chainId,
           wallet.address as `0x${string}`,
           agent.managedAgent,
@@ -704,6 +1155,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             : grantedActivation
               ? 'Retry agent handoff'
               : agent.submitLabel ?? 'Put funds under management';
+  const resetCancelsPending = rotatedGrantReset?.cancellation === true;
   const primaryBtn =
     'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
@@ -845,14 +1297,52 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             {relayGrantStatus && (
               <RelayGrantNotice grant={relayGrantStatus} onStatusChange={setRelayGrantStatus} />
             )}
+            {relayRevocationStatus && (
+              <RelayGrantNotice
+                grant={relayRevocationStatus}
+                operation={resetCancelsPending ? 'cancellation' : 'revocation'}
+                onStatusChange={setRelayRevocationStatus}
+              />
+            )}
+            {rotatedGrantReset && (
+              <div role="alert" className="rounded-lg border border-primary/40 bg-primary/10 p-3 text-xs leading-relaxed">
+                <p className="font-semibold text-primary">A fresh {agent.name} manager key is ready</p>
+                <p className="mt-1 text-foreground">
+                  {rotatedGrantReset.checkpoint.status === 'revoking'
+                    ? resetCancelsPending
+                      ? 'The stalled mandate cancellation is saved above. Your funded account stays unchanged, and no replacement will be submitted until the stalled nonce is permanently invalid.'
+                      : 'The old mandate revocation is saved above. Your funded account stays unchanged, and no replacement will be submitted until that relay outcome is final.'
+                    : rotatedGrantReset.requiresRevocation
+                      ? resetCancelsPending
+                        ? 'The previous mandate is stalled at the relay. Continuing permanently cancels its nonce first, then asks you to sign the replacement.'
+                        : 'The previous mandate is active. Continuing saves and confirms its revocation first, then asks you to sign the replacement.'
+                      : <>Resetting removes only the old browser checkpoint. Your funded account and tokens stay unchanged.
+                      The old relay request may still appear on-chain until{' '}
+                      {new Date(rotatedGrantReset.checkpoint.expiry * 1_000).toLocaleString()}, but its private key has
+                      been removed from the live runner.</>}
+                </p>
+              </div>
+            )}
             <button
-              onClick={activate}
+              onClick={() => void activate(rotatedGrantReset ?? undefined)}
               disabled={busy || !automationReady || (!preparedFunding && (!activeGasQuote || !fundingReady))}
               aria-busy={busy}
               aria-describedby={busy ? 'activation-progress' : undefined}
               className={`${primaryBtn} ${busy ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}
             >
-              {busy ? 'Activation in progress…' : activationLabel}
+              {busy
+                ? 'Activation in progress…'
+                : rotatedGrantReset?.checkpoint.status === 'revoking'
+                  ? relayRevocationStatus?.status === 'failed'
+                    ? resetCancelsPending ? 'Retry cancellation' : 'Retry revocation and replacement (2 taps)'
+                    : relayRevocationStatus?.status === 'confirmed'
+                      ? resetCancelsPending ? 'Verify cancellation and sign replacement' : 'Verify revocation and sign replacement'
+                      : resetCancelsPending ? 'Check cancellation status' : 'Check revocation status'
+                : rotatedGrantReset?.requiresRevocation
+                  ? resetCancelsPending ? 'Cancel stalled mandate (1 tap)' : 'Revoke old and sign replacement (2 taps)'
+                  : rotatedGrantReset
+                    ? 'Reset and sign replacement mandate'
+                    : activationLabel}
             </button>
             <p className="text-xs text-muted-2">
               From a fresh deposit: {preCallConfirmationRequired ? 'three' : 'two'} passkey taps —

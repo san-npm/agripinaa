@@ -434,7 +434,7 @@ export function StrategyWizard({
         const manager = await fetchManagerKey(agent.slug, 'USDT');
         let scope = buildStrategyScope(agent.slug, hours);
         const sessionSigner = verifyOnlyStub(manager.address, manager.publicKey);
-        let grantCheckpoint = retireExpiredRotatedManagerCheckpoint(
+        let grantCheckpoint = await retireExpiredRotatedManagerCheckpoint(
           56,
           wallet.address as Hex,
           agent.slug,

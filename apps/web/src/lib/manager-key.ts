@@ -1,4 +1,8 @@
-import { agentBySlug, pinnedManagerKeyAddress } from '@agripinaa/shared/agents';
+import {
+  agentBySlug,
+  pinnedManagerKeyAddress,
+  type RetiredManagerGrant,
+} from '@agripinaa/shared/agents';
 import { isAddress, type Hex } from 'viem';
 import { publicKeyToAddress } from 'viem/accounts';
 
@@ -12,10 +16,52 @@ export interface ManagerKeyInfo {
   agent: string;
   publicKey: Hex;
   address: Hex;
+  retired: readonly RetiredManagerGrant[];
 }
 
 /** SEC1 uncompressed point: 0x04 || x || y, 65 bytes. */
 const SEC1_UNCOMPRESSED = /^0x04[0-9a-fA-F]{128}$/;
+const CALLS_ID = /^0x[0-9a-fA-F]{64}$/;
+
+function validateRetiredManagerGrants(
+  agent: string,
+  token: string,
+  value: unknown,
+): readonly RetiredManagerGrant[] {
+  const expected = (agentBySlug(agent)?.retiredManagerGrants ?? []).filter((grant) => grant.token === token);
+  const reported = value === undefined ? [] : value;
+  if (!Array.isArray(reported) || reported.length !== expected.length) {
+    throw new Error(`manager key rejected: ${agent} reported incomplete retired ${token} manager policy`);
+  }
+  return reported.map((candidate, index) => {
+    if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+      throw new Error('manager key rejected: retired manager policy is malformed');
+    }
+    const grant = candidate as Record<string, unknown>;
+    const pinned = expected[index]!;
+    if (
+      grant.token !== pinned.token
+      || typeof grant.account !== 'string'
+      || !isAddress(grant.account)
+      || grant.account.toLowerCase() !== pinned.account.toLowerCase()
+      || typeof grant.publicKey !== 'string'
+      || !SEC1_UNCOMPRESSED.test(grant.publicKey)
+      || typeof grant.address !== 'string'
+      || !isAddress(grant.address)
+      || publicKeyToAddress(grant.publicKey as Hex).toLowerCase() !== grant.address.toLowerCase()
+      || grant.address.toLowerCase() !== pinned.address.toLowerCase()
+      || grant.publicKey.toLowerCase() !== pinned.publicKey.toLowerCase()
+      || grant.expiry !== pinned.expiry
+      || typeof grant.grantCallsId !== 'string'
+      || !CALLS_ID.test(grant.grantCallsId)
+      || grant.grantCallsId.toLowerCase() !== pinned.grantCallsId.toLowerCase()
+      || grant.nonce !== pinned.nonce
+    ) {
+      throw new Error(`manager key rejected: retired ${agent}/${token} manager policy does not match its pin`);
+    }
+    return pinned;
+  });
+}
 
 /**
  * The runner base is resolved from a rotating quick-tunnel hostname, and a
@@ -34,7 +80,11 @@ const SEC1_UNCOMPRESSED = /^0x04[0-9a-fA-F]{128}$/;
  * offers it, and a report about it can grant nobody anything.
  */
 export function validateManagerKey(agent: string, token: string, body: unknown): ManagerKeyInfo {
-  const record = (body && typeof body === 'object' ? body : {}) as { publicKey?: unknown; address?: unknown };
+  const record = (body && typeof body === 'object' ? body : {}) as {
+    publicKey?: unknown;
+    address?: unknown;
+    retired?: unknown;
+  };
   const { publicKey, address } = record;
   if (typeof publicKey !== 'string' || !SEC1_UNCOMPRESSED.test(publicKey)) {
     throw new Error('manager key rejected: public key is not a 65-byte SEC1 point');
@@ -55,7 +105,8 @@ export function validateManagerKey(agent: string, token: string, body: unknown):
   } else {
     console.warn(`manager key for ${agent}/${token} is not pinned in the registry; accepting ${address} as reported`);
   }
-  return { agent, publicKey: publicKey as Hex, address: address as Hex };
+  const retired = validateRetiredManagerGrants(agent, token, record.retired);
+  return { agent, publicKey: publicKey as Hex, address: address as Hex, retired };
 }
 
 /**

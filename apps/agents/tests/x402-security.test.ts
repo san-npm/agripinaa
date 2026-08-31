@@ -4,9 +4,14 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 
 import { verifyPayment, type DecodedPayment, type MerchantConfig } from '@altananetwork/x402-server';
-import { FUNDING_FEE_PAYER_BSC } from '@agripinaa/shared';
+import { FUNDING_FEE_PAYER_BSC, YIELD_ROUTER_BSC_USDC } from '@agripinaa/shared';
 
-import { fundingRoutesEnabled, readBody, startX402Server } from '../src/x402-server';
+import {
+  fundingRoutesEnabled,
+  livePersistedManagerConflict,
+  readBody,
+  startX402Server,
+} from '../src/x402-server';
 
 const TOKEN = '0x1111111111111111111111111111111111111111' as const;
 const PAYER = '0x2222222222222222222222222222222222222222' as const;
@@ -117,4 +122,65 @@ test('the authenticated runner lease serializes grant submissions and releases b
   assert.equal((await request('POST', other)).status, 409);
   assert.equal((await request('DELETE', input)).status, 200);
   assert.equal((await request('POST', other)).status, 201);
+});
+
+test('the activation lease prunes a revoked old binding but preserves a live one', async () => {
+  const currentPublicKey = `0x04${'55'.repeat(64)}` as const;
+  const oldPublicKey = `0x04${'77'.repeat(64)}` as const;
+  const old = {
+    account: PAYER,
+    chainId: 56,
+    session: {
+      walletAddress: PAYER,
+      publicKey: oldPublicKey,
+      permissions: { calls: [{ to: PAY_TO, signature: 'run()' }], spend: [] },
+      expiry: 2_000_000_000,
+    },
+    registeredAt: '2026-08-29T00:00:00.000Z',
+  };
+  const managerSet = {
+    master: { publicKey: currentPublicKey, address: PAY_TO },
+    byToken: new Map([['USDT', { publicKey: currentPublicKey, address: PAY_TO }]]),
+  };
+  const removed: unknown[] = [];
+  const input = {
+    agent: 'yield-b',
+    account: PAYER.toLowerCase(),
+    publicKey: currentPublicKey.toLowerCase(),
+    managerToken: 'USDT',
+    managerSet,
+    nowSeconds: 1_900_000_000,
+  };
+
+  assert.equal(await livePersistedManagerConflict(input, {
+    load: () => [old],
+    remove: (_agent, entry) => { removed.push(entry); return []; },
+    isValid: async () => false,
+  }), false);
+  assert.equal(removed.length, 1);
+  assert.equal(removed[0], old);
+
+  removed.length = 0;
+  assert.equal(await livePersistedManagerConflict(input, {
+    load: () => [old],
+    remove: (_agent, entry) => { removed.push(entry); return []; },
+    isValid: async () => true,
+  }), true);
+  assert.equal(removed.length, 0);
+
+  const oldUsdc = {
+    ...old,
+    session: {
+      ...old.session,
+      permissions: {
+        ...old.session.permissions,
+        calls: [{ to: YIELD_ROUTER_BSC_USDC.address, signature: 'toAave()' }],
+      },
+    },
+  };
+  assert.equal(await livePersistedManagerConflict(input, {
+    load: () => [oldUsdc],
+    remove: () => [],
+    isValid: async () => true,
+  }), false);
 });

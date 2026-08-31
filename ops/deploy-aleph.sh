@@ -70,9 +70,19 @@ S "cd ~/agripinaa && git fetch -q origin && git cat-file -e '$DEPLOY_COMMIT^{com
 # --ignore-times deliberately retransmits this tiny directory on every deploy:
 # rotated wallet JSON often keeps the same length and timestamp granularity,
 # and a secret cutover must never depend on rsync's quick-check heuristics.
+# Retired manager keys stay offline on the operator machine; the runner never
+# needs them, and syncing the archive would undo the point of a key rotation.
 # rsync splits -e on spaces and honours quotes, so the key and host-key paths
 # are quoted for it, not for this shell.
-rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --ignore-times "$OPS_DIR/../wallets/" "$HOST:$APPDIR/wallets/"
+rsync -e "ssh -i '$KEY' -o StrictHostKeyChecking=yes -o 'UserKnownHostsFile=$KNOWN_HOSTS'" -av --ignore-times --exclude 'retired/' "$OPS_DIR/../wallets/" "$HOST:$APPDIR/wallets/"
+# An older deploy may already have copied this archive. Remove that exact
+# destination directory after the good keys land; the recoverable copy remains
+# on the operator machine and is excluded above.
+S "if test -e '$APPDIR/wallets/retired'; then find '$APPDIR/wallets/retired' -depth -delete; fi"
+S "test ! -e '$APPDIR/wallets/retired'" || {
+  echo "FATAL: retired manager keys remain on the runner host"
+  exit 1
+}
 # Ask the selected checkout which keys its runner needs. This keeps both a
 # forward deploy and DEPLOY_COMMIT rollback aligned with the code systemd will
 # start. Revisions before required-wallets.ts derive the same inventory from
@@ -101,6 +111,12 @@ done
 # Enforce 0600 on the remote regardless of what the local modes were (some
 # key files predate the chmod-on-write and could be 0644).
 S 'chmod 700 ~/agripinaa/wallets && chmod 600 ~/agripinaa/wallets/*.json'
+# Filenames alone cannot detect a stale same-named manager key after rotation.
+# New revisions verify every private key only by deriving its public address;
+# the script emits no secret bytes. Old rollback commits predate this checker.
+if S "test -f '$APPDIR/apps/agents/src/verify-wallets.ts'"; then
+  S "cd '$APPDIR' && pnpm --filter @agripinaa/agents exec tsx src/verify-wallets.ts"
+fi
 # Repair state created by older runners too. Current writes are already atomic
 # and private, but a deploy must not leave a pre-fix managed-session registry
 # readable by other users on the VM.

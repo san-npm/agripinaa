@@ -13,8 +13,21 @@ export type SessionGrantCheckpoint = {
   savedAt: number;
 } & (
   | { status: 'reserved' }
-  | { status: 'submitted'; callsId: Hex }
+  | { status: 'submitted' | 'revoking'; callsId: Hex }
 );
+
+export function sameSessionGrantCheckpoint(
+  left: SessionGrantCheckpoint | null,
+  right: SessionGrantCheckpoint,
+): boolean {
+  return left !== null
+    && left.status === right.status
+    && left.publicKey.toLowerCase() === right.publicKey.toLowerCase()
+    && left.expiry === right.expiry
+    && left.savedAt === right.savedAt
+    && (left.status === 'reserved'
+      || (right.status !== 'reserved' && left.callsId.toLowerCase() === right.callsId.toLowerCase()));
+}
 
 interface StoredSessionGrantCheckpoint {
   version?: unknown;
@@ -116,7 +129,7 @@ function parseCheckpoint(value: unknown): SessionGrantCheckpoint | null {
   const stored = value as StoredSessionGrantCheckpoint;
   if (
     stored.version !== 1
-    || (stored.status !== 'reserved' && stored.status !== 'submitted')
+    || (stored.status !== 'reserved' && stored.status !== 'submitted' && stored.status !== 'revoking')
     || typeof stored.publicKey !== 'string'
     || !PUBLIC_KEY_RE.test(stored.publicKey)
     || typeof stored.expiry !== 'number'
@@ -133,7 +146,7 @@ function parseCheckpoint(value: unknown): SessionGrantCheckpoint | null {
   };
   if (stored.status === 'reserved') return { ...base, status: 'reserved' };
   if (typeof stored.callsId !== 'string' || !HEX_RE.test(stored.callsId)) return null;
-  return { ...base, status: 'submitted', callsId: stored.callsId as Hex };
+  return { ...base, status: stored.status, callsId: stored.callsId as Hex };
 }
 
 export function loadSessionGrantCheckpoint(
@@ -165,35 +178,130 @@ export function loadSessionGrantCheckpoint(
  * Once its signed expiry has passed, however, the old key cannot overlap the
  * replacement key even if a delayed relay submission eventually lands.
  */
-export function retireExpiredRotatedManagerCheckpoint(
+export async function retireExpiredRotatedManagerCheckpoint(
   chainId: number,
   account: Address,
   agent: string,
   currentPublicKey: Hex,
   nowSeconds = Math.floor(Date.now() / 1_000),
+): Promise<SessionGrantCheckpoint | null> {
+  const release = await acquireSessionGrantBrowserLock(chainId, account, agent);
+  try {
+    const checkpoint = loadSessionGrantCheckpoint(chainId, account, agent);
+    if (
+      checkpoint === null
+      || checkpoint.publicKey.toLowerCase() === currentPublicKey.toLowerCase()
+    ) return checkpoint;
+
+    if (checkpoint.expiry > nowSeconds) {
+      throw new Error(
+        `A saved grant for the previous manager key may remain relayable until ${new Date(checkpoint.expiry * 1_000).toISOString()}. Activation will not authorize its replacement before then; retry after that expiry.`,
+      );
+    }
+
+    const storageKey = key(chainId, account, agent);
+    try {
+      window.localStorage.removeItem(storageKey);
+      if (window.localStorage.getItem(storageKey) !== null) {
+        throw new Error('checkpoint remained present');
+      }
+    } catch {
+      throw new Error('The expired grant for the previous manager key could not be retired from this browser. Activation stopped without submitting a new grant.');
+    }
+    return null;
+  } finally {
+    await release();
+  }
+}
+
+/** Return the saved grant only when the runner has moved to a new manager key. */
+export function rotatedManagerCheckpoint(
+  chainId: number,
+  account: Address,
+  agent: string,
+  currentPublicKey: Hex,
 ): SessionGrantCheckpoint | null {
   const checkpoint = loadSessionGrantCheckpoint(chainId, account, agent);
-  if (
-    checkpoint === null
-    || checkpoint.publicKey.toLowerCase() === currentPublicKey.toLowerCase()
-  ) return checkpoint;
+  return checkpoint !== null
+    && checkpoint.publicKey.toLowerCase() !== currentPublicKey.toLowerCase()
+    ? checkpoint
+    : null;
+}
 
-  if (checkpoint.expiry > nowSeconds) {
-    throw new Error(
-      `A saved grant for the previous manager key may remain relayable until ${new Date(checkpoint.expiry * 1_000).toISOString()}. Activation will not authorize its replacement before then; retry after that expiry.`,
-    );
-  }
-
-  const storageKey = key(chainId, account, agent);
+/**
+ * Retire one exact pre-rotation checkpoint after the owner explicitly chooses
+ * to replace it. The old signed grant can still land until its expiry; callers
+ * must disclose that fact and must take the old private key out of service.
+ */
+export async function resetRotatedManagerCheckpoint(
+  chainId: number,
+  account: Address,
+  agent: string,
+  previous: SessionGrantCheckpoint,
+  currentPublicKey: Hex,
+): Promise<void> {
+  const release = await acquireSessionGrantBrowserLock(chainId, account, agent);
   try {
-    window.localStorage.removeItem(storageKey);
-    if (window.localStorage.getItem(storageKey) !== null) {
-      throw new Error('checkpoint remained present');
+    const checkpoint = loadSessionGrantCheckpoint(chainId, account, agent);
+    if (
+      !sameSessionGrantCheckpoint(checkpoint, previous)
+      || checkpoint === null
+      || checkpoint.publicKey.toLowerCase() === currentPublicKey.toLowerCase()
+    ) {
+      throw new Error('The saved manager grant changed before it could be reset. Nothing was submitted.');
+    }
+    const storageKey = key(chainId, account, agent);
+    try {
+      window.localStorage.removeItem(storageKey);
+      if (window.localStorage.getItem(storageKey) !== null) {
+        throw new Error('checkpoint remained present');
+      }
+    } catch {
+      throw new Error('The previous manager grant could not be reset in this browser. Nothing was submitted.');
+    }
+  } finally {
+    await release();
+  }
+}
+
+/** Persist the exact relay call that is revoking a live pre-rotation key. */
+export function saveRotatedManagerRevocationCheckpoint(
+  chainId: number,
+  account: Address,
+  agent: string,
+  previous: SessionGrantCheckpoint,
+  currentPublicKey: Hex,
+  callsId: Hex,
+): SessionGrantCheckpoint {
+  const checkpoint = loadSessionGrantCheckpoint(chainId, account, agent);
+  if (
+    !sameSessionGrantCheckpoint(checkpoint, previous)
+    || checkpoint === null
+    || checkpoint.publicKey.toLowerCase() === currentPublicKey.toLowerCase()
+    || !HEX_RE.test(callsId)
+  ) {
+    throw new Error('The saved manager grant changed before its revocation could be tracked. No replacement was submitted.');
+  }
+  const revoking: SessionGrantCheckpoint = {
+    status: 'revoking',
+    publicKey: checkpoint.publicKey,
+    expiry: checkpoint.expiry,
+    savedAt: checkpoint.savedAt,
+    callsId,
+  };
+  try {
+    window.localStorage.setItem(key(chainId, account, agent), JSON.stringify({
+      version: 1,
+      ...revoking,
+    }));
+    const saved = loadSessionGrantCheckpoint(chainId, account, agent);
+    if (saved?.status !== 'revoking' || saved.callsId.toLowerCase() !== callsId.toLowerCase()) {
+      throw new Error('revocation checkpoint was not retained');
     }
   } catch {
-    throw new Error('The expired grant for the previous manager key could not be retired from this browser. Activation stopped without submitting a new grant.');
+    throw new Error(`The old mandate revocation was submitted as ${callsId}, but its relay reference could not be saved. Do not retry; recover that relay outcome first.`);
   }
-  return null;
+  return revoking;
 }
 
 /**
@@ -246,6 +354,36 @@ export function submitSessionGrantCheckpoint(
     savedAt: existing.savedAt,
     callsId,
   }));
+}
+
+/** Restore one pinned pre-rotation relay grant on a browser with no local state. */
+export async function restoreRetiredManagerGrantCheckpoint(
+  chainId: number,
+  account: Address,
+  agent: string,
+  grant: { publicKey: Hex; expiry: number; grantCallsId: Hex },
+): Promise<SessionGrantCheckpoint> {
+  const release = await acquireSessionGrantBrowserLock(chainId, account, agent);
+  try {
+    const current = loadSessionGrantCheckpoint(chainId, account, agent);
+    if (current) return current;
+    reserveSessionGrantCheckpoint(chainId, account, agent, grant.publicKey, grant.expiry);
+    submitSessionGrantCheckpoint(
+      chainId,
+      account,
+      agent,
+      grant.publicKey,
+      grant.expiry,
+      grant.grantCallsId,
+    );
+    const restored = loadSessionGrantCheckpoint(chainId, account, agent);
+    if (!restored) throw new Error('restored checkpoint was not retained');
+    return restored;
+  } catch {
+    throw new Error('The retired manager grant could not be restored in this browser. Activation stopped without submitting a new grant.');
+  } finally {
+    await release();
+  }
 }
 
 export function clearSessionGrantCheckpoint(
