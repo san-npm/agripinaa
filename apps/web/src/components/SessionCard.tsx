@@ -24,10 +24,14 @@ export function SessionCard({
   meta,
   onChange,
   position,
+  forgetDisabled = false,
+  forgetDisabledReason,
 }: {
   meta: StoredSessionMeta;
   onChange: () => void;
   position?: ReactNode | ((validity: SessionValidity) => ReactNode);
+  forgetDisabled?: boolean;
+  forgetDisabledReason?: string;
 }) {
   const [validity, setValidity] = useState<SessionValidity>('checking');
   const [busy, setBusy] = useState(false);
@@ -250,7 +254,14 @@ export function SessionCard({
             forgetSession(meta.id);
             onChange();
           }}
-          disabled={busy}
+          disabled={busy || validity !== 'invalid' || forgetDisabled}
+          title={
+            validity !== 'invalid'
+              ? 'Confirm the session is stopped on-chain before forgetting it'
+              : forgetDisabled
+                ? forgetDisabledReason
+                : undefined
+          }
           className="rounded border border-border-strong px-3 py-1 text-xs text-muted hover:border-border-strong disabled:opacity-50"
         >
           Forget

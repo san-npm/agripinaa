@@ -7,6 +7,7 @@ import {
   accountSessionPermissionsMatch,
   isSessionKeyValid,
   keyIdFromPublicKey,
+  resolveActiveAccountSessionPublicKeys,
   type Address,
 } from '../src/index';
 
@@ -17,6 +18,7 @@ const SPIKE_ACCOUNT: Address = '0xACF6FC404F2B2D11D77Fe788f1eDaE5A7E0996Cf';
 const SPIKE_PUBLIC_KEY =
   '0x04f63277b2c7a1446b0fc8083eb3645fe24d6232f29730ffb0707f3b7dfa1298fc90c3720379c802040f3ed228d0fe8e7a94da8e4354ce0ad3317211a25aed605b' as const;
 const SPIKE_KEY_ID = '0x05a0ff131ad0359673e0b8fdbad507f82ddd5a178c6019522e858dc3405910da';
+const SPIKE_SESSION_ADDRESS = '0x59cb56a0a8B09223256A5ED92FEAd4f726610c0F' as const;
 
 test('keyIdFromPublicKey matches the captured spike fixture', () => {
   assert.equal(keyIdFromPublicKey(SPIKE_PUBLIC_KEY), SPIKE_KEY_ID);
@@ -133,6 +135,56 @@ test('account key identity requires Porto canonical secp256k1 encoding', () => {
     publicKey: `0x${'ab'.repeat(12)}${address.slice(2)}`,
   }, address, expiry), false);
   assert.equal(accountKeyDescriptorMatches({ ...canonical, isSuperAdmin: true }, address, expiry), false);
+});
+
+test('account recovery resolves every active session through KeyStore and excludes admins', () => {
+  const session = {
+    expiry: 2_000_000_000,
+    keyType: 2,
+    isSuperAdmin: false,
+    publicKey: `0x${'00'.repeat(12)}${SPIKE_SESSION_ADDRESS.slice(2)}` as const,
+  };
+  assert.deepEqual(resolveActiveAccountSessionPublicKeys({
+    keyIds: [SPIKE_KEY_ID],
+    publicKeys: [SPIKE_PUBLIC_KEY],
+    accountKeys: [session, { ...session, isSuperAdmin: true }],
+    blockTimestamp: 1_900_000_000n,
+  }), [SPIKE_PUBLIC_KEY]);
+});
+
+test('account recovery fails closed for an active unregistered session', () => {
+  const unknown = {
+    expiry: 2_000_000_000,
+    keyType: 2,
+    isSuperAdmin: false,
+    publicKey: `0x${'11'.repeat(20)}` as const,
+  };
+  assert.throws(() => resolveActiveAccountSessionPublicKeys({
+    keyIds: [SPIKE_KEY_ID],
+    publicKeys: [SPIKE_PUBLIC_KEY],
+    accountKeys: [unknown],
+    blockTimestamp: 1_900_000_000n,
+  }), /missing or ambiguous/);
+  assert.deepEqual(resolveActiveAccountSessionPublicKeys({
+    keyIds: [SPIKE_KEY_ID],
+    publicKeys: [SPIKE_PUBLIC_KEY],
+    accountKeys: [unknown],
+    blockTimestamp: 2_000_000_000n,
+  }), []);
+});
+
+test('account recovery fails closed for an unsupported active key type', () => {
+  assert.throws(() => resolveActiveAccountSessionPublicKeys({
+    keyIds: [],
+    publicKeys: [],
+    accountKeys: [{
+      expiry: 2_000_000_000,
+      keyType: 1,
+      isSuperAdmin: false,
+      publicKey: '0x1234',
+    }],
+    blockTimestamp: 1_900_000_000n,
+  }), /unsupported key type/);
 });
 
 test('unsupported chainId throws instead of guessing an address', async () => {

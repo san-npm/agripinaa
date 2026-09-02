@@ -216,8 +216,13 @@ export async function withdrawToIdle(
  */
 export const WITHDRAW_GAS_RESERVE_WEI = 500_000_000_000_000n; // 0.0005 BNB
 
-async function assertSafeWithdrawalDestination(wallet: WalletLike, chainId: number, to: Hex) {
-  const staticProblem = destinationProblem(to, wallet.address, chainId);
+/**
+ * Fail closed unless `to` is an externally owned wallet. Call this before any
+ * recovery mutation (session revoke or venue unwind), and again immediately
+ * before the transfer to protect against both bad input and TOCTOU changes.
+ */
+export async function assertSafeWithdrawalDestination(account: string, chainId: number, to: Hex) {
+  const staticProblem = destinationProblem(to, account, chainId);
   if (staticProblem) throw new Error(staticProblem);
   let liveProblem: string | null;
   try {
@@ -251,7 +256,7 @@ export async function sendTokenOut(
   symbol = 'USDT',
 ) {
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
-  await assertSafeWithdrawalDestination(wallet, chainId, to);
+  await assertSafeWithdrawalDestination(wallet.address, chainId, to);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
@@ -264,7 +269,7 @@ export async function sendTokenOut(
 /** Move native BNB out of the account to an external address (passkey action). */
 export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex, amountWei: bigint) {
   if (amountWei <= 0n) throw new Error('Nothing to withdraw.');
-  await assertSafeWithdrawalDestination(wallet, chainId, to);
+  await assertSafeWithdrawalDestination(wallet.address, chainId, to);
   const r = await altanaClient().execute({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,

@@ -15,6 +15,7 @@ import { altanaClient } from '@/lib/altana';
 import { clearFundingCheckpointForSession } from '@/lib/funding-checkpoint';
 import { managedServiceStatus, readManagedRunnerStatus, type ManagedRunnerStatus } from '@/lib/managed-router';
 import {
+  assertSafeWithdrawalDestination,
   destinationProblem,
   managedPolicyDisplay,
   readManagedPosition,
@@ -232,6 +233,9 @@ export function ManagedPositionCard({
     setError(null);
     try {
       if (!scopedRouter) throw new Error('This saved session has no recognized recovery router.');
+      // Reject contract destinations before passkey recovery, session revoke,
+      // or venue unwind. sendTokenOut repeats this check just before transfer.
+      await assertSafeWithdrawalDestination(meta.account, meta.chainId, dest as Hex);
       const wallet = await reauth();
       await ensureSessionStopped(wallet);
       const cur = await readManagedPosition(meta.account as Hex, meta.chainId, token, scopedRouter.address);
@@ -279,6 +283,9 @@ export function ManagedPositionCard({
     setError(null);
     try {
       if (!scopedRouter) throw new Error('This saved session has no recognized recovery router.');
+      // A bad destination must never stop the agent as a side effect.
+      // sendNativeOut repeats this check just before transfer.
+      await assertSafeWithdrawalDestination(meta.account, meta.chainId, dest as Hex);
       const wallet = await reauth();
       await ensureSessionStopped(wallet);
       // Don't strand gas under ANY still-deployed stablecoin on this account,
