@@ -13,6 +13,7 @@
  */
 
 import { createPublicClient, http, keccak256, toFunctionSelector, type Hex } from 'viem';
+import { publicKeyToAddress } from 'viem/accounts';
 import { BSC_MAINNET, BSC_TESTNET } from '@agripinaa/shared/chains';
 import type { Address } from './scope';
 
@@ -159,7 +160,7 @@ interface AccountSpendInfo {
   limit: bigint;
 }
 
-interface AccountKeyDescriptor {
+export interface AccountKeyDescriptor {
   expiry: number | bigint;
   keyType: number;
   isSuperAdmin: boolean;
@@ -186,6 +187,48 @@ export function accountKeyDescriptorMatches(
 ): boolean {
   return accountKeyIdentityMatches(key, expectedAddress)
     && Number(key.expiry) === expectedExpiry;
+}
+
+const SEC1_UNCOMPRESSED_PUBLIC_KEY = /^0x04[0-9a-fA-F]{128}$/;
+
+/**
+ * Join the public KeyStore registry to the account's authoritative key list.
+ * Recovery must revoke every currently-authorized secp256k1 session, including
+ * sessions saved by a different browser. An active account-local session that
+ * is absent from KeyStore cannot be safely reconstructed, so fail closed.
+ */
+export function resolveActiveAccountSessionPublicKeys(input: {
+  keyIds: readonly Hex[];
+  publicKeys: readonly Hex[];
+  accountKeys: readonly AccountKeyDescriptor[];
+  blockTimestamp: bigint;
+}): Hex[] {
+  if (input.keyIds.length !== input.publicKeys.length) {
+    throw new Error('KeyStore returned inconsistent key identifiers and public keys');
+  }
+  const registered = input.publicKeys.map((publicKey, index) => {
+    if (!SEC1_UNCOMPRESSED_PUBLIC_KEY.test(publicKey)) return null;
+    if (keyIdFromPublicKey(publicKey).toLowerCase() !== input.keyIds[index]!.toLowerCase()) {
+      throw new Error('KeyStore returned public-key bytes that do not match their key id');
+    }
+    return { publicKey, address: publicKeyToAddress(publicKey) };
+  }).filter((entry): entry is { publicKey: Hex; address: Address } => entry !== null);
+
+  const activeSessions = input.accountKeys.filter((key) =>
+    !key.isSuperAdmin && BigInt(key.expiry) > input.blockTimestamp,
+  );
+  if (activeSessions.some((key) => key.keyType !== 2)) {
+    throw new Error('An active account session uses an unsupported key type');
+  }
+  const resolved = activeSessions.map((key) => {
+    const matches = registered.filter((entry) => accountKeyIdentityMatches(key, entry.address));
+    if (matches.length !== 1) {
+      throw new Error('An active account session is missing or ambiguous in the public KeyStore registry');
+    }
+    return matches[0]!.publicKey;
+  });
+  return [...new Map(resolved.map((publicKey) => [publicKey.toLowerCase(), publicKey])).values()]
+    .sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
 }
 
 function packedSelector(to: Address, selector: Hex): Hex {
@@ -381,6 +424,54 @@ export async function wasSessionKeyRegistered(args: IsSessionKeyValidArgs): Prom
     throw new Error('KeyStore returned public-key bytes that do not match their key id');
   }
   return true;
+}
+
+/**
+ * Enumerate every live secp256k1 session authorized by the smart account.
+ * Each provider reads a single block snapshot; two independent providers must
+ * return the same sorted public-key set before recovery may mutate authority.
+ */
+export async function listActiveAccountSessionPublicKeys(
+  args: Pick<IsSessionKeyValidArgs, 'chainId' | 'account' | 'rpcUrl'>,
+): Promise<Hex[]> {
+  const keyStore = KEYSTORE_ADDRESSES[args.chainId];
+  if (!keyStore) {
+    throw new Error(
+      `listActiveAccountSessionPublicKeys: no KeyStore deployment known for chainId ${args.chainId}; supported chains are 56 and 97`,
+    );
+  }
+  return quorumValueRead(args.chainId, args.rpcUrl, async (client) => {
+    const block = await client.getBlock({ blockTag: 'latest' });
+    const blockNumber = block.number;
+    const [keyIds, accountResult] = await Promise.all([
+      client.readContract({
+        address: keyStore,
+        abi: KEYSTORE_READ_ABI,
+        functionName: 'getKeys',
+        args: [args.account],
+        blockNumber,
+      }),
+      client.readContract({
+        address: args.account,
+        abi: ACCOUNT_KEYS_READ_ABI,
+        functionName: 'getKeys',
+        blockNumber,
+      }),
+    ]);
+    const publicKeys = await Promise.all(keyIds.map((keyId) => client.readContract({
+      address: keyStore,
+      abi: KEYSTORE_READ_ABI,
+      functionName: 'getPublicKey',
+      args: [args.account, keyId],
+      blockNumber,
+    })));
+    return resolveActiveAccountSessionPublicKeys({
+      keyIds,
+      publicKeys,
+      accountKeys: accountResult[0],
+      blockTimestamp: block.timestamp,
+    });
+  }, (publicKeys) => publicKeys.map((key) => key.toLowerCase()).join(','));
 }
 
 export interface FindAccountSessionExpiryArgs {

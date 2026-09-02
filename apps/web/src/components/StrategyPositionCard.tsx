@@ -4,9 +4,14 @@ import {
   managedStrategyFor,
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
-import { formatUnits } from 'viem';
+import { formatUnits, type Hex } from 'viem';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { altanaClient } from '@/lib/altana';
+import {
+  assertSafeWithdrawalDestination,
+  destinationProblem,
+} from '@/lib/managed';
 import {
   effectiveManagedPositionTokenId,
   readManagedRunnerSnapshot,
@@ -21,7 +26,13 @@ import {
   type StrategyAccountPosition,
   type StrategyAssetBalance,
 } from '@/lib/strategy-position';
+import {
+  closeRangerPosition,
+  recoverStrategyTokens,
+  stopAllAccountSessions,
+} from '@/lib/strategy-recovery';
 import type { StoredSessionMeta } from '@/lib/session-store';
+import { toast } from '@/lib/toast';
 
 import { SessionCard, type SessionValidity } from './SessionCard';
 import { TokenLogo } from './icons';
@@ -146,6 +157,107 @@ function RangerDetails({
   );
 }
 
+function StrategyRecoveryPanel({
+  meta,
+  slug,
+  position,
+  onRecovered,
+}: {
+  meta: StoredSessionMeta;
+  slug: ManagedStrategySlug;
+  position: StrategyAccountPosition;
+  onRecovered: () => void;
+}) {
+  const [destination, setDestination] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputId = `strategy-recovery-destination-${meta.id}`;
+  const problem = destination
+    ? destinationProblem(destination, meta.account, meta.chainId)
+    : null;
+  const hasTokens = position.assets.some((asset) => asset.wei > 0n);
+  const hasRanger = slug === 'lp-range' && position.ranger !== null;
+
+  async function recover() {
+    if (!destination || problem) {
+      setError(problem ?? 'Enter an external wallet address.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      if (meta.chainId !== 56) throw new Error('Strategy recovery is available only on BNB Chain mainnet.');
+      const account = meta.account as Hex;
+      const to = destination as Hex;
+      // No passkey prompt, session revocation, or position close occurs until
+      // independent RPCs agree that the payout address is an EOA.
+      await assertSafeWithdrawalDestination(account, meta.chainId, to);
+      const wallet = await altanaClient().recoverFromPasskey({ chainId: meta.chainId });
+      if (wallet.address.toLowerCase() !== account.toLowerCase()) {
+        throw new Error('This passkey controls a different account than this strategy position.');
+      }
+      await stopAllAccountSessions(wallet, account, meta.chainId, meta);
+      if (slug === 'lp-range' && position.ranger) {
+        await closeRangerPosition(wallet, account, position.ranger.tokenId);
+      }
+      const symbols = await recoverStrategyTokens(wallet, slug, account, to);
+      onRecovered();
+      toast({
+        title: 'Strategy assets recovered',
+        detail: `${symbols.join(' + ')} sent to ${destination.slice(0, 10)}…`,
+        kind: 'success',
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(message);
+      // Earlier confirmed phases are intentionally resumable. Refresh so a
+      // stopped key or already-collected NFT is never hidden by stale UI.
+      onRecovered();
+      toast({ title: 'Recovery stopped', detail: message.slice(0, 80), kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!hasTokens && !hasRanger) return null;
+  return (
+    <div className="mt-4 rounded-lg border border-primary/35 bg-primary/5 p-3">
+      <label htmlFor={inputId} className="block text-xs uppercase tracking-wide text-muted-2">
+        Stop and recover to your wallet
+      </label>
+      <input
+        id={inputId}
+        value={destination}
+        onChange={(event) => setDestination(event.target.value.trim())}
+        spellCheck={false}
+        placeholder="0x… external wallet address"
+        className={`mt-2 w-full rounded-lg border bg-surface p-2.5 font-mono text-xs focus:outline-none ${
+          destination && problem
+            ? 'border-danger focus:border-danger'
+            : 'border-border-strong focus:border-primary'
+        }`}
+      />
+      {destination && problem && <p className="mt-1 text-xs text-danger">{problem}</p>}
+      <button
+        type="button"
+        onClick={recover}
+        disabled={busy || !destination || problem !== null}
+        className="mt-3 rounded border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+      >
+        {busy ? 'Recovering…' : `Stop & recover ${position.assets.map((asset) => asset.symbol).join('/')}`}
+      </button>
+      <p className="mt-2 text-xs leading-relaxed text-muted-2">
+        This stops every on-chain session sharing this account. {hasRanger
+          ? 'Ranger liquidity is closed and collected through the pinned Pancake position manager. '
+          : ''}
+        Venue allowances are reset before exact, freshly read token balances are sent. Native BNB
+        stays behind as recovery gas until every account position is empty.
+      </p>
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
 export function StrategyPositionCard({
   meta,
   onChange,
@@ -212,9 +324,15 @@ export function StrategyPositionCard({
 
   if (!strategy || !slug) return <SessionCard meta={meta} onChange={onChange} />;
   const positionView = strategyPositionViewState(position !== null, loadError);
+  const recoveryRecordNeeded = positionView !== 'position'
+    || position === null
+    || position.ranger !== null
+    || position.assets.some((asset) => asset.wei > 0n);
   return (
     <SessionCard
       meta={meta}
+      forgetDisabled={recoveryRecordNeeded}
+      forgetDisabledReason="Recover every token and Ranger NFT position before forgetting this record"
       onChange={() => {
         refresh();
         onChange();
@@ -293,6 +411,15 @@ export function StrategyPositionCard({
                   {strategy.summary} The balances above are read live from your dedicated strategy account.
                 </p>
               )}
+              <StrategyRecoveryPanel
+                meta={meta}
+                slug={slug}
+                position={position}
+                onRecovered={() => {
+                  refresh();
+                  onChange();
+                }}
+              />
             </>
           ) : (
             <div aria-label="Loading live position" className="mt-3 grid animate-pulse gap-3 sm:grid-cols-2">

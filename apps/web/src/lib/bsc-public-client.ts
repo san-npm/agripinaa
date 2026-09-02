@@ -56,6 +56,47 @@ export function createBscPublicClient() {
   });
 }
 
+export type BscPublicClient = ReturnType<typeof createBscPublicClient>;
+
+function independentReadClients(): BscPublicClient[] {
+  return BSC_RECEIPT_RPC_SOURCES.map(({ url }) => createPublicClient({
+    chain: bsc,
+    transport: http(url, { retryCount: 0, timeout: 5_000 }),
+  })) as unknown as BscPublicClient[];
+}
+
+/**
+ * Run a security-sensitive read at one common block and accept only a
+ * byte-equivalent result returned by independent RPC operators.
+ */
+export async function readBscQuorumAtCommonBlock<T>(
+  read: (client: BscPublicClient, blockNumber: bigint) => Promise<T>,
+  fingerprint: (value: T) => string,
+  options: { clients?: readonly BscPublicClient[]; quorum?: number } = {},
+): Promise<T> {
+  const clients = options.clients ?? independentReadClients();
+  const quorum = options.quorum ?? 2;
+  if (!Number.isSafeInteger(quorum) || quorum < 1 || quorum > clients.length) {
+    throw new Error('invalid BSC read quorum policy');
+  }
+  const heads = (await Promise.allSettled(clients.map((client) => client.getBlockNumber())))
+    .flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+    .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+  if (heads.length < quorum) throw new Error('BSC read quorum unavailable');
+  const blockNumber = heads[Math.floor(heads.length / 2)]!;
+  const values = (await Promise.allSettled(clients.map((client) => read(client, blockNumber))))
+    .flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+  const groups = new Map<string, { value: T; count: number }>();
+  for (const value of values) {
+    const key = fingerprint(value);
+    const group = groups.get(key) ?? { value, count: 0 };
+    group.count += 1;
+    groups.set(key, group);
+    if (group.count >= quorum) return group.value;
+  }
+  throw new Error('BSC read quorum unavailable or disagreed');
+}
+
 function receiptClients(): BscReceiptClient[] {
   return BSC_RECEIPT_RPC_SOURCES.map(({ url }) => createPublicClient({
     chain: bsc,

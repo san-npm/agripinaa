@@ -10,6 +10,12 @@ import {
   ROUTER_ACTIONS,
   YIELD_ROUTER_BSC,
 } from '@agripinaa/shared/contracts';
+import {
+  OPHIS_VAULT_RELAYER_BSC,
+  PANCAKE_V3_POSITION_MANAGER,
+} from '@agripinaa/shared/managed-strategies';
+import { TOKENS_BSC } from '@agripinaa/shared/tokens';
+import { decodeFunctionData, erc20Abi } from 'viem';
 
 import {
   managedServiceStatus,
@@ -28,6 +34,16 @@ import {
   planRotationHistoryRanges,
   shouldOfferManagedHandoffRetry,
 } from '../src/lib/managed-pure';
+import {
+  buildRangerExitCalls,
+  buildStrategyTokenRecoveryCalls,
+  PANCAKE_POSITION_MANAGER_ABI,
+  rangerExitMinimums,
+} from '../src/lib/strategy-recovery-pure';
+import {
+  readBscQuorumAtCommonBlock,
+  type BscPublicClient,
+} from '../src/lib/bsc-public-client';
 
 test('managed venue classification surfaces a debt-blocked split position', () => {
   assert.equal(classifyManagedVenue(0n, 60n, 40n, 1n), 'split');
@@ -89,6 +105,80 @@ test('live destination validation rejects arbitrary contracts, not only known ro
   assert.match(destinationCodeQuorumProblem(['0x', '0x6000', '0x6000']) ?? '', /Contract destinations/);
   assert.equal(destinationCodeQuorumProblem(['0x6000', '0x', '0x']), null);
   assert.throws(() => destinationCodeQuorumProblem(['0x6000', '0x']), /quorum unavailable/);
+});
+
+test('Ranger owner recovery decreases bounded liquidity before collecting to the account', () => {
+  const account = '0x1111111111111111111111111111111111111111';
+  assert.deepEqual(rangerExitMinimums([101n, 202n]), [90n, 181n]);
+  const calls = buildRangerExitCalls({
+    account,
+    tokenId: 7271073n,
+    liquidity: 1_000n,
+    quotedExit: [101n, 202n],
+    deadline: 1234n,
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0]!.to, PANCAKE_V3_POSITION_MANAGER);
+  const decrease = decodeFunctionData({ abi: PANCAKE_POSITION_MANAGER_ABI, data: calls[0]!.data });
+  assert.equal(decrease.functionName, 'decreaseLiquidity');
+  assert.deepEqual(decrease.args?.[0], {
+    tokenId: 7271073n,
+    liquidity: 1_000n,
+    amount0Min: 90n,
+    amount1Min: 181n,
+    deadline: 1234n,
+  });
+  const collect = decodeFunctionData({ abi: PANCAKE_POSITION_MANAGER_ABI, data: calls[1]!.data });
+  assert.equal(collect.functionName, 'collect');
+  assert.equal(collect.args?.[0].recipient.toLowerCase(), account.toLowerCase());
+});
+
+test('strategy recovery resets every pinned allowance before transferring live balances', () => {
+  const destination = '0x2222222222222222222222222222222222222222';
+  const calls = buildStrategyTokenRecoveryCalls('lp-range', destination, {
+    WBNB: 7n,
+    USDT: 11n,
+  });
+  assert.equal(calls.length, 9);
+  const approvals = calls.slice(0, 7).map((call) => ({
+    to: call.to.toLowerCase(),
+    decoded: decodeFunctionData({ abi: erc20Abi, data: call.data }),
+  }));
+  assert.deepEqual(approvals.map(({ decoded }) => decoded.functionName), [
+    'approve', 'approve', 'approve', 'approve', 'approve', 'approve', 'approve',
+  ]);
+  assert.ok(approvals.every(({ decoded }) => decoded.args?.[1] === 0n));
+  assert.ok(approvals.some(({ to, decoded }) =>
+    to === TOKENS_BSC.WBNB!.address.toLowerCase()
+    && decoded.args?.[0]?.toLowerCase() === OPHIS_VAULT_RELAYER_BSC.toLowerCase()));
+  assert.ok(approvals.some(({ to, decoded }) =>
+    to === TOKENS_BSC.USDT!.address.toLowerCase()
+    && decoded.args?.[0]?.toLowerCase() === PANCAKE_V3_POSITION_MANAGER.toLowerCase()));
+  const transfers = calls.slice(7).map((call) =>
+    decodeFunctionData({ abi: erc20Abi, data: call.data }));
+  assert.deepEqual(transfers.map((decoded) => decoded.functionName), ['transfer', 'transfer']);
+  assert.deepEqual(transfers.map((decoded) => decoded.args), [
+    [destination, 7n],
+    [destination, 11n],
+  ]);
+});
+
+test('security-sensitive BSC reads require matching independent responses at one block', async () => {
+  const clients = [
+    { answer: 'safe', getBlockNumber: async () => 100n },
+    { answer: 'safe', getBlockNumber: async () => 102n },
+    { answer: 'forged', getBlockNumber: async () => 101n },
+  ] as unknown as BscPublicClient[];
+  const blocks: bigint[] = [];
+  const value = await readBscQuorumAtCommonBlock(async (client, blockNumber) => {
+    blocks.push(blockNumber);
+    return (client as unknown as { answer: string }).answer;
+  }, String, { clients, quorum: 2 });
+  assert.equal(value, 'safe');
+  assert.deepEqual(blocks, [101n, 101n, 101n]);
+  await assert.rejects(readBscQuorumAtCommonBlock(async (client) =>
+    (client as unknown as { answer: string }).answer,
+  String, { clients, quorum: 3 }), /unavailable or disagreed/);
 });
 
 test('retired key validity never becomes a managing service state', () => {
