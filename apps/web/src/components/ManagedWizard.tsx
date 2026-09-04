@@ -178,6 +178,12 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     setPhase('Checking the funded account on BNB Chain…');
     const account = w.address as Hex;
     const router = routerFor(chainId, token)!;
+    const chainClient = publicClient();
+    const position = await readManagedPosition(account, chainId, token, router.address, chainClient as never);
+    const expectedTotalWei = position.idleWei + position.deployedWei;
+    if (expectedTotalWei <= 0n) {
+      throw new Error(`No recoverable ${agent.name} funding was found in this account.`);
+    }
     const manager = await fetchManagerKey(agent.managedAgent, token);
     const recoveredSession = await recoverExistingSession({
       account,
@@ -187,9 +193,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       signer: verifyOnlyStub(manager.address, manager.publicKey),
       maximumExpiry: null,
     });
-    const chainClient = publicClient();
-    const [position, nativeBalance, registrationFee, allowances] = await Promise.all([
-      readManagedPosition(account, chainId, token, router.address, chainClient as never),
+    const [nativeBalance, registrationFee, allowances] = await Promise.all([
       chainClient.getBalance({ address: account }),
       chainClient.readContract({
         address: ALTANA_KEYSTORE_CONTROLLER_BSC,
@@ -203,10 +207,6 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         args: [account, router.address],
       }))),
     ]);
-    const expectedTotalWei = position.idleWei + position.deployedWei;
-    if (expectedTotalWei <= 0n) {
-      throw new Error(`No recoverable ${agent.name} funding was found in this account.`);
-    }
     const problem = recoverableStrategyFundingProblem({
       agentName: agent.name,
       requiredAssets: [token],
