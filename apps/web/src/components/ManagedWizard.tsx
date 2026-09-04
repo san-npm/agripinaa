@@ -131,6 +131,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const chainId = 56;
   const [fundingAsset, setFundingAsset] = useState<FundingAsset>('USDT');
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
+  const [pendingWallet, setPendingWallet] = useState(false);
   const [recoveredFunding, setRecoveredFunding] = useState<RecoveredManagedFunding | null>(null);
   const [nativeBal, setNativeBal] = useState<bigint | null>(null);
   const [balances, setBalances] = useState<Record<FundingAsset, bigint | null>>({
@@ -237,12 +238,14 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         mode === 'create'
           ? await client.createPasskeyWallet({ name: 'Agripinaa' })
           : await client.recoverFromPasskey();
+      const pending = mode === 'recover' && 'pending' in w && w.pending === true;
+      setPendingWallet(pending);
       const checkpoint = loadFundingCheckpoint(chainId, w.address as `0x${string}`, agent.managedAgent);
       if (checkpoint?.expectedTotalWei !== undefined) {
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
         setRecoveredFunding(null);
-      } else if (mode === 'recover') {
+      } else if (mode === 'recover' && !pending) {
         setPreparedFunding(null);
         setRecoveredFunding(await verifyRecoverableManagedAccount(w));
       } else {
@@ -276,13 +279,19 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           })),
         ]);
         if (!cancelled) {
-          setNativeBal(n);
-          setBalances({
+          const nextBalances = {
             BNB: n,
             BTCB: assets[tokenAssets.indexOf('BTCB')]!,
             USDT: assets[tokenAssets.indexOf('USDT')]!,
             USDC: assets[tokenAssets.indexOf('USDC')]!,
-          });
+          };
+          setNativeBal(n);
+          setBalances(nextBalances);
+          if (pendingWallet && !preparedFunding) {
+            setFundingAsset((current) => nextBalances[current] > 0n
+              ? current
+              : FUNDING_ASSETS.find((asset) => nextBalances[asset] > 0n) ?? current);
+          }
         }
       } catch {
         /* transient RPC failure; next tick retries */
@@ -294,7 +303,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       cancelled = true;
       clearInterval(t);
     };
-  }, [step, wallet, publicClient]);
+  }, [pendingWallet, preparedFunding, step, wallet, publicClient]);
 
   useEffect(() => {
     if (step !== 'deposit') return;

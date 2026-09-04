@@ -100,6 +100,7 @@ export function StrategyWizard({
   const strategy = managedStrategyFor(agent.slug)!;
   const [step, setStep] = useState<Step>('wallet');
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
+  const [pendingWallet, setPendingWallet] = useState(false);
   const [nativeBal, setNativeBal] = useState<bigint | null>(null);
   const [fundingAsset, setFundingAsset] = useState<FundingAsset>('USDT');
   const [balances, setBalances] = useState<Record<FundingAsset, bigint | null>>({
@@ -196,12 +197,14 @@ export function StrategyWizard({
       const next = mode === 'create'
         ? await client.createPasskeyWallet({ name: `Agripinaa ${agent.name}` })
         : await client.recoverFromPasskey();
+      const pending = mode === 'recover' && 'pending' in next && next.pending === true;
+      setPendingWallet(pending);
       const checkpoint = loadFundingCheckpoint(56, next.address as Hex, agent.slug);
       if (checkpoint) {
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
         setRecoveredFunding(null);
-      } else if (mode === 'recover') {
+      } else if (mode === 'recover' && !pending) {
         const transactionHash = recoveryTxHash.trim()
           ? fundingRecoveryHash(recoveryTxHash)
           : null;
@@ -249,13 +252,19 @@ export function StrategyWizard({
           })),
         ]);
         if (!cancelled) {
-          setNativeBal(native);
-          setBalances({
+          const nextBalances = {
             BNB: native,
             BTCB: assets[tokenAssets.indexOf('BTCB')]!,
             USDT: assets[tokenAssets.indexOf('USDT')]!,
             USDC: assets[tokenAssets.indexOf('USDC')]!,
-          });
+          };
+          setNativeBal(native);
+          setBalances(nextBalances);
+          if (pendingWallet && !preparedFunding) {
+            setFundingAsset((current) => nextBalances[current] > 0n
+              ? current
+              : FUNDING_ASSETS.find((asset) => nextBalances[asset] > 0n) ?? current);
+          }
         }
       } catch {
         // A later poll retries transient RPC failures.
@@ -264,7 +273,7 @@ export function StrategyWizard({
     void tick();
     const timer = window.setInterval(tick, 5_000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [publicClient, step, wallet]);
+  }, [pendingWallet, preparedFunding, publicClient, step, wallet]);
 
   useEffect(() => {
     if (step !== 'deposit' || recoveredFunding) return;

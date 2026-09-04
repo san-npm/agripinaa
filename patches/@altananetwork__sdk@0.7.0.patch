@@ -311,7 +311,7 @@
  export async function recoverFromPasskey(opts) {
      if (typeof navigator === "undefined" || !navigator.credentials) {
          throw new Error("recoverFromPasskey() needs a browser — it triggers the WebAuthn " +
-@@ -53,21 +61,15 @@
+@@ -53,21 +61,16 @@
              `by createPasskeyWallet.`);
      }
      const walletAddress = bytesToHex(userHandleBytes);
@@ -332,7 +332,8 @@
 -    }
 -    const keyId = activeKeys[0];
 -    const publicKey = await readPublicKey(publicClient, network, walletAddress, keyId);
-+    const publicKey = activeKeys.length > 0
++    const pending = activeKeys.length === 0;
++    const publicKey = !pending
 +        ? await readPublicKey(publicClient, network, walletAddress, activeKeys[0])
 +        : selectPendingAdminPublicKey(await getKeys(buildRelayClient(network), {
 +            account: walletAddress,
@@ -341,3 +342,11 @@
      // 4. Rebuild the credential reference. PublicKeyCredential.id is already
      //    a base64url string — exactly what ox.WebAuthnP256.sign expects
      //    (it calls Base64.toBytes on it). Do NOT hex-encode rawId here;
+@@ -82,6 +85,7 @@
+     });
+     return {
+         address: walletAddress,
++        pending,
+         signer,
+     };
+ }
