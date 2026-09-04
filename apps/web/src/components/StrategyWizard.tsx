@@ -3,12 +3,10 @@
 import { managedStrategyFor, type ManagedStrategySlug } from '@agripinaa/shared/managed-strategies';
 import {
   ALTANA_KEYSTORE_CONTROLLER_BSC,
-  FUNDING_GAS_RESERVE_WEI,
-  FUNDING_MAX_REGISTRATION_FEE_WEI,
 } from '@agripinaa/shared/funding';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
-import { erc20Abi, maxUint256, parseAbi, type Hex } from 'viem';
+import { erc20Abi, parseAbi, type Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
 import { createBscPublicClient, waitForBscTransactionReceipt } from '@/lib/bsc-public-client';
@@ -37,6 +35,7 @@ import {
 } from '@/lib/funding-checkpoint';
 import {
   fundingRecoveryHash,
+  recoverableStrategyFundingProblem,
   receiptProvesStrategyFundingRecovery,
 } from '@/lib/funding-recovery';
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
@@ -61,7 +60,7 @@ import {
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
 import { ActivationProgress, FundingDeposit, RelayGrantNotice } from './FundingDeposit';
-import { CoinsIcon, ReceiptIcon, ShieldIcon, VerifiedIcon } from './icons';
+import { CoinsIcon, ShieldIcon, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
 
@@ -88,8 +87,7 @@ interface GrantedStrategyActivation {
 }
 
 interface RecoveredFunding {
-  transactionHash: Hex;
-  receiptBlockNumber: bigint;
+  transactionHash: Hex | null;
 }
 
 export function StrategyWizard({
@@ -113,7 +111,7 @@ export function StrategyWizard({
   const [gasQuote, setGasQuote] = useState<FundingGasQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [preparedFunding, setPreparedFunding] = useState<FundingCheckpoint | null>(null);
-  const [recoveryTxHash, setRecoveryTxHash] = useState(initialRecoveryTxHash);
+  const recoveryTxHash = initialRecoveryTxHash;
   const [recoveredFunding, setRecoveredFunding] = useState<RecoveredFunding | null>(null);
   const [grantedActivation, setGrantedActivation] = useState<GrantedStrategyActivation | null>(null);
   const [relayGrantStatus, setRelayGrantStatus] = useState<RelayCallStatus | null>(null);
@@ -127,6 +125,61 @@ export function StrategyWizard({
     () => createBscPublicClient(),
     [],
   );
+
+  async function verifyRecoverableAccount(account: Hex) {
+    setPhase('Checking the funded account on BNB Chain…');
+    const manager = await fetchManagerKey(agent.slug, 'USDT');
+    const recoveredSession = await recoverExistingSession({
+      account,
+      manager,
+      scope: buildStrategyScope(agent.slug, hours),
+      signatureCheckers: strategy.signatureCheckers,
+      signer: verifyOnlyStub(manager.address, manager.publicKey),
+      maximumExpiry: null,
+    });
+    const chainClient = publicClient();
+    const [nativeBalance, registrationFee, inventoryEntries, allowanceEntries] = await Promise.all([
+      chainClient.getBalance({ address: account }),
+      chainClient.readContract({
+        address: ALTANA_KEYSTORE_CONTROLLER_BSC,
+        abi: KEYSTORE_FEE_ABI,
+        functionName: 'getRegistrationFeeInWei',
+      }),
+      Promise.all(strategy.depositTokens.map(async (symbol) => [
+        symbol,
+        await chainClient.readContract({
+          address: TOKENS_BSC[symbol]!.address,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [account],
+        }),
+      ] as const)),
+      Promise.all(strategy.approvals.map(async (approval) => ({
+        approval,
+        allowance: await chainClient.readContract({
+          address: TOKENS_BSC[approval.token]!.address,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [account, approval.spender],
+        }),
+      }))),
+    ]);
+
+    if (recoveredSession) {
+      setHours(lifetimeOptionForExistingSession(recoveredSession.session.expiry));
+    }
+    const inventory = Object.fromEntries(inventoryEntries);
+    const problem = recoverableStrategyFundingProblem({
+      agentName: agent.name,
+      requiredAssets: strategy.depositTokens,
+      inventory,
+      allowances: allowanceEntries.map(({ allowance }) => allowance),
+      nativeBalance,
+      registrationFee,
+      hasLiveSession: recoveredSession !== null,
+    });
+    if (problem) throw new Error(problem);
+  }
 
   async function connect(mode: 'create' | 'recover') {
     setBusy(true);
@@ -142,81 +195,23 @@ export function StrategyWizard({
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
         setRecoveredFunding(null);
-      } else if (mode === 'recover' && recoveryTxHash.trim()) {
-        const transactionHash = fundingRecoveryHash(recoveryTxHash);
-        if (!transactionHash) {
-          throw new Error('Enter the complete 0x transaction hash from the successful funding transaction.');
+      } else if (mode === 'recover') {
+        const transactionHash = recoveryTxHash.trim()
+          ? fundingRecoveryHash(recoveryTxHash)
+          : null;
+        if (recoveryTxHash.trim()) {
+          if (!transactionHash) {
+            throw new Error('Enter the complete 0x transaction hash from the successful funding transaction.');
+          }
+          setPhase('Verifying the optional funding transaction…');
+          const receipt = await waitForBscTransactionReceipt(transactionHash);
+          if (!receiptProvesStrategyFundingRecovery(receipt, next.address as Hex, strategy.approvals)) {
+            throw new Error(`That transaction is not a completed ${agent.name} funding bundle for the recovered account.`);
+          }
         }
-        setPhase('Verifying the funded account on BNB Chain…');
-        const receipt = await waitForBscTransactionReceipt(transactionHash);
-        if (!receiptProvesStrategyFundingRecovery(receipt, next.address as Hex, strategy.approvals)) {
-          throw new Error(`That transaction is not a completed ${agent.name} funding bundle for the recovered account.`);
-        }
-        const chainClient = publicClient();
-        const [nativeBalance, registrationFee, inventoryEntries, allowanceEntries] = await Promise.all([
-          chainClient.getBalance({ address: next.address as Hex }),
-          chainClient.readContract({
-            address: ALTANA_KEYSTORE_CONTROLLER_BSC,
-            abi: KEYSTORE_FEE_ABI,
-            functionName: 'getRegistrationFeeInWei',
-          }),
-          Promise.all(strategy.depositTokens.map(async (symbol) => [
-            symbol,
-            await chainClient.readContract({
-              address: TOKENS_BSC[symbol]!.address,
-              abi: erc20Abi,
-              functionName: 'balanceOf',
-              args: [next.address as Hex],
-            }),
-          ] as const)),
-          Promise.all(strategy.approvals.map(async (approval) => ({
-            approval,
-            allowance: await chainClient.readContract({
-              address: TOKENS_BSC[approval.token]!.address,
-              abi: erc20Abi,
-              functionName: 'allowance',
-              args: [next.address as Hex, approval.spender],
-            }),
-          }))),
-        ]);
-        const inventory = Object.fromEntries(inventoryEntries);
-        const missingAssets = strategy.depositTokens.filter((symbol) => (inventory[symbol] ?? 0n) === 0n);
-        if (missingAssets.length > 0) {
-          throw new Error(`The recovered account no longer holds its prepared ${missingAssets.join(' and ')} inventory.`);
-        }
-        const changedApprovals = allowanceEntries.filter(({ allowance }) => allowance !== maxUint256);
-        if (changedApprovals.length > 0) {
-          throw new Error('One or more strategy venue approvals changed after funding. Recovery cannot safely skip that owner step.');
-        }
-        // A lost grant response has already consumed the second registration
-        // fee from the funding reserve. Prove whether that exact grant exists
-        // before requiring money for another registration; otherwise the
-        // recovery path rejects the very state it is meant to repair.
-        setPhase('Checking for an existing agent session…');
-        const manager = await fetchManagerKey(agent.slug, 'USDT');
-        const recoveredSession = await recoverExistingSession({
-          account: next.address as Hex,
-          manager,
-          scope: buildStrategyScope(agent.slug, hours),
-          signatureCheckers: strategy.signatureCheckers,
-          signer: verifyOnlyStub(manager.address, manager.publicKey),
-          maximumExpiry: null,
-        });
-        if (recoveredSession) {
-          setHours(lifetimeOptionForExistingSession(recoveredSession.session.expiry));
-        }
-        if (!recoveredSession && registrationFee > FUNDING_MAX_REGISTRATION_FEE_WEI) {
-          throw new Error('The live Altana key-registration fee is above Agripinaa\'s safety ceiling.');
-        }
-        const requiredNativeBalance = FUNDING_GAS_RESERVE_WEI
-          + (recoveredSession ? 0n : registrationFee);
-        if (nativeBalance < requiredNativeBalance) {
-          throw new Error(recoveredSession
-            ? 'The recovered account no longer holds the native BNB reserve required for agent execution.'
-            : 'The recovered account no longer holds enough native BNB for session registration and its execution reserve.');
-        }
+        await verifyRecoverableAccount(next.address as Hex);
         setPreparedFunding(null);
-        setRecoveredFunding({ transactionHash, receiptBlockNumber: receipt.blockNumber });
+        setRecoveredFunding({ transactionHash });
       } else {
         setPreparedFunding(null);
         setRecoveredFunding(null);
@@ -727,7 +722,6 @@ export function StrategyWizard({
     && nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
   const freshConfirmationCount = 2 + strategy.signatureCheckers.length
     + (preCallConfirmationRequired ? 1 : 0);
-  const recoveryHashReady = fundingRecoveryHash(recoveryTxHash) !== null;
   const checkerAuthorizationPending = grantedActivation !== null
     && strategy.signatureCheckers.some((checker) =>
       !grantedActivation.approvedSignatureCheckers.some((approved) =>
@@ -769,51 +763,13 @@ export function StrategyWizard({
                 {busy ? 'Waiting for passkey…' : 'Create dedicated account'}
               </button>
               <button onClick={() => connect('recover')} disabled={busy} className="rounded-lg border border-border-strong px-4 py-2.5 text-sm hover:border-primary/40 disabled:opacity-50">
-                Recover this account
+                Find funded account with passkey
               </button>
             </div>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void connect('recover');
-              }}
-              className="rounded-xl border border-primary/35 bg-primary/10 p-4"
-            >
-              <div className="flex items-start gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-primary/25 bg-surface text-primary">
-                  <ReceiptIcon className="h-5 w-5" />
-                </span>
-                <div>
-                  <h3 className="text-sm font-semibold">Funding succeeded but the agent is missing?</h3>
-                  <p id="funding-recovery-help" className="mt-1 text-xs leading-relaxed text-muted">
-                    Paste the transaction hash from your wallet error. We verify it against this
-                    passkey account and {agent.name}&apos;s exact venue approvals. You will not deposit again.
-                  </p>
-                </div>
-              </div>
-              <label htmlFor="funding-recovery-transaction" className="mt-4 block text-xs font-medium text-foreground">
-                Funding transaction hash
-              </label>
-              <input
-                id="funding-recovery-transaction"
-                value={recoveryTxHash}
-                onChange={(event) => setRecoveryTxHash(event.target.value)}
-                disabled={busy}
-                aria-describedby="funding-recovery-help"
-                autoComplete="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                placeholder="0x…"
-                className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={busy || !recoveryHashReady}
-                className="mt-3 min-h-11 rounded-lg border border-primary/45 bg-surface px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy && phase ? phase : 'Verify funding and continue'}
-              </button>
-            </form>
+            <p className="rounded-xl border border-primary/35 bg-primary/10 p-4 text-xs leading-relaxed text-muted">
+              Already funded? Use <strong className="font-semibold text-foreground">Find funded account with passkey</strong>.
+              Agripinaa checks the account&apos;s live session, inventory, approvals, and BNB reserve—no transaction hash or second deposit.
+            </p>
           </section>
         )}
 
@@ -836,20 +792,22 @@ export function StrategyWizard({
                     <VerifiedIcon className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-success">Funding transaction verified</p>
-                    <a
-                      href={`https://bscscan.com/tx/${recoveredFunding.transactionHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-0.5 block truncate font-mono text-xs text-muted underline decoration-border-strong underline-offset-2 hover:text-foreground"
-                    >
-                      {recoveredFunding.transactionHash}
-                    </a>
+                    <p className="text-sm font-semibold text-success">Funded account verified</p>
+                    {recoveredFunding.transactionHash && (
+                      <a
+                        href={`https://bscscan.com/tx/${recoveredFunding.transactionHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-0.5 block truncate font-mono text-xs text-muted underline decoration-border-strong underline-offset-2 hover:text-foreground"
+                      >
+                        {recoveredFunding.transactionHash}
+                      </a>
+                    )}
                   </div>
                 </div>
                 <p className="mt-3 text-xs leading-relaxed text-muted">
-                  Account {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)} still holds strategy inventory.
-                  No new transfer or funding approval will be requested.
+                  Account {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)} has a recoverable
+                  funding or live-session state. No new transfer or funding approval will be requested.
                 </p>
               </div>
             ) : (

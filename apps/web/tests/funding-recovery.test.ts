@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ALTANA_ORCHESTRATOR_BSC } from '@agripinaa/shared/funding';
+import {
+  ALTANA_ORCHESTRATOR_BSC,
+  FUNDING_GAS_RESERVE_WEI,
+} from '@agripinaa/shared/funding';
 import {
   OPHIS_VAULT_RELAYER_BSC,
   PANCAKE_V3_POSITION_MANAGER,
@@ -18,6 +21,7 @@ import {
 
 import {
   fundingRecoveryHash,
+  recoverableStrategyFundingProblem,
   receiptProvesStrategyFundingRecovery,
 } from '../src/lib/funding-recovery';
 
@@ -95,5 +99,41 @@ describe('manual funding recovery proof', () => {
     assert.equal(fundingRecoveryHash(` ${hash} `), hash);
     assert.equal(fundingRecoveryHash('0x1234'), null);
     assert.equal(fundingRecoveryHash(`0x${'zz'.repeat(32)}`), null);
+  });
+});
+
+describe('passkey-first funding recovery', () => {
+  const funded = {
+    agentName: 'Agripinaa Ranger',
+    requiredAssets: ['USDT', 'WBNB'],
+    inventory: { USDT: 1n, WBNB: 1n },
+    allowances: [maxUint256, maxUint256],
+    nativeBalance: FUNDING_GAS_RESERVE_WEI + 1n,
+    registrationFee: 1n,
+    hasLiveSession: false,
+  };
+
+  it('uses current funded state without requiring a transaction hash', () => {
+    assert.equal(recoverableStrategyFundingProblem(funded), null);
+  });
+
+  it('restores a live session even after its inventory is deployed', () => {
+    assert.equal(recoverableStrategyFundingProblem({
+      ...funded,
+      inventory: {},
+      allowances: [],
+      hasLiveSession: true,
+    }), null);
+  });
+
+  it('fails closed on incomplete funding state', () => {
+    assert.match(recoverableStrategyFundingProblem({
+      ...funded,
+      inventory: { USDT: 1n },
+    }) ?? '', /missing WBNB/);
+    assert.match(recoverableStrategyFundingProblem({
+      ...funded,
+      allowances: [maxUint256, 0n],
+    }) ?? '', /approvals are missing/);
   });
 });
