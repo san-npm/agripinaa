@@ -150,8 +150,9 @@ test('strategy recovery resets every pinned allowance before transferring live b
   const calls = buildStrategyTokenRecoveryCalls('lp-range', destination, {
     WBNB: 7n,
     USDT: 11n,
+    BTCB: 13n,
   });
-  assert.equal(calls.length, 9);
+  assert.equal(calls.length, 10);
   const approvals = calls.slice(0, 7).map((call) => ({
     to: call.to.toLowerCase(),
     decoded: decodeFunctionData({ abi: erc20Abi, data: call.data }),
@@ -168,10 +169,11 @@ test('strategy recovery resets every pinned allowance before transferring live b
     && decoded.args?.[0]?.toLowerCase() === PANCAKE_V3_POSITION_MANAGER.toLowerCase()));
   const transfers = calls.slice(7).map((call) =>
     decodeFunctionData({ abi: erc20Abi, data: call.data }));
-  assert.deepEqual(transfers.map((decoded) => decoded.functionName), ['transfer', 'transfer']);
+  assert.deepEqual(transfers.map((decoded) => decoded.functionName), ['transfer', 'transfer', 'transfer']);
   assert.deepEqual(transfers.map((decoded) => decoded.args), [
     [destination, 7n],
     [destination, 11n],
+    [destination, 13n],
   ]);
 });
 

@@ -347,7 +347,7 @@ function LostRangerRecovery() {
       const address = wallet.address as Hex;
       const rangerTarget = managedStrategyFor('lp-range')!.callScopes[0]!.to;
       const snapshot = await readManagedRunnerSnapshot('lp-range', address, rangerTarget);
-      const position = await readStrategyAccountPosition('lp-range', address, snapshot.positionTokenId);
+      const position = await readStrategyAccountPosition('lp-range', address, snapshot.positionTokenId, true);
       setFound({
         wallet,
         address,
@@ -392,12 +392,12 @@ function LostRangerRecovery() {
         await closeRangerPosition(wallet, account, BigInt(selectedTokenId));
       }
 
-      const collected = await readStrategyAccountPosition('lp-range', account);
+      const collected = await readStrategyAccountPosition('lp-range', account, null, true);
       if (collected.assets.some((asset) => asset.wei > 0n)) {
         recoveredSymbols = await recoverStrategyTokens(wallet, 'lp-range', account, to);
       }
 
-      const remaining = await readStrategyAccountPosition('lp-range', account);
+      const remaining = await readStrategyAccountPosition('lp-range', account, null, true);
       const rangerAbsenceVerified = selectedTokenId !== '' || found.rangerLookupComplete;
       const bnbWei = rangerAbsenceVerified && remaining.nativeBnbWei > WITHDRAW_GAS_RESERVE_WEI
         ? remaining.nativeBnbWei - WITHDRAW_GAS_RESERVE_WEI
@@ -524,7 +524,7 @@ function LostRangerRecovery() {
       )}
       <p className="mt-3 text-xs leading-relaxed text-muted-2">
         Recovery stops every session on the account, closes a discovered Ranger position, and sends
-        all idle USDT, WBNB, and withdrawable BNB. Never share a seed phrase or passkey secret.
+        all idle BTCB, USDT, USDC, WBNB, and withdrawable BNB. Never share a seed phrase or passkey secret.
       </p>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
       {success && <p role="status" className="mt-3 text-sm text-success">{success}</p>}

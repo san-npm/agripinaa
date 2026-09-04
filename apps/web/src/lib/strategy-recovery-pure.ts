@@ -102,10 +102,9 @@ export function buildStrategyTokenRecoveryCalls(
         }),
       }];
     });
-  const transferCalls = strategy.depositTokens.flatMap((symbol) => {
+  const transferCalls = Object.entries(balances).flatMap(([symbol, amount]) => {
     const token = TOKENS_BSC[symbol];
     if (!token) throw new Error(`Unknown strategy token ${symbol}.`);
-    const amount = balances[symbol] ?? 0n;
     if (amount <= 0n) return [];
     return [{
       to: token.address,
