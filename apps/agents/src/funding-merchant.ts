@@ -217,8 +217,8 @@ function hasCanonicalMerchantEnvelope(request: MerchantRequest): boolean {
     && Array.isArray(capabilities.authorizeKeys)
     && capabilities.authorizeKeys.length === 0
     && capabilities.preCall === false
-    && Array.isArray(capabilities.preCalls)
-    && capabilities.preCalls.length === 0
+    && (capabilities.preCalls === undefined
+      || (Array.isArray(capabilities.preCalls) && capabilities.preCalls.length === 0))
     && capabilities.requiredFunds === undefined
     && capabilities.revokeKeys === undefined
     && capabilities.meta
