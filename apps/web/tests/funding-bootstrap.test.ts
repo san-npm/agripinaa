@@ -89,7 +89,6 @@ describe('single-deposit funding bootstrap', () => {
       merchantUrl: MERCHANT,
     });
     assert.equal(plan.merchantUrl, undefined);
-    assert.deepEqual(plan.preCalls, []);
     assert.equal(plan.nativeReserveOutputWei, 0n);
     assert.equal(plan.strategyInput, gross - nativeQuote().totalGasInput);
     assert.equal(plan.calls[0]!.to.toLowerCase(), TOKENS_BSC.WBNB!.address.toLowerCase());
@@ -113,12 +112,12 @@ describe('single-deposit funding bootstrap', () => {
       merchantUrl: MERCHANT,
     });
     assert.equal(plan.merchantUrl, MERCHANT);
+    assert.equal('preCalls' in plan, false);
     assert.equal(plan.strategyInput, 95n);
     assert.equal(plan.gasReserveInput, 3n);
     assert.equal(plan.bootstrapFeeInput, 2n);
     assert.equal(plan.nativeReserveOutputWei, tokenQuote('USDT').gasReserveWei);
-    assert.equal(plan.preCalls.length, 4);
-    const reimbursementCall = plan.preCalls.find((call) => {
+    const reimbursementCall = plan.calls.find((call) => {
       if (call.to.toLowerCase() !== PANCAKE_V3_SMART_ROUTER_BSC.toLowerCase()) return false;
       const decoded = decodeFunctionData({ abi: ROUTER_ABI, data: call.data! });
       return decoded.functionName === 'exactInput'
@@ -129,7 +128,7 @@ describe('single-deposit funding bootstrap', () => {
     assert.equal(reimbursement.functionName, 'exactInput');
     assert.equal(reimbursement.args[0].amountIn, 2n);
     assert.equal(reimbursement.args[0].amountOutMinimum, FUNDING_BOOTSTRAP_FEE_WEI);
-    const unwrapCall = plan.preCalls.find((call) => {
+    const unwrapCall = plan.calls.find((call) => {
       if (call.to.toLowerCase() !== PANCAKE_V3_SMART_ROUTER_BSC.toLowerCase()) return false;
       const decoded = decodeFunctionData({ abi: ROUTER_ABI, data: call.data! });
       return decoded.functionName === 'unwrapWETH9';
@@ -156,7 +155,6 @@ describe('single-deposit funding bootstrap', () => {
       merchantUrl: MERCHANT,
     });
     assert.equal(plan.merchantUrl, undefined);
-    assert.deepEqual(plan.preCalls, []);
     assert.equal(plan.strategyInput, 100n);
     assert.equal(plan.gasReserveInput, 0n);
     assert.equal(plan.bootstrapFeeInput, 0n);

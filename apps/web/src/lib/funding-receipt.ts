@@ -17,12 +17,10 @@ export interface FundingReceiptLog {
 }
 
 /**
- * Merchant pre-calls survive a failed main intent, while an outer orchestrator
- * receipt can still be successful. The main bootstrap atomically unwraps the
- * user's exact WBNB reserve before its venue approvals and registration. Its
- * account-scoped Withdrawal log is therefore an on-chain success witness: a
- * reverted main batch cannot retain this log, and the reimbursement pre-call
- * emits its separate withdrawal from the Pancake router instead.
+ * An outer orchestrator receipt can still be successful when its inner account
+ * batch reverts. The bootstrap unwraps the user's exact WBNB reserve before its
+ * venue approvals and registration. Its account-scoped Withdrawal log is an
+ * on-chain success witness because a reverted atomic batch cannot retain it.
  */
 export function receiptProvesFundingMainBatch(
   logs: readonly FundingReceiptLog[],

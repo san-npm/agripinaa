@@ -64,10 +64,8 @@ export interface FundingCall {
 }
 
 export interface FundingBootstrapPlan {
-  /** Main account calls. A revert here does not roll back a signed pre-call. */
+  /** Atomic funding, gas-provisioning, and strategy-preparation calls. */
   calls: readonly FundingCall[];
-  /** Fee conversion collected before the main bundle when a merchant advances BNB. */
-  preCalls: readonly FundingCall[];
   input: FundingAsset;
   grossInput: bigint;
   gasReserveInput: bigint;
@@ -78,7 +76,7 @@ export interface FundingBootstrapPlan {
   targets: readonly FundingToken[];
   estimatedOutputs: Readonly<Partial<Record<FundingToken, bigint>>>;
   minimumOutputs: Readonly<Partial<Record<FundingToken, bigint>>>;
-  /** Present only when Agripinaa advances the first relay fee and is reimbursed by a pre-call. */
+  /** Present only when Agripinaa advances the relay fee and is reimbursed by this batch. */
   merchantUrl?: string;
 }
 
@@ -278,7 +276,6 @@ export async function buildFundingBootstrapPlan(args: {
   }
 
   const calls: FundingCall[] = [];
-  const preCalls: FundingCall[] = [];
   const estimatedOutputs: Partial<Record<FundingToken, bigint>> = {};
   const minimumOutputs: Partial<Record<FundingToken, bigint>> = {};
   // Without the merchant, this account pays the funding operation itself.
@@ -324,7 +321,7 @@ export async function buildFundingBootstrapPlan(args: {
         FUNDING_BOOTSTRAP_FEE_WEI,
         PANCAKE_V3_SMART_ROUTER_BSC,
       );
-      preCalls.push(...bootstrapFeeSwap.calls, {
+      calls.push(...bootstrapFeeSwap.calls, {
         to: PANCAKE_V3_SMART_ROUTER_BSC,
         data: encodeFunctionData({
           abi: PANCAKE_ROUTER_ABI,
@@ -382,7 +379,6 @@ export async function buildFundingBootstrapPlan(args: {
 
   return {
     calls,
-    preCalls,
     input,
     grossInput,
     gasReserveInput,

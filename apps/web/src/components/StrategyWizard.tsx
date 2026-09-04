@@ -354,9 +354,7 @@ export function StrategyWizard({
           quoteClient: publicClient() as never,
           merchantUrl: new URL('/api/funding/merchant', window.location.origin).toString(),
         });
-        setPhase(plan.preCalls.length > 0
-          ? 'Preparing your deposit (2 passkey confirmations, 1 funding transaction)…'
-          : 'Preparing your deposit (1 passkey confirmation, 1 funding transaction)…');
+        setPhase('Preparing your deposit (1 passkey confirmation, 1 funding transaction)…');
         try {
           assertFundingCheckpointWritable(56, wallet.address as Hex, agent.slug, plan);
         } catch {
@@ -716,12 +714,7 @@ export function StrategyWizard({
   const grossFunding = balances[fundingAsset];
   const requiredFunding = activeGasQuote && gasConversionRequired ? activeGasQuote.totalGasInput : 0n;
   const assetsReady = grossFunding != null && grossFunding > requiredFunding;
-  const preCallConfirmationRequired = fundingAsset !== 'BNB'
-    && activeGasQuote != null
-    && nativeBal != null
-    && nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
-  const freshConfirmationCount = 2 + strategy.signatureCheckers.length
-    + (preCallConfirmationRequired ? 1 : 0);
+  const freshConfirmationCount = 2 + strategy.signatureCheckers.length;
   const checkerAuthorizationPending = grantedActivation !== null
     && strategy.signatureCheckers.some((checker) =>
       !grantedActivation.approvedSignatureCheckers.some((approved) =>
@@ -867,8 +860,7 @@ export function StrategyWizard({
               ) : (
                 <>
                   From a fresh deposit: {freshConfirmationCount} passkey confirmations — funding approvals,
-                  the scoped session{strategy.usesOphis ? ', Ophis ERC-1271 validation' : ''}
-                  {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+                  the scoped session{strategy.usesOphis ? ', Ophis ERC-1271 validation' : ''}.
                 </>
               )}
             </p>

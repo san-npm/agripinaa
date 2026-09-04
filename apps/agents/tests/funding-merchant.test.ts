@@ -33,7 +33,6 @@ import {
   type Hex,
 } from 'viem';
 import { Route } from 'porto/server';
-import * as Key from 'porto/viem/Key';
 
 import {
   fundingQuote,
@@ -62,21 +61,12 @@ const BATCH_CALLS_ABI = [{
     { name: 'data', type: 'bytes' },
   ],
 }] as const;
-const SIGNED_CALL_ABI = [{
-  type: 'tuple',
-  components: [
-    { name: 'eoa', type: 'address' },
-    { name: 'executionData', type: 'bytes' },
-    { name: 'nonce', type: 'uint256' },
-    { name: 'signature', type: 'bytes' },
-  ],
-}] as const;
-
 const canonicalEnvelope = {
   capabilities: {
     authorizeKeys: [],
     meta: { feeToken: '0x0000000000000000000000000000000000000000' as Address },
     preCall: false,
+    preCalls: [],
   },
   key: {
     prehash: false,
@@ -85,29 +75,12 @@ const canonicalEnvelope = {
   },
 };
 
-function encodedPreCall(calls: readonly TestCall[], signature: Hex = '0x01') {
-  return {
-    eoa: ACCOUNT,
-    executionData: encodeAbiParameters(BATCH_CALLS_ABI, [calls.map((call) => ({
-      data: call.data ?? '0x',
-      to: call.to,
-      value: call.value ?? 0n,
-    }))]),
-    nonce: 1n,
-    signature,
-  };
-}
-
 function merchantRequest(calls: readonly TestCall[]) {
   return {
     chainId: 56,
     from: ACCOUNT,
-    calls: calls.slice(4),
+    calls,
     ...canonicalEnvelope,
-    capabilities: {
-      ...canonicalEnvelope.capabilities,
-      preCalls: [encodedPreCall(calls.slice(0, 4))],
-    },
   };
 }
 
@@ -153,10 +126,6 @@ describe('reimbursed funding merchant', () => {
     );
     assert.match(relaySource, /effectiveCalls = opts\.merchantUrl\s*\? \[\.\.\.calls, \.\.\.prepend\]/);
     assert.match(relaySource, /opts\.merchantUrl \? \{ merchantUrl: opts\.merchantUrl \}/);
-    assert.match(relaySource, /const preparedPreCall = await prepareCalls\(client, preCallParams\)/);
-    assert.match(relaySource, /preCalls: true/);
-    assert.match(relaySource, /preCalls: signedPreCalls/);
-    assert.match(relaySource, /const preCallSignature = await signCalls\(preparedPreCall/);
     assert.match(relaySource, /opts\.nonce !== undefined \? \{ nonce: opts\.nonce \} : \{\}/);
 
     const executeSource = await readFile(new URL('./execute.js', altanaEntry), 'utf8');
@@ -457,13 +426,7 @@ describe('reimbursed funding merchant', () => {
         method: 'wallet_prepareCalls',
         params: [{
           ...canonicalEnvelope,
-          capabilities: {
-            ...decodedRequest.capabilities,
-            preCalls: decodedRequest.capabilities.preCalls.map((preCall) => ({
-              ...preCall,
-              nonce: numberToHex(preCall.nonce),
-            })),
-          },
+          capabilities: decodedRequest.capabilities,
           calls: decodedRequest.calls.map((call) => ({
             to: call.to,
             ...(call.data ? { data: call.data } : {}),
@@ -603,7 +566,7 @@ describe('reimbursed funding merchant', () => {
     ), true);
   });
 
-  it('signs only a live relay quote capped by the reimbursement pre-call', async () => {
+  it('signs only a live relay quote for the exact atomic funding batch', async () => {
     const quote = await fundingQuote(client as never, 'USDT');
     const reimbursement = BigInt(quote.bootstrapFeeInput);
     const calls: TestCall[] = [
@@ -637,59 +600,18 @@ describe('reimbursed funding merchant', () => {
         }),
       },
     ];
-    const key = Key.createHeadlessWebAuthnP256({ role: 'admin' });
-    const preCall = encodedPreCall(calls);
-    const digest = hashTypedData({
-      domain: {
-        chainId: 56,
-        name: 'Orchestrator',
-        verifyingContract: ALTANA_ORCHESTRATOR_BSC,
-        version: ALTANA_ORCHESTRATOR_VERSION_BSC,
-      },
-      primaryType: 'SignedCall',
-      types: {
-        Call: [
-          { name: 'to', type: 'address' },
-          { name: 'value', type: 'uint256' },
-          { name: 'data', type: 'bytes' },
-        ],
-        SignedCall: [
-          { name: 'multichain', type: 'bool' },
-          { name: 'eoa', type: 'address' },
-          { name: 'calls', type: 'Call[]' },
-          { name: 'nonce', type: 'uint256' },
-        ],
-      },
-      message: {
-        calls: calls.map((call) => ({ data: call.data ?? '0x', to: call.to, value: call.value ?? 0n })),
-        eoa: ACCOUNT,
-        multichain: false,
-        nonce: preCall.nonce,
-      },
-    });
-    preCall.signature = await Key.sign(key, { address: null, payload: digest });
-    const request = {
-      chainId: 56,
-      from: ACCOUNT,
-      calls: [] as readonly TestCall[],
-      capabilities: {
-        ...canonicalEnvelope.capabilities,
-        preCalls: [preCall],
-      },
-      key: {
-        prehash: false,
-        publicKey: key.publicKey,
-        type: 'webauthnp256' as const,
-      },
-    };
+    const request = merchantRequest(calls);
     const relayQuote = (maximum: bigint, corruptDigest = false) => {
-      const encodedPreCalls = [encodeAbiParameters(SIGNED_CALL_ABI, [preCall])];
       const intent = {
         combinedGas: 100_000n,
         encodedFundTransfers: [] as readonly Hex[],
-        encodedPreCalls,
+        encodedPreCalls: [] as readonly Hex[],
         eoa: ACCOUNT,
-        executionData: encodeAbiParameters(BATCH_CALLS_ABI, [[]]),
+        executionData: encodeAbiParameters(BATCH_CALLS_ABI, [calls.map((call) => ({
+          data: call.data ?? '0x',
+          to: call.to,
+          value: call.value ?? 0n,
+        }))]),
         expiry: 2_000n,
         isMultichain: false,
         nonce: 2n,
@@ -731,7 +653,7 @@ describe('reimbursed funding merchant', () => {
         message: {
           multichain: false,
           eoa: intent.eoa,
-          calls: [],
+          calls: calls.map((call) => ({ data: call.data ?? '0x', to: call.to, value: call.value ?? 0n })),
           nonce: intent.nonce,
           payer: intent.payer,
           paymentToken: intent.paymentToken,
@@ -763,7 +685,7 @@ describe('reimbursed funding merchant', () => {
       1_000_000,
     ), false, 'a fee-payer digest not derived from the validated intent must be refused');
     assert.equal(validFundingRelayQuote(
-      { ...request, capabilities: { ...request.capabilities, preCalls: [{ ...preCall, signature: '0x01' as Hex }] } },
+      { ...request, capabilities: { ...request.capabilities, preCalls: [{}] } },
       relayQuote(1n),
       1_000_000,
     ), false);
