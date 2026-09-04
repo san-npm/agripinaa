@@ -422,11 +422,10 @@ describe('reimbursed funding merchant', () => {
       body: JSON.stringify({
         id: 2,
         jsonrpc: '2.0',
-        _returnType: null,
         method: 'wallet_prepareCalls',
         params: [{
           ...canonicalEnvelope,
-          capabilities: decodedRequest.capabilities,
+          capabilities: { ...decodedRequest.capabilities, preCalls: undefined },
           calls: decodedRequest.calls.map((call) => ({
             to: call.to,
             ...(call.data ? { data: call.data } : {}),
