@@ -632,10 +632,20 @@ export function createFundingMerchant(args: {
       args.client,
       request as MerchantRequest,
     ),
-    approve: (request, result) => validFundingRelayQuote(
-      request as MerchantRequest,
-      result as MerchantRelayResult,
-    ),
+    approve: (request, result) => {
+      const valid = validFundingRelayQuote(
+        request as MerchantRequest,
+        result as MerchantRelayResult,
+      );
+      if (!valid) {
+        console.error(JSON.stringify({
+          event: 'funding-relay-quote-rejected',
+          request: request as MerchantRequest,
+          result: result as MerchantRelayResult,
+        }, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value));
+      }
+      return valid;
+    },
   });
 }
 
