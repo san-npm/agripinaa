@@ -22,6 +22,7 @@ import {
   type FundingToken,
 } from '@agripinaa/shared';
 import { BNB, createClient as createAltanaClient, signerFromPrivateKey } from '@altananetwork/sdk';
+import * as RpcResponse from 'ox/RpcResponse';
 import { Route } from 'porto/server';
 import {
   decodeAbiParameters,
@@ -603,7 +604,9 @@ export async function requireReimbursedFundingRequest(
   request: MerchantRequest,
 ): Promise<true> {
   if (!await validReimbursedFundingRequest(client, request)) {
-    throw new Error('funding merchant rejected the reimbursed bundle');
+    throw new RpcResponse.InvalidParamsError({
+      message: 'Funding merchant rejected the reimbursed bundle. Refresh the quote and retry.',
+    });
   }
   return true;
 }

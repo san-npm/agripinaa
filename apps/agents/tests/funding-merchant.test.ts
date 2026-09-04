@@ -149,9 +149,7 @@ describe('reimbursed funding merchant', () => {
     const route = Route.merchant({
       address: FUNDING_FEE_PAYER_BSC,
       key: `0x${'01'.repeat(32)}`,
-      sponsor: async () => {
-        throw new Error('policy rejected');
-      },
+      sponsor: (request) => requireReimbursedFundingRequest(client as never, request as never),
       relay: custom({
         async request() {
           forwarded = true;
@@ -169,9 +167,10 @@ describe('reimbursed funding merchant', () => {
         params: [{ calls: [], capabilities: { meta: {} }, chainId: '0x38', from: ACCOUNT }],
       }),
     }));
-    const body = await response.json() as { error?: unknown };
+    const body = await response.json() as { error?: { code?: number; stack?: string } };
     assert.equal(response.status, 200);
-    assert.ok(body.error);
+    assert.equal(body.error?.code, -32602);
+    assert.equal(body.error?.stack, '');
     assert.equal(forwarded, false);
   });
 
