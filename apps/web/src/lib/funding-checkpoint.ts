@@ -181,7 +181,6 @@ function parseCheckpoint(value: unknown): FundingCheckpoint | null {
     // Executable calls are never restored. A submitted checkpoint can only be
     // polled by callsId; a confirmed checkpoint can only continue activation.
     calls: [],
-    preCalls: [],
     input: plan.input,
     grossInput,
     gasReserveInput,

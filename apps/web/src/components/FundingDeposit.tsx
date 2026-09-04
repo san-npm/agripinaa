@@ -169,7 +169,7 @@ export function FundingDeposit({
         The BNB provision covers the live Altana key-registration fees and leaves an operating reserve in
         your account; any unused BNB remains yours and is withdrawable. {asset === 'BNB'
           ? 'Your account pays its first relay operation from the displayed fixed budget.'
-          : 'Before strategy preparation, a separately signed pre-call converts the displayed fixed cut into native BNB for the relay fee payer. That payment is retained even if a later strategy call reverts, so a retry never shifts gas cost to Agripinaa.'}{' '}
+          : 'The atomic funding bundle converts the displayed fixed cut into native BNB for the relay fee payer.'}{' '}
         Agripinaa does not sponsor gas. Remaining capital is prepared into the assets required by the selected
         agent with on-chain slippage protection.
       </p>

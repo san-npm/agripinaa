@@ -26,7 +26,6 @@ export async function approveStrategyVenues(
   chainId = 56,
   bootstrap?: {
     calls: readonly FundingCall[];
-    preCalls?: readonly FundingCall[];
     merchantUrl?: string;
     onSubmitted?: (callsId: Hex) => void | Promise<void>;
   },
@@ -55,7 +54,6 @@ export async function approveStrategyVenues(
     signer: wallet.signer as never,
     chainId,
     calls: [...(bootstrap?.calls ?? []), ...calls] as never,
-    ...(bootstrap?.preCalls?.length ? { preCalls: bootstrap.preCalls as never } : {}),
     ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
     ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });

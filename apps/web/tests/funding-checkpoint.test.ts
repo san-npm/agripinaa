@@ -59,7 +59,6 @@ function withLocalStorage(
 
 const PLAN = {
   calls: [],
-  preCalls: [],
   input: 'BNB' as const,
   grossInput: 5n,
   gasReserveInput: 1n,
@@ -97,7 +96,6 @@ describe('funding bootstrap checkpoint', () => {
         receiptBlockNumber: 123n,
         plan: {
           calls: [{ to: ACCOUNT, value: 10n }],
-          preCalls: [{ to: ACCOUNT, value: 1n }],
           input: 'USDT',
           grossInput: 100n,
           gasReserveInput: 1n,
@@ -123,7 +121,6 @@ describe('funding bootstrap checkpoint', () => {
       assert.equal(restored?.plan.nativeReserveOutputWei, 7n);
       assert.deepEqual(restored?.plan.targets, ['WBNB', 'USDT']);
       assert.deepEqual(restored?.plan.calls, []);
-      assert.deepEqual(restored?.plan.preCalls, []);
       assert.equal(restored?.plan.merchantUrl, undefined);
     });
   });

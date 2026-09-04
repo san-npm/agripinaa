@@ -23,12 +23,9 @@ import {
 } from '@agripinaa/shared';
 import { BNB, createClient as createAltanaClient, signerFromPrivateKey } from '@altananetwork/sdk';
 import { Route } from 'porto/server';
-import * as PublicKey from 'ox/PublicKey';
-import * as WebAuthnP256 from 'ox/WebAuthnP256';
 import {
   decodeAbiParameters,
   decodeFunctionData,
-  encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
   erc20Abi,
@@ -38,8 +35,6 @@ import {
   keccak256,
   maxUint256,
   parseAbi,
-  slice,
-  size,
   type Address,
   type Hex,
 } from 'viem';
@@ -173,7 +168,7 @@ type MerchantRequest = {
     authorizeKeys?: readonly unknown[];
     meta: { feePayer?: Address; feeToken?: Address; nonce?: bigint };
     preCall?: boolean;
-    preCalls?: readonly MerchantPreCall[];
+    preCalls?: readonly unknown[];
     requiredFunds?: readonly unknown[];
     revokeKeys?: readonly unknown[];
   };
@@ -182,13 +177,6 @@ type MerchantRequest = {
     publicKey: Hex;
     type: 'p256' | 'secp256k1' | 'webauthnp256';
   };
-};
-
-type MerchantPreCall = {
-  eoa: Address;
-  executionData: Hex;
-  nonce: bigint | Hex;
-  signature: Hex;
 };
 
 type MerchantRelayResult = {
@@ -221,19 +209,6 @@ type MerchantRelayResult = {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-function isMerchantPreCall(value: unknown): value is MerchantPreCall {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const preCall = value as Partial<MerchantPreCall>;
-  return typeof preCall.eoa === 'string'
-    && /^0x[0-9a-fA-F]{40}$/.test(preCall.eoa)
-    && typeof preCall.executionData === 'string'
-    && isHex(preCall.executionData)
-    && (typeof preCall.nonce === 'bigint'
-      || (typeof preCall.nonce === 'string' && isHex(preCall.nonce)))
-    && typeof preCall.signature === 'string'
-    && isHex(preCall.signature);
-}
-
 /** Exact Porto request envelope emitted by this browser bootstrap. */
 function hasCanonicalMerchantEnvelope(request: MerchantRequest): boolean {
   const { capabilities, key } = request;
@@ -243,8 +218,7 @@ function hasCanonicalMerchantEnvelope(request: MerchantRequest): boolean {
     && capabilities.authorizeKeys.length === 0
     && capabilities.preCall === false
     && Array.isArray(capabilities.preCalls)
-    && capabilities.preCalls.length === 1
-    && isMerchantPreCall(capabilities.preCalls[0])
+    && capabilities.preCalls.length === 0
     && capabilities.requiredFunds === undefined
     && capabilities.revokeKeys === undefined
     && capabilities.meta
@@ -268,124 +242,12 @@ const BATCH_CALLS_ABI = [{
   ],
 }] as const;
 
-const SIGNED_CALL_ABI = [{
-  type: 'tuple',
-  components: [
-    { name: 'eoa', type: 'address' },
-    { name: 'executionData', type: 'bytes' },
-    { name: 'nonce', type: 'uint256' },
-    { name: 'signature', type: 'bytes' },
-  ],
-}] as const;
-
-const WEB_AUTHN_SIGNATURE_ABI = [{
-  type: 'tuple',
-  components: [
-    { name: 'authenticatorData', type: 'bytes' },
-    { name: 'clientDataJSON', type: 'string' },
-    { name: 'challengeIndex', type: 'uint256' },
-    { name: 'typeIndex', type: 'uint256' },
-    { name: 'r', type: 'bytes32' },
-    { name: 's', type: 'bytes32' },
-  ],
-}] as const;
-
-function decodePreCall(preCall: MerchantPreCall): readonly MerchantCall[] | null {
+function decodeCalls(executionData: Hex): readonly MerchantCall[] | null {
   try {
-    const [calls] = decodeAbiParameters(BATCH_CALLS_ABI, preCall.executionData);
+    const [calls] = decodeAbiParameters(BATCH_CALLS_ABI, executionData);
     return calls;
   } catch {
     return null;
-  }
-}
-
-function preCallNonce(preCall: MerchantPreCall): bigint | null {
-  try {
-    return typeof preCall.nonce === 'bigint' ? preCall.nonce : BigInt(preCall.nonce);
-  } catch {
-    return null;
-  }
-}
-
-/** Verify the separately signed reimbursement pre-call before signing as fee payer. */
-export function validFundingPreCallSignature(request: MerchantRequest): boolean {
-  const preCall = request.capabilities.preCalls?.[0];
-  const nonce = preCall ? preCallNonce(preCall) : null;
-  if (
-    !preCall
-    || nonce === null
-    || preCall.eoa.toLowerCase() !== request.from?.toLowerCase()
-    || nonce < 0n
-    || (nonce >> 240n) === 0xc1d0n
-    || !isHex(preCall.signature)
-    || size(preCall.signature) <= 33
-  ) return false;
-  const calls = decodePreCall(preCall);
-  if (!calls) return false;
-
-  try {
-    const wrappedSize = size(preCall.signature);
-    const inner = slice(preCall.signature, 0, wrappedSize - 33);
-    const keyHash = slice(preCall.signature, wrappedSize - 33, wrappedSize - 1);
-    const prehash = slice(preCall.signature, wrappedSize - 1);
-    if (prehash !== '0x00') return false;
-    const expectedKeyHash = keccak256(encodeAbiParameters(
-      [{ type: 'uint8' }, { type: 'bytes32' }],
-      [1, keccak256(request.key!.publicKey)],
-    ));
-    if (keyHash.toLowerCase() !== expectedKeyHash.toLowerCase()) return false;
-
-    const [auth] = decodeAbiParameters(WEB_AUTHN_SIGNATURE_ABI, inner);
-    if (
-      auth.challengeIndex > BigInt(Number.MAX_SAFE_INTEGER)
-      || auth.typeIndex > BigInt(Number.MAX_SAFE_INTEGER)
-    ) return false;
-    const digest = hashTypedData({
-      domain: {
-        chainId: 56,
-        name: 'Orchestrator',
-        verifyingContract: ALTANA_ORCHESTRATOR_BSC,
-        version: ALTANA_ORCHESTRATOR_VERSION_BSC,
-      },
-      primaryType: 'SignedCall',
-      types: {
-        Call: [
-          { name: 'to', type: 'address' },
-          { name: 'value', type: 'uint256' },
-          { name: 'data', type: 'bytes' },
-        ],
-        SignedCall: [
-          { name: 'multichain', type: 'bool' },
-          { name: 'eoa', type: 'address' },
-          { name: 'calls', type: 'Call[]' },
-          { name: 'nonce', type: 'uint256' },
-        ],
-      },
-      message: {
-        calls: calls.map((call) => ({
-          data: call.data ?? '0x',
-          to: call.to,
-          value: call.value ?? 0n,
-        })),
-        eoa: preCall.eoa,
-        multichain: false,
-        nonce,
-      },
-    });
-    return WebAuthnP256.verify({
-      challenge: digest,
-      metadata: {
-        authenticatorData: auth.authenticatorData,
-        challengeIndex: Number(auth.challengeIndex),
-        clientDataJSON: auth.clientDataJSON,
-        typeIndex: Number(auth.typeIndex),
-        userVerificationRequired: true,
-      },
-      publicKey: PublicKey.from(`0x04${request.key!.publicKey.slice(2)}`),
-      signature: { r: BigInt(auth.r), s: BigInt(auth.s) },
-    });
-  } catch {
-    return false;
   }
 }
 
@@ -395,7 +257,7 @@ export function validFundingRelayQuote(
   result: MerchantRelayResult,
   now = Date.now(),
 ): boolean {
-  if (!validFundingPreCallSignature(request) || !result.capabilities?.feePayerDigest) return false;
+  if (!hasCanonicalMerchantEnvelope(request) || !result.capabilities?.feePayerDigest) return false;
   const quote = result.context?.quote;
   if (!quote || !quote.ttl || quote.ttl * 1_000 <= now || quote.quotes?.length !== 1) return false;
   const item = quote.quotes[0]!;
@@ -425,12 +287,7 @@ export function validFundingRelayQuote(
     || typeof intent.paymentMaxAmount !== 'bigint'
     || typeof intent.paymentAmount !== 'bigint'
   ) return false;
-  const decodedCalls = decodePreCall({
-    eoa: intent.eoa,
-    executionData: intent.executionData,
-    nonce: intent.nonce,
-    signature: '0x',
-  });
+  const decodedCalls = decodeCalls(intent.executionData);
   if (
     !decodedCalls
     || decodedCalls.length !== request.calls.length
@@ -441,17 +298,7 @@ export function validFundingRelayQuote(
         || (call.data ?? '0x').toLowerCase() !== (requested.data ?? '0x').toLowerCase();
     })
   ) return false;
-  const signedPreCall = request.capabilities.preCalls![0]!;
-  const encodedSignedPreCall = encodeAbiParameters(SIGNED_CALL_ABI, [{
-    eoa: signedPreCall.eoa,
-    executionData: signedPreCall.executionData,
-    nonce: preCallNonce(signedPreCall)!,
-    signature: signedPreCall.signature,
-  }]);
-  if (
-    intent.encodedPreCalls.length < 1
-    || intent.encodedPreCalls.at(-1)?.toLowerCase() !== encodedSignedPreCall.toLowerCase()
-  ) return false;
+  if (intent.encodedPreCalls.length !== 0) return false;
   const expectedDigest = hashTypedData({
     domain: {
       chainId: 56,
@@ -555,17 +402,13 @@ export async function validReimbursedFundingRequest(
   if (
     request.chainId !== 56
     || !request.from
-    || request.calls.length < 5
-    || request.calls.length > 16
+    || request.calls.length < 9
+    || request.calls.length > 20
     || !hasCanonicalMerchantEnvelope(request)
   ) {
     return false;
   }
-  const preCall = request.capabilities.preCalls![0]!;
-  if (preCall.eoa.toLowerCase() !== request.from.toLowerCase() || !isHex(preCall.signature)) return false;
-  const preCalls = decodePreCall(preCall);
-  if (!preCalls || preCalls.length !== 4) return false;
-  const calls = [...preCalls, ...request.calls];
+  const calls = request.calls;
   const account = request.from.toLowerCase();
   let reimbursement: { asset: Exclude<FundingAsset, 'BNB'>; amount: bigint; index: number } | null = null;
   let reimbursementUnwrap: { index: number } | null = null;
@@ -772,8 +615,8 @@ export function createFundingMerchant(args: {
     // `sponsor` is Porto's API name for choosing a fee payer. Agripinaa's
     // payer is reimbursed in native BNB inside every bundle this returns true.
     // Porto treats `false` as "prepare the same bundle without a fee payer".
-    // The policy helper therefore returns true or throws; it never disables
-    // the payer while allowing the signed reimbursement pre-call through.
+    // The policy helper therefore returns true or throws; it never silently
+    // shifts the atomic funding bundle back to the user.
     sponsor: (request) => requireReimbursedFundingRequest(
       args.client,
       request as MerchantRequest,

@@ -409,9 +409,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           quoteClient: fundingClient as never,
           merchantUrl: new URL('/api/funding/merchant', window.location.origin).toString(),
         });
-        setPhase(plan.preCalls.length > 0
-          ? 'Preparing your deposit (2 passkey confirmations, 1 funding transaction)…'
-          : 'Preparing your deposit (1 passkey confirmation, 1 funding transaction)…');
+        setPhase('Preparing your deposit (1 passkey confirmation, 1 funding transaction)…');
         const minimumOutput = plan.minimumOutputs[token] ?? 0n;
         if (minimumOutput <= 0n) throw new Error('Funding produced no managed principal.');
         const baselineTotal = baseline.idleWei + baseline.deployedWei;
@@ -1209,10 +1207,6 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const grossFunding = balances[fundingAsset];
   const requiredFunding = activeGasQuote && gasConversionRequired ? activeGasQuote.totalGasInput : 0n;
   const fundingReady = grossFunding != null && grossFunding > requiredFunding;
-  const preCallConfirmationRequired = fundingAsset !== 'BNB'
-    && activeGasQuote != null
-    && nativeBal != null
-    && nativeBal < activeGasQuote.gasReserveWei + activeGasQuote.bootstrapFeeWei;
   const stepIndex = { wallet: 0, deposit: 1, active: 2 }[step];
   const activationLabel = preparedFunding?.status === 'submitted'
     ? 'Check funding status'
@@ -1434,9 +1428,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             </button>
             <p className="text-xs text-muted-2">
               {recoveredFunding ? 'Current funding verified. Continue with the scoped agent mandate.' : <>
-                From a fresh deposit: {preCallConfirmationRequired ? 'three' : 'two'} passkey taps —
-                funding and router approvals, the scoped session
-                {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+                From a fresh deposit: two passkey taps — funding and router approvals, then the scoped session.
               </>}{' '}
               You can withdraw or revoke any time from your dashboard.
             </p>
