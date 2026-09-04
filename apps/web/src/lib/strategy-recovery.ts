@@ -57,6 +57,20 @@ function snapshotFingerprint(value: RangerExitSnapshot): string {
     typeof item === 'bigint' ? item.toString() : item);
 }
 
+/** Confirm the entered NFT belongs to the passkey account before stopping any live session. */
+export async function assertRangerPositionOwner(account: Hex, tokenId: bigint): Promise<void> {
+  const owner = await readBscQuorumAtCommonBlock(async (client, blockNumber) => client.readContract({
+    address: PANCAKE_V3_POSITION_MANAGER,
+    abi: PANCAKE_POSITION_MANAGER_ABI,
+    functionName: 'ownerOf',
+    args: [tokenId],
+    blockNumber,
+  }), (value) => value.toLowerCase());
+  if (owner.toLowerCase() !== account.toLowerCase()) {
+    throw new Error(`Ranger NFT #${tokenId} is not owned by this passkey account.`);
+  }
+}
+
 async function readRangerExitSnapshot(
   account: Hex,
   tokenId: bigint,
@@ -168,10 +182,10 @@ export async function stopAllAccountSessions(
   wallet: WalletLike,
   account: Hex,
   chainId: number,
-  requiredSession: StoredSessionMeta,
+  requiredSession?: StoredSessionMeta,
 ): Promise<number> {
   const stored = listStoredSessions();
-  const records = stored.some((session) => session.id === requiredSession.id)
+  const records = !requiredSession || stored.some((session) => session.id === requiredSession.id)
     ? stored
     : [...stored, requiredSession];
   const accountRecords = records.filter((session) =>
