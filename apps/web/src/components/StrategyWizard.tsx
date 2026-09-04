@@ -758,15 +758,15 @@ export function StrategyWizard({
               {strategy.riskNote} The session is time-bounded and revocable, but it controls the capital approved to these venues.
             </p>
             <div className="flex flex-wrap gap-3">
-              <button onClick={() => connect('create')} disabled={busy} className={primaryBtn}>
-                {busy ? 'Waiting for passkey…' : 'Create dedicated account'}
+              <button onClick={() => connect('recover')} disabled={busy} className={primaryBtn}>
+                {busy ? 'Waiting for passkey…' : 'Use existing funded account'}
               </button>
-              <button onClick={() => connect('recover')} disabled={busy} className="rounded-lg border border-border-strong px-4 py-2.5 text-sm hover:border-primary/40 disabled:opacity-50">
-                Find funded account with passkey
+              <button onClick={() => connect('create')} disabled={busy} className="rounded-lg border border-border-strong px-4 py-2.5 text-sm hover:border-primary/40 disabled:opacity-50">
+                Create new passkey account
               </button>
             </div>
             <p className="rounded-xl border border-primary/35 bg-primary/10 p-4 text-xs leading-relaxed text-muted">
-              Already funded? Use <strong className="font-semibold text-foreground">Find funded account with passkey</strong>.
+              A new account creates another passkey. Use <strong className="font-semibold text-foreground">Use existing funded account</strong> whenever you already funded this strategy.
               Agripinaa checks the account&apos;s live session, inventory, approvals, and BNB reserve—no transaction hash or second deposit.
             </p>
           </section>
