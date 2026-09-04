@@ -21,6 +21,8 @@ import {
   buildFundingBootstrapPlan,
   fundingGasQuote,
   fundingGasQuoteIsCurrent,
+  fundedInputAsset,
+  readFundingBalances,
   type FundingAsset,
   type FundingGasQuote,
 } from '@/lib/funding-bootstrap';
@@ -218,9 +220,24 @@ export function StrategyWizard({
             throw new Error(`That transaction is not a completed ${agent.name} funding bundle for the recovered account.`);
           }
         }
-        await verifyRecoverableAccount(next.address as Hex);
-        setPreparedFunding(null);
-        setRecoveredFunding({ transactionHash });
+        try {
+          await verifyRecoverableAccount(next.address as Hex);
+          setPreparedFunding(null);
+          setRecoveredFunding({ transactionHash });
+        } catch (cause) {
+          const missingPreparedFunding = cause instanceof Error
+            && cause.message.startsWith(`No recoverable ${agent.name} funding was found:`);
+          if (!missingPreparedFunding) throw cause;
+          const nextBalances = await readFundingBalances(next.address as Hex);
+          const fundedAsset = fundedInputAsset(nextBalances);
+          if (!fundedAsset) throw cause;
+          setPendingWallet(true);
+          setFundingAsset(fundedAsset);
+          setNativeBal(nextBalances.BNB);
+          setBalances(nextBalances);
+          setPreparedFunding(null);
+          setRecoveredFunding(null);
+        }
       } else {
         setPreparedFunding(null);
         setRecoveredFunding(null);
@@ -240,25 +257,9 @@ export function StrategyWizard({
     let cancelled = false;
     const tick = async () => {
       try {
-        const client = publicClient();
-        const tokenAssets = FUNDING_ASSETS.filter((symbol): symbol is Exclude<FundingAsset, 'BNB'> => symbol !== 'BNB');
-        const [native, ...assets] = await Promise.all([
-          client.getBalance({ address: wallet.address as Hex }),
-          ...tokenAssets.map((symbol) => client.readContract({
-            address: TOKENS_BSC[symbol]!.address,
-            abi: erc20Abi,
-            functionName: 'balanceOf',
-            args: [wallet.address as Hex],
-          })),
-        ]);
+        const nextBalances = await readFundingBalances(wallet.address as Hex);
         if (!cancelled) {
-          const nextBalances = {
-            BNB: native,
-            BTCB: assets[tokenAssets.indexOf('BTCB')]!,
-            USDT: assets[tokenAssets.indexOf('USDT')]!,
-            USDC: assets[tokenAssets.indexOf('USDC')]!,
-          };
-          setNativeBal(native);
+          setNativeBal(nextBalances.BNB);
           setBalances(nextBalances);
           if (pendingWallet && !preparedFunding) {
             setFundingAsset((current) => nextBalances[current] > 0n

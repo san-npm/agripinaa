@@ -28,7 +28,35 @@ import {
   type Hex,
 } from 'viem';
 
+import { createBscPublicClient } from './bsc-public-client';
+
 export { FUNDING_ASSETS, type FundingAsset };
+
+export function fundedInputAsset(balances: Readonly<Record<FundingAsset, bigint>>): FundingAsset | null {
+  return FUNDING_ASSETS.find((asset) => balances[asset] > 0n) ?? null;
+}
+
+export async function readFundingBalances(address: Address): Promise<Record<FundingAsset, bigint>> {
+  const client = createBscPublicClient();
+  const tokenAssets = FUNDING_ASSETS.filter(
+    (symbol): symbol is Exclude<FundingAsset, 'BNB'> => symbol !== 'BNB',
+  );
+  const [native, ...tokens] = await Promise.all([
+    client.getBalance({ address }),
+    ...tokenAssets.map((symbol) => client.readContract({
+      address: TOKENS_BSC[symbol]!.address,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [address],
+    })),
+  ]);
+  return {
+    BNB: native,
+    BTCB: tokens[tokenAssets.indexOf('BTCB')]!,
+    USDT: tokens[tokenAssets.indexOf('USDT')]!,
+    USDC: tokens[tokenAssets.indexOf('USDC')]!,
+  };
+}
 
 export interface FundingGasQuote {
   asset: FundingAsset;
