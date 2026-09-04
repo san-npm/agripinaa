@@ -13,6 +13,7 @@ import { decodeFunctionData, parseAbi, type Address } from 'viem';
 
 import {
   buildFundingBootstrapPlan,
+  fundedInputAsset,
   fundingGasQuoteIsCurrent,
   type FundingGasQuote,
   type FundingQuoteClient,
@@ -66,6 +67,11 @@ function nativeQuote(): FundingGasQuote {
 }
 
 describe('single-deposit funding bootstrap', () => {
+  it('resumes a partially registered account from its raw funded asset', () => {
+    assert.equal(fundedInputAsset({ BTCB: 25n, BNB: 0n, USDT: 0n, USDC: 0n }), 'BTCB');
+    assert.equal(fundedInputAsset({ BTCB: 0n, BNB: 0n, USDT: 0n, USDC: 0n }), null);
+  });
+
   it('requires a matching quote with enough time left for confirmation', () => {
     const now = 1_000;
     const quote = { ...tokenQuote('USDT'), expiresAt: now + 5_001 };
