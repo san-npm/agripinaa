@@ -35,7 +35,7 @@ function clientFor(chainId: number): PublicClient {
  * only, private hosts blocked, redirects re-validated, body capped.
  */
 async function fetchMetadata(uri: string): Promise<Record<string, unknown> | null> {
-  return safeFetchJson(uri, { timeoutMs: 5_000 });
+  return safeFetchJson(uri, { timeoutMs: 5_000 }).catch(() => null);
 }
 
 /**
