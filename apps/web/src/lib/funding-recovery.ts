@@ -1,4 +1,8 @@
-import { ALTANA_ORCHESTRATOR_BSC } from '@agripinaa/shared/funding';
+import {
+  ALTANA_ORCHESTRATOR_BSC,
+  FUNDING_GAS_RESERVE_WEI,
+  FUNDING_MAX_REGISTRATION_FEE_WEI,
+} from '@agripinaa/shared/funding';
 import type { ManagedApproval } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import {
@@ -25,6 +29,36 @@ export interface FundingRecoveryReceipt {
 export function fundingRecoveryHash(value: string): Hex | null {
   const candidate = value.trim();
   return /^0x[0-9a-fA-F]{64}$/.test(candidate) ? candidate as Hex : null;
+}
+
+/** Current account state is sufficient recovery proof; history is only a fallback. */
+export function recoverableStrategyFundingProblem(input: {
+  agentName: string;
+  requiredAssets: readonly string[];
+  inventory: Readonly<Record<string, bigint>>;
+  allowances: readonly bigint[];
+  nativeBalance: bigint;
+  registrationFee: bigint;
+  hasLiveSession: boolean;
+}): string | null {
+  if (input.hasLiveSession) {
+    return input.nativeBalance < FUNDING_GAS_RESERVE_WEI
+      ? 'The recovered account no longer holds the native BNB reserve required for agent execution.'
+      : null;
+  }
+  const missing = input.requiredAssets.filter((symbol) => (input.inventory[symbol] ?? 0n) === 0n);
+  if (missing.length > 0) {
+    return `No recoverable ${input.agentName} funding was found: the account is missing ${missing.join(' and ')}.`;
+  }
+  if (input.allowances.some((allowance) => allowance !== maxUint256)) {
+    return 'No recoverable funding was found: one or more strategy venue approvals are missing.';
+  }
+  if (input.registrationFee > FUNDING_MAX_REGISTRATION_FEE_WEI) {
+    return 'The live Altana key-registration fee is above Agripinaa\'s safety ceiling.';
+  }
+  return input.nativeBalance < FUNDING_GAS_RESERVE_WEI + input.registrationFee
+    ? 'The recovered account no longer holds enough BNB for session registration and execution.'
+    : null;
 }
 
 /**

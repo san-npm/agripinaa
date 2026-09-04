@@ -3,7 +3,10 @@
 import { isSessionKeyValid, wasSessionKeyRegistered } from '@agripinaa/session-kit/verify';
 import { isDebtCompleteRouter, routerFor } from '@agripinaa/shared/contracts';
 import type { AgentSlug, RetiredManagerGrant } from '@agripinaa/shared/agents';
-import { managedTokenForFunding } from '@agripinaa/shared/funding';
+import {
+  ALTANA_KEYSTORE_CONTROLLER_BSC,
+  managedTokenForFunding,
+} from '@agripinaa/shared/funding';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
 import { encodeFunctionData, erc20Abi, parseAbi, type Hex } from 'viem';
@@ -50,7 +53,10 @@ import {
   readRelayCallStatus,
   type RelayCallStatus,
 } from '@/lib/session-relay-recovery';
-import { recoverExistingSession } from '@/lib/session-recovery';
+import {
+  lifetimeOptionForExistingSession,
+  recoverExistingSession,
+} from '@/lib/session-recovery';
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { waitForManagedPrincipal } from '@/lib/managed-principal';
 import { toast } from '@/lib/toast';
@@ -72,6 +78,7 @@ import {
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
+import { recoverableStrategyFundingProblem } from '@/lib/funding-recovery';
 import { ActivationProgress, FundingDeposit, RelayGrantNotice } from './FundingDeposit';
 import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
@@ -80,6 +87,9 @@ type Step = 'wallet' | 'deposit' | 'active';
 const ACCOUNT_NONCE_ABI = parseAbi([
   'function getNonce(uint192 seqKey) view returns (uint256)',
   'function invalidateNonce(uint256 nonce)',
+]);
+const KEYSTORE_FEE_ABI = parseAbi([
+  'function getRegistrationFeeInWei() view returns (uint256)',
 ]);
 const RESET_NONCE_LANE = 1n;
 
@@ -104,6 +114,11 @@ interface GrantedManagedActivation {
   local: ReturnType<typeof storeSession>;
 }
 
+interface RecoveredManagedFunding {
+  expectedTotalWei: bigint;
+  formattedPrincipal: string;
+}
+
 interface RotatedGrantReset {
   checkpoint: SessionGrantCheckpoint;
   currentPublicKey: Hex;
@@ -116,6 +131,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
   const chainId = 56;
   const [fundingAsset, setFundingAsset] = useState<FundingAsset>('USDT');
   const [wallet, setWallet] = useState<PasskeyWallet | null>(null);
+  const [recoveredFunding, setRecoveredFunding] = useState<RecoveredManagedFunding | null>(null);
   const [nativeBal, setNativeBal] = useState<bigint | null>(null);
   const [balances, setBalances] = useState<Record<FundingAsset, bigint | null>>({
     BTCB: null,
@@ -158,6 +174,53 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     [],
   );
 
+  async function verifyRecoverableManagedAccount(w: PasskeyWallet): Promise<RecoveredManagedFunding> {
+    setPhase('Checking the funded account on BNB Chain…');
+    const account = w.address as Hex;
+    const router = routerFor(chainId, token)!;
+    const manager = await fetchManagerKey(agent.managedAgent, token);
+    const recoveredSession = await recoverExistingSession({
+      account,
+      manager,
+      scope: buildManagedScope({ chainId, hours, token }),
+      signatureCheckers: [],
+      signer: verifyOnlyStub(manager.address, manager.publicKey),
+      maximumExpiry: null,
+    });
+    const chainClient = publicClient();
+    const [position, nativeBalance, registrationFee, allowances] = await Promise.all([
+      readManagedPosition(account, chainId, token, router.address, chainClient as never),
+      chainClient.getBalance({ address: account }),
+      chainClient.readContract({
+        address: ALTANA_KEYSTORE_CONTROLLER_BSC,
+        abi: KEYSTORE_FEE_ABI,
+        functionName: 'getRegistrationFeeInWei',
+      }),
+      Promise.all([router.usdt, router.aUsdt, router.vUsdt].map((asset) => chainClient.readContract({
+        address: asset,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [account, router.address],
+      }))),
+    ]);
+    const expectedTotalWei = position.idleWei + position.deployedWei;
+    if (expectedTotalWei <= 0n) {
+      throw new Error(`No recoverable ${agent.name} funding was found in this account.`);
+    }
+    const problem = recoverableStrategyFundingProblem({
+      agentName: agent.name,
+      requiredAssets: [token],
+      inventory: { [token]: expectedTotalWei },
+      allowances,
+      nativeBalance,
+      registrationFee,
+      hasLiveSession: recoveredSession !== null,
+    });
+    if (problem) throw new Error(problem);
+    if (recoveredSession) setHours(lifetimeOptionForExistingSession(recoveredSession.session.expiry));
+    return { expectedTotalWei, formattedPrincipal: position.totalUsdt };
+  }
+
   async function connectPasskey(mode: 'create' | 'recover') {
     if (!automationReady) {
       setError('Managed activation is paused while the debt-complete router is deployed.');
@@ -178,8 +241,13 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       if (checkpoint?.expectedTotalWei !== undefined) {
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
+        setRecoveredFunding(null);
+      } else if (mode === 'recover') {
+        setPreparedFunding(null);
+        setRecoveredFunding(await verifyRecoverableManagedAccount(w));
       } else {
         setPreparedFunding(null);
+        setRecoveredFunding(null);
       }
       setWallet(w);
       setStep('deposit');
@@ -187,6 +255,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setPhase('');
     }
   }
 
@@ -260,7 +329,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
     }
     setBusy(true);
     setError(null);
-    const pauseAfterFunding = shouldPauseAfterFundingConfirmation(preparedFunding);
+    const pauseAfterFunding = shouldPauseAfterFundingConfirmation(
+      preparedFunding,
+      recoveredFunding !== null,
+    );
     try {
       const fundingClient = publicClient();
       const router = routerFor(chainId, token)!;
@@ -307,7 +379,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         setPreparedFunding(confirmed);
         prepared = confirmed;
       }
-      if (!prepared) {
+      if (!prepared && !recoveredFunding) {
         // 1. Snapshot the old target position, then prepare the single deposit
         // and approve the router in one owner bundle.
         setPhase('Building the deposit preparation…');
@@ -417,7 +489,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         prepared = confirmed;
       }
 
-      if (prepared.status !== 'confirmed') {
+      if (!recoveredFunding && prepared?.status !== 'confirmed') {
         throw new Error('The saved funding transaction has not confirmed yet. Retry activation without depositing again.');
       }
       if (pauseAfterFunding) {
@@ -428,7 +500,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         });
         return;
       }
-      const expectedTotalWei = prepared.expectedTotalWei;
+      const expectedTotalWei = recoveredFunding?.expectedTotalWei ?? prepared?.expectedTotalWei;
       if (expectedTotalWei === undefined) {
         clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
         setPreparedFunding(null);
@@ -794,7 +866,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             token,
             router.address,
             fundingClient as never,
-            prepared.receiptBlockNumber,
+            prepared?.status === 'confirmed' ? prepared.receiptBlockNumber : undefined,
           ),
           expectedTotalWei,
         );
@@ -1150,7 +1222,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         ? 'Finish activation'
         : relayGrantStatus?.status === 'failed'
           ? 'Retry agent mandate'
-          : preparedFunding?.status === 'confirmed' && !grantedActivation
+          : (preparedFunding?.status === 'confirmed' || recoveredFunding !== null) && !grantedActivation
             ? 'Continue: grant agent mandate'
             : grantedActivation
               ? 'Retry agent handoff'
@@ -1237,7 +1309,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                 disabled={busy || !automationReady}
                 className="rounded-lg border border-border-strong px-4 py-2.5 text-sm transition-colors hover:border-primary/40 disabled:opacity-50"
               >
-                I already have one
+                Find funded account with passkey
               </button>
             </div>
           </section>
@@ -1246,31 +1318,47 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         {step === 'deposit' && wallet && (
           <section className="mt-6 space-y-4">
             <div>
-              <h2 className="font-display text-lg font-semibold">Fund with one asset</h2>
+              <h2 className="font-display text-lg font-semibold">
+                {recoveredFunding ? 'Funded account found' : 'Fund with one asset'}
+              </h2>
               <p className="mt-1 text-sm text-muted">
-                Send only {fundingAsset}. The account converts the disclosed gas allocation and prepares {token} for this mandate.
+                {recoveredFunding
+                  ? `Agripinaa verified the live ${token} position and BNB reserve. No transaction hash or second deposit is needed.`
+                  : `Send only ${fundingAsset}. The account converts the disclosed gas allocation and prepares ${token} for this mandate.`}
               </p>
             </div>
-            <FundingDeposit
-              address={wallet.address as `0x${string}`}
-              asset={fundingAsset}
-              balances={balances}
-              gasQuote={activeGasQuote}
-              gasConversionRequired={gasConversionRequired}
-              preparedPlan={preparedFunding?.plan}
-              preparationStatus={preparedFunding?.status}
-              preparationTransactionHash={preparedFunding?.status === 'confirmed'
-                ? preparedFunding.transactionHash
-                : undefined}
-              quoteError={quoteError}
-              locked={busy || preparedFunding !== null}
-              onAssetChange={(asset) => {
-                if (!busy && !preparedFunding) setFundingAsset(asset);
-              }}
-            />
+            {recoveredFunding ? (
+              <div role="status" className="rounded-xl border border-success/35 bg-success/10 p-4 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-success">
+                  <VerifiedIcon className="h-5 w-5" />
+                  {recoveredFunding.formattedPrincipal} {token} under management
+                </div>
+                <p className="mt-2 break-all font-mono text-xs text-muted">{wallet.address}</p>
+              </div>
+            ) : (
+              <FundingDeposit
+                address={wallet.address as `0x${string}`}
+                asset={fundingAsset}
+                balances={balances}
+                gasQuote={activeGasQuote}
+                gasConversionRequired={gasConversionRequired}
+                preparedPlan={preparedFunding?.plan}
+                preparationStatus={preparedFunding?.status}
+                preparationTransactionHash={preparedFunding?.status === 'confirmed'
+                  ? preparedFunding.transactionHash
+                  : undefined}
+                quoteError={quoteError}
+                locked={busy || preparedFunding !== null}
+                onAssetChange={(asset) => {
+                  if (!busy && !preparedFunding) setFundingAsset(asset);
+                }}
+              />
+            )}
             <p className="text-xs leading-relaxed text-muted-2">
-              This mandate manages the {token} produced from the account&apos;s selected deposit. To manage only part,
-              use a separate account funded with that amount.
+              {recoveredFunding
+                ? `This mandate resumes management of the recovered ${token} position.`
+                : <>This mandate manages the {token} produced from the account&apos;s selected deposit. To manage only part,
+                  use a separate account funded with that amount.</>}
             </p>
             <label className="text-sm">
               <span className="mb-1 block text-xs uppercase tracking-wide text-muted-2">Mandate expires after</span>
@@ -1325,7 +1413,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             )}
             <button
               onClick={() => void activate(rotatedGrantReset ?? undefined)}
-              disabled={busy || !automationReady || (!preparedFunding && (!activeGasQuote || !fundingReady))}
+              disabled={busy || !automationReady || (!recoveredFunding && !preparedFunding && (!activeGasQuote || !fundingReady))}
               aria-busy={busy}
               aria-describedby={busy ? 'activation-progress' : undefined}
               className={`${primaryBtn} ${busy ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}
@@ -1345,9 +1433,11 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                     : activationLabel}
             </button>
             <p className="text-xs text-muted-2">
-              From a fresh deposit: {preCallConfirmationRequired ? 'three' : 'two'} passkey taps —
-              funding and router approvals, the scoped session
-              {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+              {recoveredFunding ? 'Current funding verified. Continue with the scoped agent mandate.' : <>
+                From a fresh deposit: {preCallConfirmationRequired ? 'three' : 'two'} passkey taps —
+                funding and router approvals, the scoped session
+                {preCallConfirmationRequired ? ', and the separately signed relay-fee conversion' : ''}.
+              </>}{' '}
               You can withdraw or revoke any time from your dashboard.
             </p>
           </section>

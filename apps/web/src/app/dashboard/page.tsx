@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { formatUnits, isAddress, zeroAddress, type Hex } from 'viem';
+import { formatUnits, isAddress, type Hex } from 'viem';
 
 import { AGENTS, agentBySlug, type AgentRecord } from '@agripinaa/shared/agents';
 import { recoveryRouterFromAllowlist } from '@agripinaa/shared/contracts';
@@ -18,12 +18,12 @@ import {
   listFundingCheckpoints,
   type FundingCheckpoint,
 } from '@/lib/funding-checkpoint';
-import { fundingRecoveryHash } from '@/lib/funding-recovery';
 import {
   assertSafeWithdrawalDestination,
   sendNativeOut,
   WITHDRAW_GAS_RESERVE_WEI,
 } from '@/lib/managed';
+import { readManagedRunnerSnapshot } from '@/lib/managed-router';
 import { listStoredSessions, type StoredSessionMeta } from '@/lib/session-store';
 import {
   assertRangerPositionOwner,
@@ -31,13 +31,26 @@ import {
   recoverStrategyTokens,
   stopAllAccountSessions,
 } from '@/lib/strategy-recovery';
-import { readStrategyAccountPosition } from '@/lib/strategy-position';
+import {
+  readStrategyAccountPosition,
+  type StrategyAccountPosition,
+} from '@/lib/strategy-position';
 import { toast } from '@/lib/toast';
 
 const RECOVERABLE_AGENTS = Object.values(AGENTS).flatMap((agent) =>
-  agent.managed && agent.tokenId !== null && managedStrategyFor(agent.slug)
+  agent.managed && agent.tokenId !== null
     ? [{ slug: agent.slug, name: agent.name, tokenId: agent.tokenId }]
     : []);
+
+type RecoveredPasskeyWallet = Awaited<ReturnType<ReturnType<typeof altanaClient>['recoverFromPasskey']>>;
+
+interface FoundRecoveryAccount {
+  wallet: RecoveredPasskeyWallet;
+  address: Hex;
+  rangerTokenId: string | null;
+  rangerLookupComplete: boolean;
+  position: StrategyAccountPosition;
+}
 
 /** Active and recovery-only managed sessions both retain their funds controls. */
 function isManaged(meta: StoredSessionMeta): boolean {
@@ -258,7 +271,6 @@ function EmptyState() {
 function MissingActivationRecovery() {
   const router = useRouter();
   const [tokenId, setTokenId] = useState('');
-  const [transactionHash, setTransactionHash] = useState('');
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   return (
@@ -272,23 +284,22 @@ function MissingActivationRecovery() {
             Funded an agent but it does not appear?
           </h2>
           <p id="missing-activation-help" className="mt-1 max-w-xl text-sm leading-relaxed text-muted">
-            Recover the activation from its successful BNB Chain transaction. Agripinaa verifies
-            the transaction against your passkey account before skipping the completed funding step.
+            Choose the agent, then recover its dedicated account with the same passkey. Agripinaa
+            verifies the live session, inventory, approvals, and BNB reserve—no transaction hash.
           </p>
         </div>
       </div>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const hash = fundingRecoveryHash(transactionHash);
-          if (!tokenId || !hash) {
-            setRecoveryError('Choose the funded agent and enter its complete 0x transaction hash.');
+          if (!tokenId) {
+            setRecoveryError('Choose the funded agent.');
             return;
           }
           setRecoveryError(null);
-          router.push(`/agent/56/${tokenId}/activate?recoverTx=${encodeURIComponent(hash)}`);
+          router.push(`/agent/56/${tokenId}/activate`);
         }}
-        className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto] sm:items-end"
+        className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
       >
         <label className="text-xs font-medium text-foreground">
           Agent
@@ -304,24 +315,11 @@ function MissingActivationRecovery() {
             ))}
           </select>
         </label>
-        <label className="text-xs font-medium text-foreground">
-          Funding transaction hash
-          <input
-            value={transactionHash}
-            onChange={(event) => setTransactionHash(event.target.value)}
-            aria-describedby="missing-activation-help"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder="0x…"
-            className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface-2 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </label>
         <button
           type="submit"
           className="min-h-11 rounded-lg border border-primary/45 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
         >
-          Continue recovery
+          Continue with passkey
         </button>
       </form>
       {recoveryError && (
@@ -334,20 +332,46 @@ function MissingActivationRecovery() {
 /** Owner recovery that derives the strategy account from its passkey, never browser storage. */
 function LostRangerRecovery() {
   const [destination, setDestination] = useState('');
-  const [tokenId, setTokenId] = useState('');
+  const [manualTokenId, setManualTokenId] = useState('');
+  const [found, setFound] = useState<FoundRecoveryAccount | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  async function findAccount() {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const wallet = await altanaClient().recoverFromPasskey({ chainId: 56 });
+      const address = wallet.address as Hex;
+      const rangerTarget = managedStrategyFor('lp-range')!.callScopes[0]!.to;
+      const snapshot = await readManagedRunnerSnapshot('lp-range', address, rangerTarget);
+      const position = await readStrategyAccountPosition('lp-range', address, snapshot.positionTokenId);
+      setFound({
+        wallet,
+        address,
+        rangerTokenId: snapshot.positionTokenId,
+        rangerLookupComplete: snapshot.reachable,
+        position,
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function recover() {
+    if (!found) return;
     const trimmedDestination = destination.trim();
-    const trimmedTokenId = tokenId.trim();
+    const selectedTokenId = found.rangerTokenId ?? manualTokenId.trim();
     if (!isAddress(trimmedDestination)) {
       setError('Enter a valid BNB Chain destination address.');
       return;
     }
-    if (!/^[1-9]\d*$/.test(trimmedTokenId)) {
-      setError('Enter the numeric Ranger NFT ID.');
+    if (selectedTokenId && !/^[1-9]\d*$/.test(selectedTokenId)) {
+      setError('Enter a valid numeric Ranger NFT ID.');
       return;
     }
 
@@ -357,15 +381,16 @@ function LostRangerRecovery() {
     let recoveredSymbols: string[] = [];
     try {
       const to = trimmedDestination as Hex;
-      // Attest the destination before asking for a passkey or mutating account state.
-      await assertSafeWithdrawalDestination(zeroAddress, 56, to);
-      const wallet = await altanaClient().recoverFromPasskey({ chainId: 56 });
-      const account = wallet.address as Hex;
+      const { wallet, address: account } = found;
       await assertSafeWithdrawalDestination(account, 56, to);
 
-      await assertRangerPositionOwner(account, BigInt(trimmedTokenId));
+      if (selectedTokenId) {
+        await assertRangerPositionOwner(account, BigInt(selectedTokenId));
+      }
       await stopAllAccountSessions(wallet, account, 56);
-      await closeRangerPosition(wallet, account, BigInt(trimmedTokenId));
+      if (selectedTokenId) {
+        await closeRangerPosition(wallet, account, BigInt(selectedTokenId));
+      }
 
       const collected = await readStrategyAccountPosition('lp-range', account);
       if (collected.assets.some((asset) => asset.wei > 0n)) {
@@ -373,11 +398,15 @@ function LostRangerRecovery() {
       }
 
       const remaining = await readStrategyAccountPosition('lp-range', account);
-      const bnbWei = remaining.nativeBnbWei > WITHDRAW_GAS_RESERVE_WEI
+      const rangerAbsenceVerified = selectedTokenId !== '' || found.rangerLookupComplete;
+      const bnbWei = rangerAbsenceVerified && remaining.nativeBnbWei > WITHDRAW_GAS_RESERVE_WEI
         ? remaining.nativeBnbWei - WITHDRAW_GAS_RESERVE_WEI
         : 0n;
       if (bnbWei > 0n) await sendNativeOut(wallet, 56, to, bnbWei);
       if (recoveredSymbols.length === 0 && bnbWei === 0n) {
+        if (!rangerAbsenceVerified && remaining.nativeBnbWei > WITHDRAW_GAS_RESERVE_WEI) {
+          throw new Error('Ranger could not be discovered automatically. Enter its NFT ID under Advanced and retry.');
+        }
         throw new Error('This Ranger position and strategy account are already empty.');
       }
 
@@ -385,8 +414,12 @@ function LostRangerRecovery() {
         ...recoveredSymbols,
         ...(bnbWei > 0n ? [`${Number(formatUnits(bnbWei, 18)).toFixed(6)} BNB`] : []),
       ].join(' + ');
-      const message = `${transferred} recovered from ${account.slice(0, 8)}…${account.slice(-6)}. A 0.0005 BNB recovery reserve remains.`;
+      const remainder = rangerAbsenceVerified
+        ? 'A small BNB recovery reserve remains.'
+        : 'BNB stayed in the account because Ranger discovery was unavailable.';
+      const message = `${transferred} recovered from ${account.slice(0, 8)}…${account.slice(-6)}. ${remainder}`;
       setSuccess(message);
+      setFound(null);
       toast({ title: 'Strategy assets recovered', detail: transferred, kind: 'success' });
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -408,57 +441,90 @@ function LostRangerRecovery() {
         </span>
         <div>
           <h2 id="lost-session-assets" className="font-display text-lg font-semibold">
-            Browser data cleared? Recover Ranger assets
+            Browser data cleared? Find and recover funds
           </h2>
           <p id="lost-session-assets-help" className="mt-1 max-w-xl text-sm leading-relaxed text-muted">
-            Uses the original passkey to find its dedicated account, stops every account session,
-            closes the specified Pancake position, and sends all idle USDT, WBNB, and withdrawable
-            BNB to your wallet. No saved session or new deposit is required.
+            Your passkey finds the dedicated account and its tracked Ranger position automatically.
+            No saved session, transaction hash, NFT number, or new deposit is normally required.
           </p>
         </div>
       </div>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void recover();
-        }}
-        className="mt-5 grid gap-4 sm:grid-cols-2"
-      >
-        <label className="text-xs font-medium text-foreground">
-          Ranger NFT ID
-          <input
-            inputMode="numeric"
-            value={tokenId}
-            onChange={(event) => setTokenId(event.target.value)}
-            aria-describedby="lost-session-assets-help"
-            placeholder="7271073"
-            className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface-2 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </label>
-        <label className="text-xs font-medium text-foreground">
-          Destination wallet
-          <input
-            value={destination}
-            onChange={(event) => setDestination(event.target.value)}
-            aria-describedby="lost-session-assets-help"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder="0x…"
-            className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface-2 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </label>
+      {!found ? (
         <button
-          type="submit"
-          disabled={busy || !tokenId.trim() || !destination.trim()}
-          className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.25)] transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50 sm:col-span-2"
+          type="button"
+          onClick={() => void findAccount()}
+          disabled={busy}
+          className="mt-5 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.25)] transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50"
         >
-          {busy ? 'Recovering on BNB Chain…' : 'Recover with passkey'}
+          {busy ? 'Waiting for passkey…' : 'Find my strategy account'}
         </button>
-      </form>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void recover();
+          }}
+          className="mt-5"
+        >
+          <div role="status" className="rounded-xl border border-success/35 bg-success/10 p-4 text-sm">
+            <p className="font-semibold text-success">Strategy account found</p>
+            <p className="mt-1 break-all font-mono text-xs text-muted">{found.address}</p>
+            <p className="mt-2 text-xs text-muted">
+              {found.position.assets.map((asset) => `${asset.formatted} ${asset.symbol}`).join(' · ')}
+              {' · '}{found.position.nativeBnb} BNB
+              {found.rangerTokenId ? ` · Ranger NFT #${found.rangerTokenId}` : ''}
+            </p>
+          </div>
+          {!found.rangerTokenId && !found.rangerLookupComplete && (
+            <details className="mt-4 rounded-lg border border-border bg-surface-2 p-3">
+              <summary className="cursor-pointer text-xs font-medium text-foreground">
+                Advanced: enter a Ranger NFT ID if one exists
+              </summary>
+              <input
+                inputMode="numeric"
+                value={manualTokenId}
+                onChange={(event) => setManualTokenId(event.target.value)}
+                aria-label="Ranger NFT ID"
+                placeholder="Numeric NFT ID"
+                className="mt-3 min-h-11 w-full rounded-lg border border-border-strong bg-surface px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </details>
+          )}
+          <label className="mt-4 block text-xs font-medium text-foreground">
+            Destination wallet
+            <input
+              value={destination}
+              onChange={(event) => setDestination(event.target.value)}
+              aria-describedby="lost-session-assets-help"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="0x…"
+              className="mt-1.5 min-h-11 w-full rounded-lg border border-border-strong bg-surface-2 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </label>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={busy || !destination.trim()}
+              className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.25)] transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50"
+            >
+              {busy ? 'Recovering on BNB Chain…' : 'Stop agents and recover funds'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFound(null)}
+              disabled={busy}
+              className="min-h-11 rounded-lg border border-border-strong px-4 py-2.5 text-sm text-muted hover:border-primary/40 disabled:opacity-50"
+            >
+              Use another passkey
+            </button>
+          </div>
+        </form>
+      )}
       <p className="mt-3 text-xs leading-relaxed text-muted-2">
-        Recovery can require several passkey-confirmed transactions. Do not retry while a transaction
-        is pending. Agripinaa never asks for your seed phrase or passkey secret.
+        Recovery stops every session on the account, closes a discovered Ranger position, and sends
+        all idle USDT, WBNB, and withdrawable BNB. Never share a seed phrase or passkey secret.
       </p>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
       {success && <p role="status" className="mt-3 text-sm text-success">{success}</p>}
