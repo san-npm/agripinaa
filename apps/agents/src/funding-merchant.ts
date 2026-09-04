@@ -395,6 +395,10 @@ function amountCanSatisfyQuote(amount: bigint, bufferedQuote: bigint): boolean {
   return amount >= exactInputUpperBound && amount <= bufferedQuote * 105n / 100n;
 }
 
+function amountIsSafeOverage(amount: bigint, freshMinimum: bigint): boolean {
+  return amount >= freshMinimum && amount <= freshMinimum * 105n / 100n;
+}
+
 export async function validReimbursedFundingRequest(
   client: QuoteClient,
   request: MerchantRequest,
@@ -522,14 +526,16 @@ export async function validReimbursedFundingRequest(
   const quotedFee = BigInt(quote.bootstrapFeeInput);
   if (!amountCanSatisfyQuote(reimbursement.amount, quotedFee)) return false;
   const quotedReserve = BigInt(quote.gasReserveInput);
+  const freshReserveWei = BigInt(quote.gasReserveWei);
   const expectedReservePath = exactInputPath(fundingRoute(reimbursement.asset, 'WBNB')).toLowerCase();
   const reserveSwap = accountSwaps.find(({ amountIn, minimum, path, index }) =>
     index === 6
     && path.toLowerCase() === expectedReservePath
     && amountCanSatisfyQuote(amountIn, quotedReserve)
-    && minimum === BigInt(quote.gasReserveWei),
+    && minimum === reserveWithdrawal.amount
+    && amountIsSafeOverage(minimum, freshReserveWei),
   );
-  if (!reserveSwap || reserveWithdrawal.amount !== BigInt(quote.gasReserveWei)) return false;
+  if (!reserveSwap) return false;
   const sourceToken = TOKENS_BSC[reimbursement.asset]!.address.toLowerCase();
   const router = PANCAKE_V3_SMART_ROUTER_BSC.toLowerCase();
   const approvalAt = (index: number, amount: bigint) => approvals.some((approval) =>
@@ -582,7 +588,9 @@ export async function validReimbursedFundingRequest(
   if (nextIndex !== terminalIndex) return false;
   if (initialRegistration) {
     if (
-      initialRegistration.value !== BigInt(quote.registrationFeeWei)
+      !amountIsSafeOverage(initialRegistration.value, BigInt(quote.registrationFeeWei))
+      || reserveWithdrawal.amount !== FUNDING_GAS_RESERVE_WEI
+        + initialRegistration.value * FUNDING_REGISTRATION_COUNT
       || initialRegistration.index <= reserveWithdrawal.index
     ) return false;
   }

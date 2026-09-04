@@ -50,7 +50,7 @@ const WBNB_ABI = parseAbi(['function withdraw(uint256 amount)']);
 const KEYSTORE_CONTROLLER_ABI = parseAbi([
   'function initialRegisterKey(bytes32 keyHash,address validator,bytes validatorData,bytes publicKey,uint40 expiry) payable',
 ]);
-const REGISTRATION_FEE = 7n;
+const REGISTRATION_FEE = 1_000_000_000_000n;
 const ADMIN_PUBLIC_KEY = `0x${'11'.repeat(64)}` as Hex;
 type TestCall = { to: Address; data?: Hex; value?: bigint };
 const BATCH_CALLS_ABI = [{
@@ -142,6 +142,37 @@ describe('reimbursed funding merchant', () => {
       requireReimbursedFundingRequest(client as never, merchantRequest([])),
       /rejected the reimbursed bundle/,
     );
+  });
+
+  it('returns an RPC error when the merchant policy rejects before relay preparation', async () => {
+    let forwarded = false;
+    const route = Route.merchant({
+      address: FUNDING_FEE_PAYER_BSC,
+      key: `0x${'01'.repeat(32)}`,
+      sponsor: async () => {
+        throw new Error('policy rejected');
+      },
+      relay: custom({
+        async request() {
+          forwarded = true;
+          throw new Error('must not forward');
+        },
+      }),
+    });
+    const response = await route.fetch(new Request('http://localhost/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'wallet_prepareCalls',
+        params: [{ calls: [], capabilities: { meta: {} }, chainId: '0x38', from: ACCOUNT }],
+      }),
+    }));
+    const body = await response.json() as { error?: unknown };
+    assert.equal(response.status, 200);
+    assert.ok(body.error);
+    assert.equal(forwarded, false);
   });
 
   it('awaits an asynchronous merchant refusal before forwarding to the relay', async () => {
@@ -462,6 +493,42 @@ describe('reimbursed funding merchant', () => {
       client as never,
       merchantRequest([...calls, registration]),
     ), true);
+
+    const staleRegistrationFee = REGISTRATION_FEE * 101n / 100n;
+    const staleReserveWei = FUNDING_GAS_RESERVE_WEI
+      + staleRegistrationFee * FUNDING_REGISTRATION_COUNT;
+    const staleReserveInput = withFundingQuoteBuffer(staleReserveWei * 1_000n);
+    const staleQuoteCalls = [...calls];
+    staleQuoteCalls[5] = {
+      to: TOKENS_BSC.USDT!.address,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [PANCAKE_V3_SMART_ROUTER_BSC, staleReserveInput],
+      }),
+    };
+    staleQuoteCalls[6] = {
+      to: PANCAKE_V3_SMART_ROUTER_BSC,
+      data: encodeFunctionData({
+        abi: ROUTER_ABI,
+        functionName: 'exactInput',
+        args: [{
+          path: inputPath('USDT', 'WBNB'),
+          recipient: ACCOUNT,
+          amountIn: staleReserveInput,
+          amountOutMinimum: staleReserveWei,
+        }],
+      }),
+    };
+    staleQuoteCalls[7] = {
+      to: TOKENS_BSC.WBNB!.address,
+      data: encodeFunctionData({ abi: WBNB_ABI, functionName: 'withdraw', args: [staleReserveWei] }),
+    };
+    assert.equal(await validReimbursedFundingRequest(
+      client as never,
+      merchantRequest([...staleQuoteCalls, { ...registration, value: staleRegistrationFee }]),
+    ), true, 'a small safe registration-fee decrease must not invalidate a browser quote');
+
     assert.equal(await validReimbursedFundingRequest(
       client as never,
       merchantRequest([...calls, { ...registration, value: REGISTRATION_FEE + 1n }]),

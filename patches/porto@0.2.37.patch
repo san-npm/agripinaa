@@ -25,21 +25,31 @@ index 85f8dc872ef09991b0c89db4e66421fbd045761a..23fa34822478ecd1d5f0d8896396dc4f
          relay?: Porto.Config['relay'] | undefined;
      };
 diff --git a/dist/server/Route.js b/dist/server/Route.js
-index 310b7a4824e716b61f6b667a92091a6780e7bc67..62812dcb81b729db656ec83b864c11ad324c6493 100644
+index 310b7a4824e716b61f6b667a92091a6780e7bc67..8e2d592f8684fb7e311d7be221aee465c5858136 100644
 --- a/dist/server/Route.js
 +++ b/dist/server/Route.js
-@@ -116,9 +116,9 @@ export function merchant(options) {
+@@ -116,14 +116,14 @@ export function merchant(options) {
          }
          switch (request.method) {
              case 'wallet_prepareCalls': {
 -                const sponsor = (() => {
-+                const sponsor = await (() => {
-                     if (typeof options.sponsor === 'function')
+-                    if (typeof options.sponsor === 'function')
 -                        return options.sponsor(request.params[0]);
-+                        return options.sponsor(request._decoded.params[0]);
-                     if (typeof options.sponsor === 'boolean')
-                         return options.sponsor;
-                     return true;
+-                    if (typeof options.sponsor === 'boolean')
+-                        return options.sponsor;
+-                    return true;
+-                })();
+                 try {
++                    const sponsor = await (() => {
++                        if (typeof options.sponsor === 'function')
++                            return options.sponsor(request._decoded.params[0]);
++                        if (typeof options.sponsor === 'boolean')
++                            return options.sponsor;
++                        return true;
++                    })();
+                     const result = await client.request({
+                         ...request,
+                         params: [
 @@ -143,7 +143,11 @@ export function merchant(options) {
                              },
                          ],
@@ -84,22 +94,31 @@ index ac5f65a7c3ffffce3b614080b3f6508cb645ac9b..64659032cb2e7610902ff0f8f57cd2b9
        jsonrpc: z.literal('2.0'),
      }),
 diff --git a/src/server/Route.ts b/src/server/Route.ts
-index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..e326eb47c29531af16252f5c8454ce3a114f1296 100644
+index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..cf5d389304eef019d3c7d73c725a14613b202f53 100644
 --- a/src/server/Route.ts
 +++ b/src/server/Route.ts
-@@ -154,9 +154,9 @@ export function merchant(options: merchant.Options) {
+@@ -154,14 +154,13 @@ export function merchant(options: merchant.Options) {
  
      switch (request.method) {
        case 'wallet_prepareCalls': {
 -        const sponsor = (() => {
-+        const sponsor = await (() => {
-           if (typeof options.sponsor === 'function')
+-          if (typeof options.sponsor === 'function')
 -            return options.sponsor(request.params[0]! as never)
-+            return options.sponsor(request._decoded.params[0]! as never)
-           if (typeof options.sponsor === 'boolean') return options.sponsor
-           return true
-         })()
-@@ -181,10 +181,16 @@ export function merchant(options: merchant.Options) {
+-          if (typeof options.sponsor === 'boolean') return options.sponsor
+-          return true
+-        })()
+-
+         try {
++          const sponsor = await (() => {
++            if (typeof options.sponsor === 'function')
++              return options.sponsor(request._decoded.params[0]! as never)
++            if (typeof options.sponsor === 'boolean') return options.sponsor
++            return true
++          })()
+           const result = await client.request({
+             ...request,
+             params: [
+@@ -181,10 +180,16 @@ export function merchant(options: merchant.Options) {
                },
              ],
            })
@@ -117,7 +136,7 @@ index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..e326eb47c29531af16252f5c8454ce3a
            const { feePayerDigest } = capabilities
            if (!feePayerDigest) throw new Error('`feePayerDigest` is required')
  
-@@ -253,6 +259,13 @@ export declare namespace merchant {
+@@ -253,6 +258,13 @@ export declare namespace merchant {
            request: MerchantSchema.wallet_prepareCalls.Parameters,
          ) => MaybePromise<boolean>)
        | undefined
