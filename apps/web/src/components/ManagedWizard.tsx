@@ -1295,15 +1295,19 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               </p>
             </div>
             <div className="flex flex-wrap gap-3 pt-1">
-              <button onClick={() => connectPasskey('create')} disabled={busy || !automationReady} className={primaryBtn}>
-                {busy ? 'Waiting for passkey…' : 'Create with passkey'}
-              </button>
               <button
                 onClick={() => connectPasskey('recover')}
                 disabled={busy || !automationReady}
+                className={primaryBtn}
+              >
+                {busy ? 'Waiting for passkey…' : 'Use existing funded account'}
+              </button>
+              <button
+                onClick={() => connectPasskey('create')}
+                disabled={busy || !automationReady}
                 className="rounded-lg border border-border-strong px-4 py-2.5 text-sm transition-colors hover:border-primary/40 disabled:opacity-50"
               >
-                Find funded account with passkey
+                Create new passkey account
               </button>
             </div>
           </section>
