@@ -289,3 +289,55 @@
      const result = await waitForCalls(relayClient, callsId);
      return {
          callsId,
+--- a/dist/recoverFromPasskey.js
++++ b/dist/recoverFromPasskey.js
+@@ -13,10 +13,18 @@
+  * Two eth_calls + one biometric prompt.
+  */
+ import { bytesToHex } from "viem";
++import { getKeys } from "porto/viem/RelayActions";
+ import {} from "./config.js";
+-import { buildPublicClient } from "./internal/relay.js";
++import { buildPublicClient, buildRelayClient } from "./internal/relay.js";
+ import { readActiveKeys, readPublicKey } from "./internal/keystore.js";
+ import { signerFromPasskey, } from "./internal/passkey.js";
++export function selectPendingAdminPublicKey(keys) {
++    const admins = keys.filter((key) => key.role === "admin" && key.type === "webauthn-p256");
++    if (admins.length !== 1) {
++        throw new Error("The pending wallet has no unique passkey admin at the relay.");
++    }
++    return admins[0].publicKey;
++}
+ export async function recoverFromPasskey(opts) {
+     if (typeof navigator === "undefined" || !navigator.credentials) {
+         throw new Error("recoverFromPasskey() needs a browser — it triggers the WebAuthn " +
+@@ -53,21 +61,15 @@
+             `by createPasskeyWallet.`);
+     }
+     const walletAddress = bytesToHex(userHandleBytes);
+-    // 3. Look up the admin key in KeyStore. v0 wallets have a single admin
+-    //    key registered via initialRegisterKey on the first execute. If
+-    //    nothing is registered yet, the wallet exists but hasn't completed
+-    //    its first transaction — recovery via this path needs at least one
+-    //    on-chain registration to have happened.
++    // 3. Prefer the on-chain KeyStore key. Before the first transaction, the
++    //    same EOA-authorized admin is available from the relay's pending wallet.
+     const activeKeys = await readActiveKeys(publicClient, network, walletAddress);
+-    if (activeKeys.length === 0) {
+-        throw new Error(`Picked passkey resolves to wallet ${walletAddress}, but that wallet ` +
+-            `has no keys registered in KeyStore yet. Either: (a) you picked the ` +
+-            `wrong passkey (the OS keychain has multiple with similar names — ` +
+-            `use unique names per test), or (b) this wallet was created but ` +
+-            `never executed a transaction, so its admin key isn't on-chain yet.`);
+-    }
+-    const keyId = activeKeys[0];
+-    const publicKey = await readPublicKey(publicClient, network, walletAddress, keyId);
++    const publicKey = activeKeys.length > 0
++        ? await readPublicKey(publicClient, network, walletAddress, activeKeys[0])
++        : selectPendingAdminPublicKey(await getKeys(buildRelayClient(network), {
++            account: walletAddress,
++            chainIds: [network.chainId],
++        }));
+     // 4. Rebuild the credential reference. PublicKeyCredential.id is already
+     //    a base64url string — exactly what ox.WebAuthnP256.sign expects
+     //    (it calls Base64.toBytes on it). Do NOT hex-encode rawId here;
