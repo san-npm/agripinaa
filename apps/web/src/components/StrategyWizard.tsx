@@ -128,15 +128,6 @@ export function StrategyWizard({
 
   async function verifyRecoverableAccount(account: Hex) {
     setPhase('Checking the funded account on BNB Chain…');
-    const manager = await fetchManagerKey(agent.slug, 'USDT');
-    const recoveredSession = await recoverExistingSession({
-      account,
-      manager,
-      scope: buildStrategyScope(agent.slug, hours),
-      signatureCheckers: strategy.signatureCheckers,
-      signer: verifyOnlyStub(manager.address, manager.publicKey),
-      maximumExpiry: null,
-    });
     const chainClient = publicClient();
     const [nativeBalance, registrationFee, inventoryEntries, allowanceEntries] = await Promise.all([
       chainClient.getBalance({ address: account }),
@@ -165,10 +156,25 @@ export function StrategyWizard({
       }))),
     ]);
 
+    const inventory = Object.fromEntries(inventoryEntries);
+    const missing = strategy.depositTokens.filter((symbol) => (inventory[symbol] ?? 0n) === 0n);
+    if (missing.length > 0) {
+      throw new Error(`No recoverable ${agent.name} funding was found: the account is missing ${missing.join(' and ')}.`);
+    }
+
+    const manager = await fetchManagerKey(agent.slug, 'USDT');
+    const recoveredSession = await recoverExistingSession({
+      account,
+      manager,
+      scope: buildStrategyScope(agent.slug, hours),
+      signatureCheckers: strategy.signatureCheckers,
+      signer: verifyOnlyStub(manager.address, manager.publicKey),
+      maximumExpiry: null,
+    });
+
     if (recoveredSession) {
       setHours(lifetimeOptionForExistingSession(recoveredSession.session.expiry));
     }
-    const inventory = Object.fromEntries(inventoryEntries);
     const problem = recoverableStrategyFundingProblem({
       agentName: agent.name,
       requiredAssets: strategy.depositTokens,
