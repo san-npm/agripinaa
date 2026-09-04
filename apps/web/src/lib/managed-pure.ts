@@ -14,13 +14,18 @@ export function destinationProblem(to: string, account: string, chainId: number)
   return null;
 }
 
+/** EIP-7702 delegated EOAs retain wallet authority despite reporting 23 bytes of code. */
+export function isEip7702Delegation(code: Hex | undefined): boolean {
+  return /^0xef0100[0-9a-f]{40}$/i.test(code ?? '');
+}
+
 /** Live bytecode check used immediately before a full-balance withdrawal. */
 export async function destinationCodeProblem(
   to: Hex,
   getCode: (address: Hex) => Promise<Hex | undefined>,
 ): Promise<string | null> {
   const code = await getCode(to);
-  return code && code !== '0x'
+  return code && code !== '0x' && !isEip7702Delegation(code)
     ? 'Contract destinations are unsupported; use an externally owned wallet.'
     : null;
 }
@@ -29,8 +34,8 @@ export function destinationCodeQuorumProblem(
   codes: readonly (Hex | undefined)[],
   required = 2,
 ): string | null {
-  const contracts = codes.filter((code) => code != null && code !== '0x').length;
-  const wallets = codes.filter((code) => code == null || code === '0x').length;
+  const contracts = codes.filter((code) => code != null && code !== '0x' && !isEip7702Delegation(code)).length;
+  const wallets = codes.filter((code) => code == null || code === '0x' || isEip7702Delegation(code)).length;
   if (contracts >= required) {
     return 'Contract destinations are unsupported; use an externally owned wallet.';
   }

@@ -28,6 +28,7 @@ import {
   destinationProblem,
   destinationCodeProblem,
   destinationCodeQuorumProblem,
+  isEip7702Delegation,
   classifyManagedVenue,
   managedPolicyDisplay,
   MAX_ACCOUNT_HISTORY_CHUNKS,
@@ -105,6 +106,17 @@ test('live destination validation rejects arbitrary contracts, not only known ro
   assert.match(destinationCodeQuorumProblem(['0x', '0x6000', '0x6000']) ?? '', /Contract destinations/);
   assert.equal(destinationCodeQuorumProblem(['0x6000', '0x', '0x']), null);
   assert.throws(() => destinationCodeQuorumProblem(['0x6000', '0x']), /quorum unavailable/);
+});
+
+test('live destination validation accepts only exact EIP-7702 delegation markers', async () => {
+  const wallet = '0x0494f503912c101bfd76b88e4f5d8a33de284d1a';
+  const delegation = '0xef0100612373d7003d694220f7800eeaf8e3924c0951d3';
+  assert.equal(isEip7702Delegation(delegation), true);
+  assert.equal(isEip7702Delegation(delegation.toUpperCase() as `0x${string}`), true);
+  assert.equal(await destinationCodeProblem(wallet, async () => delegation), null);
+  assert.equal(destinationCodeQuorumProblem([delegation, delegation, '0x6000']), null);
+  assert.equal(isEip7702Delegation(`${delegation}00`), false);
+  assert.match(await destinationCodeProblem(wallet, async () => `${delegation}00`) ?? '', /Contract destinations/);
 });
 
 test('Ranger owner recovery decreases bounded liquidity before collecting to the account', () => {
