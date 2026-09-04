@@ -278,7 +278,7 @@ export async function recoverStrategyTokens(
   destination: Hex,
 ): Promise<string[]> {
   await assertSafeWithdrawalDestination(account, 56, destination);
-  const fresh = await readStrategyAccountPosition(slug, account);
+  const fresh = await readStrategyAccountPosition(slug, account, null, true);
   const balances = Object.fromEntries(fresh.assets.map((asset) => [asset.symbol, asset.wei]));
   const symbols = fresh.assets.filter((asset) => asset.wei > 0n).map((asset) => asset.symbol);
   if (symbols.length === 0) throw new Error('No strategy tokens are available to recover.');

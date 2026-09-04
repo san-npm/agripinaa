@@ -229,13 +229,17 @@ export async function readStrategyAccountPosition(
   slug: ManagedStrategySlug,
   account: Hex,
   rangerTokenId: string | null = null,
+  includeFundingInputs = false,
 ): Promise<StrategyAccountPosition> {
   const strategy = managedStrategyFor(slug);
   if (!strategy) throw new Error(`unknown managed strategy ${slug}`);
+  const assetSymbols = includeFundingInputs
+    ? [...new Set([...strategy.depositTokens, 'BTCB', 'USDC'])]
+    : strategy.depositTokens;
   const client = createBscPublicClient();
   const [nativeBnbWei, ...assetWei] = await Promise.all([
     client.getBalance({ address: account }),
-    ...strategy.depositTokens.map((symbol) => {
+    ...assetSymbols.map((symbol) => {
       const token = TOKENS_BSC[symbol]!;
       return client.readContract({
         address: token.address,
@@ -245,7 +249,7 @@ export async function readStrategyAccountPosition(
       });
     }),
   ]);
-  const assets = strategy.depositTokens.map((symbol, index) => {
+  const assets = assetSymbols.map((symbol, index) => {
     const token = TOKENS_BSC[symbol]!;
     const wei = assetWei[index]!;
     return { symbol, decimals: token.decimals, wei, formatted: formatUnits(wei, token.decimals) };
