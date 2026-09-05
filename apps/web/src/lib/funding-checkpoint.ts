@@ -4,6 +4,7 @@ import { isFundingAsset, type FundingToken } from '@agripinaa/shared/funding';
 import type { Address, Hex } from 'viem';
 
 import type { FundingBootstrapPlan } from './funding-bootstrap';
+import { readRelayCallStatus } from './session-relay-recovery';
 
 const KEY_PREFIX = 'agripinaa.funding-bootstrap.v3';
 const HASH_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -228,6 +229,23 @@ export function loadFundingCheckpoint(
   } catch {
     return null;
   }
+}
+
+/** Discard a proven failed submission before presenting the activation form. */
+export async function recoverFundingCheckpoint(
+  chainId: number,
+  account: Address,
+  agent: string,
+): Promise<FundingCheckpoint | null> {
+  const checkpoint = loadFundingCheckpoint(chainId, account, agent);
+  if (checkpoint?.status === 'submitted') {
+    const result = await readRelayCallStatus({ callsId: checkpoint.callsId });
+    if (result.status === 'failed') {
+      clearFundingCheckpoint(chainId, account, agent);
+      return null;
+    }
+  }
+  return checkpoint;
 }
 
 /**

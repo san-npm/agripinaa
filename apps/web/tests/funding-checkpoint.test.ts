@@ -9,6 +9,7 @@ import {
   clearFundingCheckpointForSession,
   listFundingCheckpoints,
   loadFundingCheckpoint,
+  recoverFundingCheckpoint,
   saveFundingCheckpoint,
   shouldPauseAfterFundingConfirmation,
 } from '../src/lib/funding-checkpoint';
@@ -71,6 +72,38 @@ const PLAN = {
 };
 
 describe('funding bootstrap checkpoint', () => {
+  it('clears proven failures on recovery but preserves pending, confirmed and unreadable submissions', async (t) => {
+    const values = new Map<string, string>();
+    const prior = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    } } });
+    try {
+      let response: unknown;
+      t.mock.method(globalThis, 'fetch', async () => Response.json(response));
+      for (const status of [100, 200, 300, 400, 500]) {
+        saveFundingCheckpoint(56, ACCOUNT, 'yield-b', { status: 'submitted', callsId: CALLS_ID, plan: PLAN });
+        response = { result: { id: CALLS_ID, status, receipts: [] } };
+        const recovered = await recoverFundingCheckpoint(56, ACCOUNT, 'yield-b');
+        assert.equal(recovered === null, status >= 300);
+        assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'yield-b') === null, status >= 300);
+      }
+      saveFundingCheckpoint(56, ACCOUNT, 'yield-b', { status: 'submitted', callsId: CALLS_ID, plan: PLAN });
+      response = { error: { message: 'relay unavailable' } };
+      await assert.rejects(recoverFundingCheckpoint(56, ACCOUNT, 'yield-b'), /unreadable/);
+      assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'yield-b')?.status, 'submitted');
+      saveFundingCheckpoint(56, ACCOUNT, 'yield-b', {
+        status: 'confirmed', callsId: CALLS_ID, plan: PLAN, transactionHash: HASH, receiptBlockNumber: 123n,
+      });
+      assert.equal((await recoverFundingCheckpoint(56, ACCOUNT, 'yield-b'))?.status, 'confirmed');
+    } finally {
+      if (prior) Object.defineProperty(globalThis, 'window', prior);
+      else Reflect.deleteProperty(globalThis, 'window');
+    }
+  });
+
   it('pauses after a new confirmation but continues from an existing one', () => {
     const submitted = { status: 'submitted', callsId: CALLS_ID, plan: PLAN } as const;
     const confirmed = {

@@ -73,7 +73,7 @@ import {
 import {
   assertFundingCheckpointWritable,
   clearFundingCheckpoint,
-  loadFundingCheckpoint,
+  recoverFundingCheckpoint,
   saveFundingCheckpoint,
   shouldPauseAfterFundingConfirmation,
   type ConfirmedFundingCheckpoint,
@@ -242,7 +242,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
           : await client.recoverFromPasskey();
       const pending = mode === 'recover' && 'pending' in w && w.pending === true;
       setPendingWallet(pending);
-      const checkpoint = loadFundingCheckpoint(chainId, w.address as `0x${string}`, agent.managedAgent);
+      const checkpoint = await recoverFundingCheckpoint(chainId, w.address as `0x${string}`, agent.managedAgent);
       if (checkpoint?.expectedTotalWei !== undefined) {
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
@@ -348,14 +348,13 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
       let prepared = preparedFunding;
       if (prepared?.status === 'submitted') {
         setPhase('Resuming the already-submitted funding transaction…');
-        const resumed = await altanaClient().waitForExecution({
+        const resumed = await readRelayCallStatus({
           callsId: prepared.callsId,
-          chainId,
         });
-        if (resumed.status === 'PENDING') {
+        if (resumed.status === 'pending') {
           throw new Error('The funding transaction is still pending. It is saved safely; retry activation without depositing again.');
         }
-        if (resumed.status === 'FAILED' || !resumed.transactionHash) {
+        if (resumed.status === 'failed' || !resumed.transactionHash) {
           clearFundingCheckpoint(chainId, wallet.address as `0x${string}`, agent.managedAgent);
           setPreparedFunding(null);
           throw new Error('The saved funding transaction failed. No strategy funding was recorded; review the quote and retry.');

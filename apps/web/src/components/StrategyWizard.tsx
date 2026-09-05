@@ -29,7 +29,7 @@ import {
 import {
   assertFundingCheckpointWritable,
   clearFundingCheckpoint,
-  loadFundingCheckpoint,
+  recoverFundingCheckpoint,
   saveFundingCheckpoint,
   shouldPauseAfterFundingConfirmation,
   type ConfirmedFundingCheckpoint,
@@ -201,7 +201,7 @@ export function StrategyWizard({
         : await client.recoverFromPasskey();
       const pending = mode === 'recover' && 'pending' in next && next.pending === true;
       setPendingWallet(pending);
-      const checkpoint = loadFundingCheckpoint(56, next.address as Hex, agent.slug);
+      const checkpoint = await recoverFundingCheckpoint(56, next.address as Hex, agent.slug);
       if (checkpoint) {
         setFundingAsset(checkpoint.plan.input);
         setPreparedFunding(checkpoint);
@@ -314,14 +314,13 @@ export function StrategyWizard({
       let prepared = preparedFunding;
       if (prepared?.status === 'submitted') {
         setPhase('Resuming the already-submitted funding transaction…');
-        const resumed = await altanaClient().waitForExecution({
+        const resumed = await readRelayCallStatus({
           callsId: prepared.callsId,
-          chainId: 56,
         });
-        if (resumed.status === 'PENDING') {
+        if (resumed.status === 'pending') {
           throw new Error('The funding transaction is still pending. It is saved safely; retry activation without depositing again.');
         }
-        if (resumed.status === 'FAILED' || !resumed.transactionHash) {
+        if (resumed.status === 'failed' || !resumed.transactionHash) {
           clearFundingCheckpoint(56, wallet.address as Hex, agent.slug);
           setPreparedFunding(null);
           throw new Error('The saved funding transaction failed. No strategy funding was recorded; review the quote and retry.');
