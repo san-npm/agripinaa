@@ -61,6 +61,15 @@ const BATCH_CALLS_ABI = [{
     { name: 'data', type: 'bytes' },
   ],
 }] as const;
+const PRE_CALL_ABI = [{
+  type: 'tuple',
+  components: [
+    { name: 'eoa', type: 'address' },
+    { name: 'executionData', type: 'bytes' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'signature', type: 'bytes' },
+  ],
+}] as const;
 const canonicalEnvelope = {
   capabilities: {
     authorizeKeys: [],
@@ -666,11 +675,15 @@ describe('reimbursed funding merchant', () => {
       },
     ];
     const request = merchantRequest(calls);
-    const relayQuote = (maximum: bigint, corruptDigest = false) => {
+    const relayQuote = (
+      maximum: bigint,
+      corruptDigest = false,
+      encodedPreCalls: readonly Hex[] = [],
+    ) => {
       const intent = {
         combinedGas: 100_000n,
         encodedFundTransfers: [] as readonly Hex[],
-        encodedPreCalls: [] as readonly Hex[],
+        encodedPreCalls,
         eoa: ACCOUNT,
         executionData: encodeAbiParameters(BATCH_CALLS_ABI, [calls.map((call) => ({
           data: call.data ?? '0x',
@@ -743,6 +756,27 @@ describe('reimbursed funding merchant', () => {
       };
     };
     assert.equal(validFundingRelayQuote(request, relayQuote(FUNDING_BOOTSTRAP_FEE_WEI), 1_000_000), true);
+    const preCall = (eoa: Address) => encodeAbiParameters(PRE_CALL_ABI, [{
+      eoa,
+      executionData: '0x',
+      nonce: 0n,
+      signature: '0x',
+    }]);
+    assert.equal(validFundingRelayQuote(request, relayQuote(
+      FUNDING_BOOTSTRAP_FEE_WEI,
+      false,
+      [preCall(ACCOUNT), preCall(FUNDING_FEE_PAYER_BSC)],
+    ), 1_000_000), true);
+    assert.equal(validFundingRelayQuote(request, relayQuote(
+      FUNDING_BOOTSTRAP_FEE_WEI,
+      false,
+      [preCall(ACCOUNT), preCall(ACCOUNT)],
+    ), 1_000_000), false);
+    assert.equal(validFundingRelayQuote(request, relayQuote(
+      FUNDING_BOOTSTRAP_FEE_WEI,
+      false,
+      [preCall('0x2222222222222222222222222222222222222222')],
+    ), 1_000_000), false);
     assert.equal(validFundingRelayQuote(request, relayQuote(FUNDING_BOOTSTRAP_FEE_WEI + 1n), 1_000_000), false);
     assert.equal(validFundingRelayQuote(
       request,
