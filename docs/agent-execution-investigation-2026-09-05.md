@@ -17,6 +17,17 @@ Started from the September 4–5 session and production runner revision
 
 ## Verification and limits
 
+- All 1,010 tests and workspace type checks pass. The production build passed;
+  the live website smoke suite passed all 24 checks.
+- Runner fixes are deployed at `78a7cfb`. At 18:02:22 UTC both Harvester and
+  Steward completed their ticks successfully: Harvester held its Aave position
+  and Steward held its Venus position. Both read the same live market rates.
+  Runner and tunnel services were active, and health reported all eight agents.
+- The funding-signature patch is deployed to the production website and runner.
+  A direct unsigned preparation test through the website was blocked by automatic
+  approval review because it would send the account's activation details and
+  passkey public key to the public endpoint. It was not executed or bypassed;
+  explicit approval is needed for that additional test.
 - Added regressions for each changed behavior, including native signature recovery
   and preserving wrapped signatures when the signer is not the payer EOA.
 - On a local BSC fork, replacing only the original payer signature wrapper got
