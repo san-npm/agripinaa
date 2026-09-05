@@ -17,17 +17,19 @@ Started from the September 4–5 session and production runner revision
 
 ## Verification and limits
 
-- All 1,010 tests and workspace type checks pass. The production build passed;
+- All 1,011 tests and workspace type checks pass. The production build passed;
   the live website smoke suite passed all 24 checks.
 - Runner fixes are deployed at `78a7cfb`. At 18:02:22 UTC both Harvester and
   Steward completed their ticks successfully: Harvester held its Aave position
   and Steward held its Venus position. Both read the same live market rates.
   Runner and tunnel services were active, and health reported all eight agents.
 - The funding-signature patch is deployed to the production website and runner.
-  A direct unsigned preparation test through the website was blocked by automatic
-  approval review because it would send the account's activation details and
-  passkey public key to the public endpoint. It was not executed or bypassed;
-  explicit approval is needed for that additional test.
+  After explicit user approval, unsigned preparation through
+  `https://agripinaa.vercel.app/api/funding/merchant` passed for the affected
+  account: 15 calls, a native 65-byte fee signature, and cryptographic recovery
+  of the published fee-payer address. Initial diagnostic requests omitted zero
+  call values and were rejected; normalizing these as the application's SDK
+  already does resolved the diagnostic error. No application change was needed.
 - Added regressions for each changed behavior, including native signature recovery
   and preserving wrapped signatures when the signer is not the payer EOA.
 - On a local BSC fork, replacing only the original payer signature wrapper got
@@ -40,6 +42,30 @@ Started from the September 4–5 session and production runner revision
   signature check; it is not a new production activation receipt.
 - No user funding transaction was signed or broadcast during this investigation.
   A new browser passkey confirmation is required to submit a fresh activation.
+
+## Follow-up: the browser still reported a failed call as pending
+
+The user's subsequent retry exposed a missed deployment defect. The account's
+only relay submission remained `0x2fac24d37b00ed18210e40536aed1dfcf3c504346426caa0995fab4a2c64c689`,
+status 300, with no receipt. The installed SDK returned `FAILED` in 276 ms, but
+production deployment `dpl_738eu2ceZuJKjkh2KD9JA2E6En1p` served chunk
+`347-419045e5c14fa0ed.js` whose SDK poller recognized only status 500. That code
+swallowed status 300 until its four-minute deadline, then returned `PENDING`.
+The local production build also retained the old implementation. Passing
+source tests and unsigned preparation did not verify this browser path.
+
+- Webpack's persistent cache now explicitly tracks every pnpm patch file,
+  invalidating cached dependency code when a patch changes without a version bump.
+- Both activation wizards use the existing one-shot status reader for saved
+  submissions instead of the four-minute SDK wait. Network failures remain
+  errors, not a fabricated pending transaction.
+- Passkey recovery clears a saved funding checkpoint only after the relay proves
+  failure. Pending, confirmed and unreadable submissions remain protected.
+- Every production build now executes the emitted SDK poller with statuses
+  300, 400, 500 and 201. This check reproduced `PENDING` on the old local and
+  live bundles and passed after rebuilding against the existing cache.
+  Run `node scripts/check-wallet-bundle.mjs https://agripinaa.vercel.app` from
+  `apps/web` to check the JavaScript actually served by production.
 
 ## Production states that were not execution defects
 
