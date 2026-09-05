@@ -26,6 +26,7 @@ import {
 } from 'viem';
 
 import { altanaClient } from './altana';
+import { assertRelayConfirmed } from './relay-execution-result';
 import type { FundingCall } from './funding-bootstrap';
 import { bsc, bscTestnet } from './bsc-chain';
 import {
@@ -55,24 +56,6 @@ export {
 } from './managed-pure';
 
 const ROUTER_SIGNATURES = Object.values(ROUTER_ACTIONS).map((a) => a.signature);
-
-interface ExecResult {
-  status: 'PENDING' | 'CONFIRMED' | 'FAILED';
-  transactionHash?: Hex;
-}
-
-/**
- * Turn a relay result into success/failure the caller can trust. The SDK does
- * NOT throw on a reverted or timed-out bundle, so without this a FAILED/PENDING
- * withdrawal would be reported to the user as done. Only CONFIRMED passes.
- */
-function assertConfirmed<T extends ExecResult>(result: T, action: string): T {
-  if (result.status === 'CONFIRMED') return result;
-  if (result.status === 'PENDING') {
-    throw new Error(`${action} is still pending on-chain. Check your balance before retrying.`);
-  }
-  throw new Error(`${action} did not go through (reverted on-chain). No funds were moved.`);
-}
 
 // The manager key is fetched and validated in its own module (pin check,
 // shape check, point-to-address binding); re-exported so callers are unchanged.
@@ -178,7 +161,7 @@ export async function approveRouter(
     ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
     ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });
-  return assertConfirmed(r, 'Router approval');
+  return assertRelayConfirmed(r, bootstrap?.calls.length ? 'Funding preparation' : 'Router approval');
 }
 
 /**
@@ -203,7 +186,7 @@ export async function withdrawToIdle(
     chainId,
     calls: [...routerApprovalCalls(router), managedUnwindCall(chainId, token)],
   });
-  return assertConfirmed(r, 'Unwind');
+  return assertRelayConfirmed(r, 'Unwind');
 }
 
 /**
@@ -261,7 +244,7 @@ export async function sendTokenOut(
     chainId,
     calls: [{ to: token, data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to, amountWei] }) }],
   });
-  return assertConfirmed(r, `${symbol} withdrawal`);
+  return assertRelayConfirmed(r, `${symbol} withdrawal`);
 }
 
 /** Move native BNB out of the account to an external address (passkey action). */
@@ -274,7 +257,7 @@ export async function sendNativeOut(wallet: WalletLike, chainId: number, to: Hex
     chainId,
     calls: [{ to, value: amountWei }],
   });
-  return assertConfirmed(r, 'BNB withdrawal');
+  return assertRelayConfirmed(r, 'BNB withdrawal');
 }
 
 /** Register the account for the agent to manage (session is the authorization). */

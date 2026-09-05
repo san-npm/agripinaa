@@ -78,3 +78,30 @@ source tests and unsigned preparation did not verify this browser path.
 - The production managed registries were empty at inspection. A running public
   status endpoint does not prove that an unfinished passkey activation has
   reached the runner.
+
+## Unresolved: subsequent signed funding attempts rejected off-chain
+
+After the browser fix, the user submitted two fresh activations:
+
+- `0x772f66b24bfc9341566d8d5cc9b762db4380c20b29155ff7ecf7d3c476b23e48`
+- `0x30b4ae65682e966f05071fb60d0f6268ae80d0a9e90d9ed7790b46095dae6379`
+
+Both returned relay status 300 and no transaction hashes or receipts. The UI's
+"reverted on-chain" and "No funds were moved" text was not justified by the
+SDK result alone. Shared approval/withdrawal error handling now reports relay
+failure without claiming an on-chain revert or a particular balance outcome.
+
+The latest **actual signed intent**, including the native 65-byte payer signature,
+successfully returned `0x00000000` from Orchestrator execution on a local Anvil
+BSC fork. A second trace used the complete EIP-7702 envelope, both signed
+authorizations (payer nonce 8, account nonce 0), quoted gas limit 1,762,899 and
+quoted gas fees, with **no account state overrides**. It also succeeded.
+Neither trace broadcast a transaction. This does not prove the relay's own
+BSC RPC simulation or transaction submission succeeds.
+
+Read-only chain checks still show account nonce 0, no delegated code, zero BNB,
+and the original 25,976,153,706,966 BTCB base units. The relay's public status
+endpoint exposes no failure reason beyond status 300. The exact rejection cause
+remains unresolved; a public-RPC simulation of the signed payload requires the
+user's approval, or the relay operator must supply its failure logs. Do not
+describe the activation as fixed based on the local simulation.
