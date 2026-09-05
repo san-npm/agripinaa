@@ -27,7 +27,10 @@ test('nonce invalidation proves the stalled grant can never execute', async () =
 
 test('only an exact failed relay result is final', async () => {
   const response = (id: string, status: number) => async () => new Response(JSON.stringify({ result: { id, status } }));
-  assert.equal(await retiredGrantFailedAtRelay(GRANT, response(GRANT.grantCallsId, 300)), false);
+  assert.equal(await retiredGrantFailedAtRelay(GRANT, response(GRANT.grantCallsId, 100)), false);
+  assert.equal(await retiredGrantFailedAtRelay(GRANT, response(GRANT.grantCallsId, 200)), false);
+  assert.equal(await retiredGrantFailedAtRelay(GRANT, response(GRANT.grantCallsId, 300)), true);
+  assert.equal(await retiredGrantFailedAtRelay(GRANT, response(GRANT.grantCallsId, 400)), true);
   assert.equal(await retiredGrantFailedAtRelay(GRANT, response(GRANT.grantCallsId, 500)), true);
   await assert.rejects(() => retiredGrantFailedAtRelay(GRANT, response(`0x${'aa'.repeat(32)}`, 500)));
 });

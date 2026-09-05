@@ -18,7 +18,7 @@ import { BSC_MAINNET } from '@agripinaa/shared';
 import { type Account } from 'viem';
 import { nonceManager, privateKeyToAccount } from 'viem/accounts';
 
-import { haltIsGlobal, type AgentContext, type AgentState, type Breakers } from './types';
+import { haltIsGlobal, type AgentContext, type AgentModule, type AgentState, type Breakers } from './types';
 import { createGuardedWalletClient } from './guarded-wallet-client';
 import { createQuorumPublicClient } from './quorum-client';
 
@@ -26,6 +26,23 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** Runtime state for every agent: state files, JSONL logs, the managed registry, the run lock. */
 export const DATA_DIR = join(ROOT, 'data');
 const WALLETS_DIR = join(ROOT, '..', '..', 'wallets');
+
+/** Return the retry delay; zero restores the module's normal cadence. */
+export async function runAgentTick(
+  module: AgentModule,
+  ctx: AgentContext,
+  previousBackoffMs = 0,
+): Promise<number> {
+  if (ctx.breakers.isHalted().halted) return 0;
+  try {
+    await module.tick(ctx);
+    return 0;
+  } catch (err) {
+    const backoffMs = Math.min((previousBackoffMs || module.tickIntervalMs) * 2, 30 * 60_000);
+    ctx.log({ event: 'tick-error', error: err instanceof Error ? err.message : String(err), backoffMs });
+    return backoffMs;
+  }
+}
 
 /**
  * Owner-only, matching the wallet files these sit beside on the VM. State

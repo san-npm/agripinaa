@@ -25,10 +25,18 @@ index 85f8dc872ef09991b0c89db4e66421fbd045761a..23fa34822478ecd1d5f0d8896396dc4f
          relay?: Porto.Config['relay'] | undefined;
      };
 diff --git a/dist/server/Route.js b/dist/server/Route.js
-index 310b7a4824e716b61f6b667a92091a6780e7bc67..8e2d592f8684fb7e311d7be221aee465c5858136 100644
+index 310b7a4824e716b61f6b667a92091a6780e7bc67..ee25c55ed22b6d17afe766e814dfa373bf2e2853 100644
 --- a/dist/server/Route.js
 +++ b/dist/server/Route.js
-@@ -116,14 +116,14 @@ export function merchant(options) {
+@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
+ import { poweredBy } from 'hono/powered-by';
+ import * as RpcResponse from 'ox/RpcResponse';
+ import { createClient, rpcSchema } from 'viem';
++import { privateKeyToAccount } from 'viem/accounts';
+ import * as z from 'zod/mini';
+ import * as Porto from '../core/Porto.js';
+ import * as Key from '../viem/Key.js';
+@@ -116,14 +117,14 @@ export function merchant(options) {
          }
          switch (request.method) {
              case 'wallet_prepareCalls': {
@@ -50,7 +58,7 @@ index 310b7a4824e716b61f6b667a92091a6780e7bc67..8e2d592f8684fb7e311d7be221aee465
                      const result = await client.request({
                          ...request,
                          params: [
-@@ -143,7 +143,11 @@ export function merchant(options) {
+@@ -143,7 +144,11 @@ export function merchant(options) {
                              },
                          ],
                      });
@@ -63,6 +71,16 @@ index 310b7a4824e716b61f6b667a92091a6780e7bc67..8e2d592f8684fb7e311d7be221aee465
                      const { feePayerDigest } = capabilities;
                      if (!feePayerDigest)
                          throw new Error('`feePayerDigest` is required');
+@@ -151,6 +156,9 @@ export function merchant(options) {
+                         ? await Key.sign(key, {
+                             address: null,
+                             payload: feePayerDigest,
++                            // EOA owners do not need a registered-key wrapper.
++                            wrap: typeof options.key !== 'string' ||
++                                privateKeyToAccount(options.key).address.toLowerCase() !== address.toLowerCase(),
+                         })
+                         : undefined;
+                     const response = RpcResponse.from({
 diff --git a/dist/viem/RelayActions.js b/dist/viem/RelayActions.js
 index d8616ce7adc468345111e36b75c7582dd8c5f965..835db70bf3f21498afb5b2bd89376b9c56c3a45f 100644
 --- a/dist/viem/RelayActions.js
@@ -94,10 +112,18 @@ index ac5f65a7c3ffffce3b614080b3f6508cb645ac9b..64659032cb2e7610902ff0f8f57cd2b9
        jsonrpc: z.literal('2.0'),
      }),
 diff --git a/src/server/Route.ts b/src/server/Route.ts
-index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..cf5d389304eef019d3c7d73c725a14613b202f53 100644
+index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..44a0737ca5c66c067c5543a43d251ae155ac76dc 100644
 --- a/src/server/Route.ts
 +++ b/src/server/Route.ts
-@@ -154,14 +154,13 @@ export function merchant(options: merchant.Options) {
+@@ -6,6 +6,7 @@ import type * as Address from 'ox/Address'
+ import type * as Hex from 'ox/Hex'
+ import * as RpcResponse from 'ox/RpcResponse'
+ import { createClient, rpcSchema } from 'viem'
++import { privateKeyToAccount } from 'viem/accounts'
+ import * as z from 'zod/mini'
+ import type * as RpcSchema_relay from '../core/internal/relay/rpcSchema.js'
+ import type { MaybePromise, OneOf } from '../core/internal/types.js'
+@@ -154,14 +155,13 @@ export function merchant(options: merchant.Options) {
  
      switch (request.method) {
        case 'wallet_prepareCalls': {
@@ -118,7 +144,7 @@ index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..cf5d389304eef019d3c7d73c725a1461
            const result = await client.request({
              ...request,
              params: [
-@@ -181,10 +180,16 @@ export function merchant(options: merchant.Options) {
+@@ -181,10 +181,16 @@ export function merchant(options: merchant.Options) {
                },
              ],
            })
@@ -136,7 +162,18 @@ index bcbc2d9e4eed9bbd8668512ee01215bf3fed0858..cf5d389304eef019d3c7d73c725a1461
            const { feePayerDigest } = capabilities
            if (!feePayerDigest) throw new Error('`feePayerDigest` is required')
  
-@@ -253,6 +258,13 @@ export declare namespace merchant {
+@@ -192,6 +198,10 @@ export function merchant(options: merchant.Options) {
+             ? await Key.sign(key, {
+                 address: null,
+                 payload: feePayerDigest,
++                // An EOA owner signs natively; wrapping would require its key
++                // to be authorized before the first fee payment can execute.
++                wrap: typeof options.key !== 'string' ||
++                  privateKeyToAccount(options.key).address.toLowerCase() !== address.toLowerCase(),
+               })
+             : undefined
+ 
+@@ -253,6 +263,13 @@ export declare namespace merchant {
            request: MerchantSchema.wallet_prepareCalls.Parameters,
          ) => MaybePromise<boolean>)
        | undefined

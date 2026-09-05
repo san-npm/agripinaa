@@ -449,6 +449,14 @@ test('halted -> no execute', async () => {
   assert.deepEqual(ex.calls, []);
 });
 
+test('an own-capital loss halt does not stop an unrelated managed yield mandate', async () => {
+  const { ctx } = fakeCtx({ ...VENUS_WINS, walletUsdtWei: 100n * 10n ** 18n, venusUnderlyingWei: 0n, aaveATokenWei: 0n });
+  ctx.breakers.isHalted = () => ({ halted: true, reason: 'daily-loss', global: false });
+  const ex = fakeExecutor();
+  await managedYieldTick(ctx, ex);
+  assert.deepEqual(ex.calls, ['toVenus']);
+});
+
 test('in venus, aave beats by > hysteresis on the 2nd streak -> rotates via toAave', async () => {
   const { ctx } = fakeCtx({
     ...AAVE_WINS,

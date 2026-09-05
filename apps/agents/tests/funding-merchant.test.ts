@@ -28,10 +28,12 @@ import {
   maxUint256,
   numberToHex,
   parseAbi,
+  recoverAddress,
   toHex,
   type Address,
   type Hex,
 } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { Route } from 'porto/server';
 
 import {
@@ -42,6 +44,39 @@ import {
 } from '../src/funding-merchant';
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address;
+
+it('merchant signs an EOA payer natively and preserves delegated-key signatures', async () => {
+  const privateKey = `0x${'01'.repeat(32)}` as Hex;
+  const owner = privateKeyToAccount(privateKey);
+  const digest = `0x${'22'.repeat(32)}` as Hex;
+  for (const payer of [owner.address, ACCOUNT]) {
+    const route = Route.merchant({
+      address: payer,
+      key: privateKey,
+      sponsor: true,
+      relay: custom({ request: async () => ({
+        capabilities: { feePayerDigest: digest },
+        context: {},
+        digest,
+        key: null,
+        signature: `0x${'44'.repeat(65)}`,
+        typedData: { domain: {}, message: {}, primaryType: 'Intent', types: {} },
+      }) }),
+    });
+    const response = await route.fetch(new Request('http://localhost/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'wallet_prepareCalls',
+        params: [{ calls: [], capabilities: { meta: {} }, chainId: '0x38', from: ACCOUNT }],
+      }),
+    }));
+    const body = await response.json() as { error?: unknown; result?: { capabilities: { feeSignature: Hex } } };
+    assert.equal(body.error, undefined);
+    const signature = body.result!.capabilities.feeSignature;
+    assert.equal((signature.length - 2) / 2, payer === owner.address ? 65 : 98);
+    assert.equal(await recoverAddress({ hash: digest, signature: signature.slice(0, 132) as Hex }), owner.address);
+  }
+});
 const ROUTER_ABI = parseAbi([
   'function exactInput((bytes path,address recipient,uint256 amountIn,uint256 amountOutMinimum)) payable returns (uint256 amountOut)',
   'function unwrapWETH9(uint256 amountMinimum,address recipient) payable',

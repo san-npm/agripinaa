@@ -10,11 +10,28 @@ import {
   buildManagedStrategyContext,
   managedStrategyNextDelayMs,
   managedStrategySweepIntervalMs,
+  readManagedRelayStatus,
 } from '../src/managed-strategy-runner';
 import { ChassisOphisWallet } from '../src/ophis-wallet';
 import type { AgentContext } from '../src/types';
 import { isGlobalHalt } from '../src/types';
 import { canonicalStrategyPermissions, managedServiceHalt } from '../src/x402-server';
+
+test('managed relay polling terminates off-chain failures and accepts confirmed receipts', async (t) => {
+  const callsId = `0x${'12'.repeat(32)}` as const;
+  const transactionHash = `0x${'34'.repeat(32)}` as const;
+  let status = 100;
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ result: {
+    id: callsId, status, receipts: status < 200 ? [] : [{ transactionHash, status: '0x1' }],
+  } }));
+  assert.deepEqual(await readManagedRelayStatus({ callsId, chainId: 56 }), { status: 'PENDING' });
+  for (status of [200, 201]) {
+    assert.deepEqual(await readManagedRelayStatus({ callsId, chainId: 56 }), { status: 'CONFIRMED', transactionHash });
+  }
+  for (status of [300, 400, 500]) {
+    assert.deepEqual(await readManagedRelayStatus({ callsId, chainId: 56 }), { status: 'FAILED' });
+  }
+});
 
 const PRIVATE_KEY = `0x${'31'.repeat(32)}` as const;
 const manager = privateKeyToAccount(PRIVATE_KEY);

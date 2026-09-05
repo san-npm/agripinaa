@@ -49,7 +49,7 @@ export async function retiredGrantFailedAtRelay(
     || result.id.toLowerCase() !== grant.grantCallsId.toLowerCase()
     || (typeof result.status !== 'number' && typeof result.status !== 'string')
   ) throw new Error('retired manager relay status is unreadable');
-  return result.status === 500 || result.status === 'FAILED';
+  return (typeof result.status === 'number' && result.status >= 300) || result.status === 'FAILED';
 }
 
 /** Block overlapping authority until the old grant is provably impossible. */
