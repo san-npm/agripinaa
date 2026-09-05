@@ -48,6 +48,15 @@ test('RPC quorum accepts two matching independent responses', () => {
   );
 });
 
+test('quorum compares object contents independently of provider property order', () => {
+  const first = { number: 100n, nested: { hash: '0xaa', logs: [1, 2] } };
+  const reordered = { nested: { logs: [1, 2], hash: '0xaa' }, number: 100n };
+  assert.deepEqual(selectQuorumValue([first, reordered]), first);
+  assert.throws(() => selectQuorumValue([
+    first, { ...reordered, nested: { ...reordered.nested, logs: [2, 1] } },
+  ]), /quorum mismatch/, 'array order remains significant');
+});
+
 test('one provider cannot forge receipt status or debt-skip logs through quorum', () => {
   const honest = transactionReceiptFingerprint({
     transactionHash: '0x01',

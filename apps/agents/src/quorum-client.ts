@@ -3,9 +3,13 @@ import { createPublicClient, http, type Block, type PublicClient } from 'viem';
 import { bsc } from 'viem/chains';
 
 function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) =>
-    typeof item === 'bigint' ? `bigint:${item.toString()}` : item,
-  );
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (typeof item === 'bigint') return `bigint:${item.toString()}`;
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)));
+    }
+    return item;
+  });
 }
 
 /** Return the value supported by at least `required` independent backends. */
