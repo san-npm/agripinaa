@@ -46,8 +46,8 @@ export function parseRelayCallStatus(value: unknown, callsId: Hex): RelayCallSta
     && CALLS_ID_RE.test(receipt.transactionHash)
     ? receipt.transactionHash as Hex
     : undefined;
-  const relayConfirmed = entry.status === 200 || entry.status === 'CONFIRMED';
-  const status = entry.status === 500
+  const relayConfirmed = entry.status === 200 || entry.status === 201 || entry.status === 'CONFIRMED';
+  const status = (typeof entry.status === 'number' && entry.status >= 300)
     || entry.status === 'FAILED'
     || (relayConfirmed && receipt?.status === '0x0')
     ? 'failed'
@@ -111,7 +111,7 @@ export function parseRelaySessionGrant(
       capabilities?: unknown;
       transactions?: unknown;
     };
-    if (entry.status === 500 || typeof entry.status !== 'number') continue;
+    if (typeof entry.status !== 'number' || entry.status >= 300) continue;
     if (typeof entry.id !== 'string' || !CALLS_ID_RE.test(entry.id)) continue;
     const quotes = (entry.capabilities as { quotes?: unknown } | null)?.quotes;
     if (!Array.isArray(quotes)) continue;
@@ -140,7 +140,7 @@ export function parseRelaySessionGrant(
         : undefined;
       return {
         callsId: entry.id as Hex,
-        status: entry.status === 200 ? 'confirmed' : 'pending',
+        status: entry.status === 200 || entry.status === 201 ? 'confirmed' : 'pending',
         ...(transactionHash ? { transactionHash } : {}),
       };
     }

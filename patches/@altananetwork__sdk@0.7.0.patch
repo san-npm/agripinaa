@@ -350,3 +350,20 @@
          signer,
      };
  }
+--- a/dist/internal/relay.js
++++ b/dist/internal/relay.js
+@@ -312,12 +312,12 @@
+         try {
+             const status = await getCallsStatus(client, { id: callsId });
+             const code = status?.status;
+-            if (code === 200 || code === "CONFIRMED") {
++            if (code === 200 || code === 201 || code === "CONFIRMED") {
+                 return {
+                     status: "CONFIRMED",
+                     transactionHash: status?.receipts?.[0]?.transactionHash,
+                 };
+             }
+-            if (code === 500 || code === "FAILED") {
++            if ((typeof code === "number" && code >= 300) || code === "FAILED") {
+                 return { status: "FAILED" };
+             }
