@@ -82,7 +82,8 @@ describe('funding bootstrap checkpoint', () => {
     } } });
     try {
       let response: unknown;
-      t.mock.method(globalThis, 'fetch', async () => Response.json(response));
+      let onRead: (() => void) | undefined;
+      t.mock.method(globalThis, 'fetch', async () => { onRead?.(); return Response.json(response); });
       for (const status of [100, 200, 300, 400, 500]) {
         saveFundingCheckpoint(56, ACCOUNT, 'yield-b', { status: 'submitted', callsId: CALLS_ID, plan: PLAN });
         response = { result: { id: CALLS_ID, status, receipts: [] } };
@@ -90,6 +91,11 @@ describe('funding bootstrap checkpoint', () => {
         assert.equal(recovered === null, status >= 300);
         assert.equal(loadFundingCheckpoint(56, ACCOUNT, 'yield-b') === null, status >= 300);
       }
+      saveFundingCheckpoint(56, ACCOUNT, 'yield-b', { status: 'submitted', callsId: CALLS_ID, plan: PLAN });
+      response = { result: { id: CALLS_ID, status: 300, receipts: [] } };
+      onRead = () => saveFundingCheckpoint(56, ACCOUNT, 'yield-b', { status: 'submitted', callsId: HASH, plan: PLAN });
+      assert.equal((await recoverFundingCheckpoint(56, ACCOUNT, 'yield-b'))?.callsId, HASH);
+      onRead = undefined;
       saveFundingCheckpoint(56, ACCOUNT, 'yield-b', { status: 'submitted', callsId: CALLS_ID, plan: PLAN });
       response = { error: { message: 'relay unavailable' } };
       await assert.rejects(recoverFundingCheckpoint(56, ACCOUNT, 'yield-b'), /unreadable/);

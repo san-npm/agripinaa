@@ -237,10 +237,13 @@ export async function recoverFundingCheckpoint(
   account: Address,
   agent: string,
 ): Promise<FundingCheckpoint | null> {
-  const checkpoint = loadFundingCheckpoint(chainId, account, agent);
+  let checkpoint = loadFundingCheckpoint(chainId, account, agent);
   if (checkpoint?.status === 'submitted') {
-    const result = await readRelayCallStatus({ callsId: checkpoint.callsId });
-    if (result.status === 'failed') {
+    const callsId = checkpoint.callsId;
+    const result = await readRelayCallStatus({ callsId });
+    // Another tab may have replaced or confirmed it during the status read.
+    checkpoint = loadFundingCheckpoint(chainId, account, agent);
+    if (result.status === 'failed' && checkpoint?.status === 'submitted' && checkpoint.callsId === callsId) {
       clearFundingCheckpoint(chainId, account, agent);
       return null;
     }
