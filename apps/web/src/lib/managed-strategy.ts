@@ -8,6 +8,7 @@ import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { encodeFunctionData, erc20Abi, maxUint256, type Hex } from 'viem';
 
 import { altanaClient } from './altana';
+import { assertRelayConfirmed } from './relay-execution-result';
 import type { FundingCall } from './funding-bootstrap';
 
 export { buildStrategyScope, describeScope } from './strategy-scope';
@@ -57,12 +58,5 @@ export async function approveStrategyVenues(
     ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
     ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });
-  if (result.status !== 'CONFIRMED') {
-    throw new Error(
-      result.status === 'PENDING'
-        ? 'Strategy approvals are still pending on-chain.'
-        : 'Strategy approvals reverted on-chain.',
-    );
-  }
-  return result;
+  return assertRelayConfirmed(result, bootstrap?.calls.length ? 'Funding preparation' : 'Strategy approvals');
 }
