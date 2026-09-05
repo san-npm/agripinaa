@@ -4,7 +4,31 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { appendLogLine, ensureDataDir, loadAgentAccount, writeStateFile } from '../src/chassis';
+import { appendLogLine, ensureDataDir, loadAgentAccount, runAgentTick, writeStateFile } from '../src/chassis';
+import type { AgentContext, AgentModule } from '../src/types';
+
+test('agent retries are bounded, grow across failures, reset on success, and obey halts', async () => {
+  let halted = false;
+  let fails = true;
+  let calls = 0;
+  const ctx = { breakers: { isHalted: () => ({ halted }) }, log: () => {} } as unknown as AgentContext;
+  const module = { tickIntervalMs: 60_000, tick: async () => {
+    calls += 1;
+    if (fails) throw new Error('RPC unavailable');
+  } } as unknown as AgentModule;
+  let delay = await runAgentTick(module, ctx);
+  assert.equal(delay, 120_000);
+  delay = await runAgentTick(module, ctx, delay);
+  assert.equal(delay, 240_000);
+  assert.equal(await runAgentTick({ ...module, tickIntervalMs: 12 * 3600_000 }, ctx), 1800_000);
+  fails = false;
+  assert.equal(await runAgentTick(module, ctx, delay), 0);
+  fails = true;
+  assert.equal(await runAgentTick(module, ctx), 120_000);
+  halted = true;
+  assert.equal(await runAgentTick(module, ctx), 0);
+  assert.equal(calls, 5, 'halted agents cannot execute a tick');
+});
 
 /**
  * State and log files sit beside the wallets on the VM, which are 0600. They

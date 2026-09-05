@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { MANAGED_TOKENS, PRIMARY_MANAGED_TOKEN, agentBySlug, managedStrategyFor } from '@agripinaa/shared';
 
 import { assertModulesRegistered, isUnprovisioned, MANAGED_AGENT_SLUGS } from './agent-config';
-import { buildContext, DATA_DIR, ensureDataDir, hasAgentWallet } from './chassis';
+import { buildContext, DATA_DIR, ensureDataDir, hasAgentWallet, runAgentTick } from './chassis';
 import { createAltanaClient } from './executor';
 import { buildManagerKeySet, type ManagerKeySet } from './manager-key';
 import { loadManaged } from './managed';
@@ -232,7 +232,7 @@ async function main() {
       let running = false;
       const loop = async () => {
         if (running) return;
-        if (ctx.breakers.isHalted().halted) return;
+        if (isGlobalHalt(ctx.breakers.isHalted())) return;
         running = true;
         try {
           const { serviced, recoveryOnly, errors } = await tickManagedYield({
@@ -320,32 +320,16 @@ async function main() {
   }
 
   for (const { module, ctx } of agents.values()) {
-    let running = false;
     let backoffMs = 0;
     const loop = async () => {
-      if (running) return;
-      const halted = ctx.breakers.isHalted();
-      if (halted.halted) return;
-      if (backoffMs > 0) {
-        backoffMs = Math.max(0, backoffMs - module.tickIntervalMs);
-        return;
-      }
-      running = true;
-      try {
-        await module.tick(ctx);
-      } catch (err) {
-        backoffMs = Math.min((backoffMs || module.tickIntervalMs) * 2, 30 * 60_000);
-        ctx.log({
-          event: 'tick-error',
-          error: err instanceof Error ? err.message : String(err),
-          backoffMs,
-        });
-      } finally {
-        running = false;
-      }
+      const startedAt = Date.now();
+      backoffMs = await runAgentTick(module, ctx, backoffMs);
+      // Schedule from completion on failure, and preserve start-to-start cadence
+      // on success. A long-running tick cannot overlap its successor.
+      const delay = backoffMs || Math.max(0, module.tickIntervalMs - (Date.now() - startedAt));
+      setTimeout(() => { void loop(); }, delay);
     };
     void loop();
-    setInterval(loop, module.tickIntervalMs);
   }
 }
 

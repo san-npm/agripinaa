@@ -1,5 +1,5 @@
 import { BSC_MAINNET } from '@agripinaa/shared';
-import { createPublicClient, http, type PublicClient } from 'viem';
+import { createPublicClient, http, type Block, type PublicClient } from 'viem';
 import { bsc } from 'viem/chains';
 
 function canonical(value: unknown): string {
@@ -83,6 +83,12 @@ export function transactionReceiptFingerprint(receipt: {
   };
 }
 
+export function blockFingerprint({ size: _size, ...block }: Block) {
+  // BSC providers report different serialized sizes for the same block.
+  // Size is node metadata; retain agreement on every chain-state field.
+  return block;
+}
+
 /**
  * Public client for unattended financial decisions. Every contract read and
  * simulation is pinned to one block and must match on two independent RPCs;
@@ -104,7 +110,7 @@ export function createQuorumPublicClient(
   };
 
   const readContract = async (...args: Parameters<typeof primary.readContract>) => {
-    const blockNumber = await commonBlock();
+    const blockNumber = args[0].blockNumber ?? await commonBlock();
     const values = await fulfilled(
       clients.map((client) => client.readContract({ ...args[0], blockNumber } as never)),
     );
@@ -112,7 +118,7 @@ export function createQuorumPublicClient(
   };
 
   const simulateContract = async (...args: Parameters<typeof primary.simulateContract>) => {
-    const blockNumber = await commonBlock();
+    const blockNumber = args[0].blockNumber ?? await commonBlock();
     const simulations = await fulfilled(
       clients.map((client) => client.simulateContract({ ...args[0], blockNumber } as never)),
     );
@@ -121,7 +127,7 @@ export function createQuorumPublicClient(
   };
 
   const getCode = async (...args: Parameters<typeof primary.getCode>) => {
-    const blockNumber = await commonBlock();
+    const blockNumber = args[0].blockNumber ?? await commonBlock();
     const values = await fulfilled(
       clients.map((client) => client.getCode({ ...args[0], blockNumber } as never)),
     );
@@ -134,7 +140,8 @@ export function createQuorumPublicClient(
     const blocks = await fulfilled(
       clients.map((client) => client.getBlock({ ...requested, blockNumber } as never)),
     );
-    return selectQuorumValue(blocks);
+    const agreed = selectQuorumValue(blocks.map(blockFingerprint));
+    return blocks.find((block) => canonical(blockFingerprint(block)) === canonical(agreed))!;
   };
 
   const waitForTransactionReceipt = async (

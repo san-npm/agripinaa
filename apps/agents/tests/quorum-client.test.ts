@@ -2,10 +2,44 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  blockFingerprint,
+  createQuorumPublicClient,
   selectGasPrice,
   selectQuorumValue,
   transactionReceiptFingerprint,
 } from '../src/quorum-client';
+import { parseAbi, type Block } from 'viem';
+
+test('quorum contract reads, simulations and code reads preserve explicit historical blocks', async (t) => {
+  const blocks: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const request = await new Request(input, init).json() as { id: number; method: string; params: unknown[] };
+    if (request.method === 'eth_blockNumber') return Response.json({ jsonrpc: '2.0', id: request.id, result: '0x64' });
+    blocks.push(request.params[1] as string);
+    return Response.json({ jsonrpc: '2.0', id: request.id,
+      result: request.method === 'eth_getCode' ? '0x1234' : `0x${'00'.repeat(31)}01`,
+    });
+  });
+  const client = createQuorumPublicClient(['https://quorum-a.example', 'https://quorum-b.example']);
+  const args = { address: '0x1111111111111111111111111111111111111111' as const,
+    abi: parseAbi(['function value() view returns (uint256)']), functionName: 'value' as const, blockNumber: 42n };
+  assert.equal(await client.readContract(args), 1n);
+  assert.equal((await client.simulateContract(args)).result, 1n);
+  assert.equal(await client.getCode(args), '0x1234');
+  assert.deepEqual(blocks, Array(6).fill('0x2a'));
+});
+
+test('block quorum ignores provider serialization size but still verifies chain state', () => {
+  const block = { hash: '0xaa', number: 100n, timestamp: 123n, transactions: [] } as unknown as Block;
+  const responses = [66134n, 66135n, 66136n].map((size) => ({ ...block, size }));
+  assert.throws(() => selectQuorumValue(responses), /quorum mismatch/);
+  assert.deepEqual(selectQuorumValue(responses.map(blockFingerprint)), block);
+  assert.throws(() => selectQuorumValue([
+    blockFingerprint(responses[0]!),
+    blockFingerprint({ ...responses[1]!, timestamp: 456n }),
+    blockFingerprint({ ...responses[2]!, hash: '0xbb' }),
+  ]), /quorum mismatch/);
+});
 
 test('RPC quorum accepts two matching independent responses', () => {
   assert.deepEqual(

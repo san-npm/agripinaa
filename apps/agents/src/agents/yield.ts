@@ -2,7 +2,7 @@ import { TOKENS_BSC, fromBaseUnits, toBaseUnits, type TokenInfo } from '@agripin
 import { erc20Abi, maxUint256, padHex, parseAbi, toEventSelector, type Hex, type PublicClient } from 'viem';
 
 import type { ManagedExecutor } from '../executor';
-import type { AgentContext, AgentModule } from '../types';
+import { isGlobalHalt, type AgentContext, type AgentModule } from '../types';
 
 export type Venue = 'none' | 'venus' | 'aave';
 
@@ -617,7 +617,7 @@ export async function managedYieldTick(
   };
 
   const halted = ctx.breakers.isHalted();
-  if (halted.halted) {
+  if (isGlobalHalt(halted)) {
     ctx.log({ event: 'managed-skip', account: acct, reason: `halted: ${halted.reason}` });
     return;
   }

@@ -153,12 +153,12 @@ export const readManagedRelayStatus: ManagedRelayStatusReader = async ({ callsId
   const status = body.result.status;
   const receipt = body.result.receipts?.[0];
   const transactionHash = receipt?.transactionHash;
-  if (status === 500 || status === 'FAILED') return { status: 'FAILED' };
-  if ((status === 200 || status === 'CONFIRMED') && (receipt as { status?: unknown } | undefined)?.status === '0x0') {
+  if ((typeof status === 'number' && status >= 300) || status === 'FAILED') return { status: 'FAILED' };
+  if ((status === 200 || status === 201 || status === 'CONFIRMED') && (receipt as { status?: unknown } | undefined)?.status === '0x0') {
     return { status: 'FAILED' };
   }
   if (
-    (status === 200 || status === 'CONFIRMED')
+    (status === 200 || status === 201 || status === 'CONFIRMED')
     && typeof transactionHash === 'string'
     && HASH_RE.test(transactionHash)
   ) {
