@@ -243,6 +243,16 @@ const BATCH_CALLS_ABI = [{
   ],
 }] as const;
 
+const PRE_CALL_ABI = [{
+  type: 'tuple',
+  components: [
+    { name: 'eoa', type: 'address' },
+    { name: 'executionData', type: 'bytes' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'signature', type: 'bytes' },
+  ],
+}] as const;
+
 function decodeCalls(executionData: Hex): readonly MerchantCall[] | null {
   try {
     const [calls] = decodeAbiParameters(BATCH_CALLS_ABI, executionData);
@@ -250,6 +260,20 @@ function decodeCalls(executionData: Hex): readonly MerchantCall[] | null {
   } catch {
     return null;
   }
+}
+
+function validRelayPreCalls(values: readonly Hex[], request: MerchantRequest): boolean {
+  if (!request.from || values.length > 2) return false;
+  const allowed = new Set([request.from.toLowerCase(), FUNDING_FEE_PAYER_BSC.toLowerCase()]);
+  const accounts = values.map((value) => {
+    try {
+      return decodeAbiParameters(PRE_CALL_ABI, value)[0].eoa.toLowerCase();
+    } catch {
+      return null;
+    }
+  });
+  return accounts.every((account) => account !== null && allowed.has(account))
+    && new Set(accounts).size === accounts.length;
 }
 
 /** Bind sponsorship to the exact live relay quote before the fee-payer digest is signed. */
@@ -299,7 +323,7 @@ export function validFundingRelayQuote(
         || (call.data ?? '0x').toLowerCase() !== (requested.data ?? '0x').toLowerCase();
     })
   ) return false;
-  if (intent.encodedPreCalls.length !== 0) return false;
+  if (!validRelayPreCalls(intent.encodedPreCalls, request)) return false;
   const expectedDigest = hashTypedData({
     domain: {
       chainId: 56,
@@ -632,20 +656,10 @@ export function createFundingMerchant(args: {
       args.client,
       request as MerchantRequest,
     ),
-    approve: (request, result) => {
-      const valid = validFundingRelayQuote(
-        request as MerchantRequest,
-        result as MerchantRelayResult,
-      );
-      if (!valid) {
-        console.error(JSON.stringify({
-          event: 'funding-relay-quote-rejected',
-          request: request as MerchantRequest,
-          result: result as MerchantRelayResult,
-        }, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value));
-      }
-      return valid;
-    },
+    approve: (request, result) => validFundingRelayQuote(
+      request as MerchantRequest,
+      result as MerchantRelayResult,
+    ),
   });
 }
 
