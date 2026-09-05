@@ -48,8 +48,12 @@ test('fails closed on an unreadable relay response', () => {
   assert.throws(() => parseRelaySessionGrant({}, ACCOUNT, KEY), /unreadable/);
 });
 
-test('classifies direct relay status without treating status 300 as failure', () => {
+test('classifies relay status 300 as an off-chain failure', () => {
   assert.deepEqual(parseRelayCallStatus({ result: { id: ID, status: 300, receipts: [] } }, ID), {
+    callsId: ID,
+    status: 'failed',
+  });
+  assert.deepEqual(parseRelayCallStatus({ result: { id: ID, status: 100, receipts: [] } }, ID), {
     callsId: ID,
     status: 'pending',
   });
@@ -91,7 +95,7 @@ test('checks a saved relay id once without entering a long polling loop', async 
     callsId: ID,
     fetcher: async (_input, init) => {
       request = init;
-      return new Response(JSON.stringify({ result: { id: ID, status: 300, receipts: [] } }));
+      return new Response(JSON.stringify({ result: { id: ID, status: 100, receipts: [] } }));
     },
   });
   assert.equal(result.status, 'pending');
