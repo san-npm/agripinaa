@@ -28,6 +28,7 @@ import {
 import { altanaClient } from './altana';
 import { assertRelayConfirmed } from './relay-execution-result';
 import type { FundingCall } from './funding-bootstrap';
+import { executeFunding } from './funding-execution';
 import { bsc, bscTestnet } from './bsc-chain';
 import {
   ACCOUNT_HISTORY_CONCURRENCY,
@@ -144,6 +145,7 @@ export async function approveRouter(
   bootstrap?: {
     calls: readonly FundingCall[];
     merchantUrl?: string;
+    registrationFee?: bigint;
     onSubmitted?: (callsId: Hex) => void | Promise<void>;
   },
 ) {
@@ -153,12 +155,13 @@ export async function approveRouter(
   }
   await assertRouterRuntime(chainId, router);
   const calls = routerApprovalCalls(router);
-  const r = await altanaClient().execute({
+  const r = await executeFunding({
     wallet: wallet as WalletLike,
     signer: wallet.signer as never,
     chainId,
     calls: [...(bootstrap?.calls ?? []), ...calls] as never,
     ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
+    ...(bootstrap?.registrationFee !== undefined ? { registrationFee: bootstrap.registrationFee } : {}),
     ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });
   return assertRelayConfirmed(r, bootstrap?.calls.length ? 'Funding preparation' : 'Router approval');

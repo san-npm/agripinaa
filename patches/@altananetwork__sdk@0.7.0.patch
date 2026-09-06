@@ -1,6 +1,8 @@
+diff --git a/dist/client.d.ts b/dist/client.d.ts
+index 07352bb0f3ebaed23aac8511690c570f091c476d..66a1c6f36091b64f70dd34479125cb4e29bf60a4 100644
 --- a/dist/client.d.ts
 +++ b/dist/client.d.ts
-@@ -51,11 +51,27 @@
+@@ -51,11 +51,31 @@ export type ClientExecuteOptions = ({
      signer: Signer;
      calls: Call | readonly Call[];
      feeToken?: Address;
@@ -8,6 +10,8 @@
 +    nonce?: bigint;
 +    /** Merchant RPC that signs as fee payer for this execution. */
 +    merchantUrl?: string;
++    registrationFee?: bigint;
++    onBeforeSubmit?: () => void | Promise<void>;
 +    /** Calls signed separately and executed before fee payment and the main batch. */
 +    preCalls?: readonly Call[];
 +    /** Runs with the durable relay id immediately after submission, before polling. */
@@ -21,6 +25,8 @@
 +    nonce?: bigint;
 +    /** Merchant RPC that signs as fee payer for this execution. */
 +    merchantUrl?: string;
++    registrationFee?: bigint;
++    onBeforeSubmit?: () => void | Promise<void>;
 +    /** Calls signed separately and executed before fee payment and the main batch. */
 +    preCalls?: readonly Call[];
 +    /** Runs with the durable relay id immediately after submission, before polling. */
@@ -28,7 +34,7 @@
      noWait?: boolean;
  } & ChainSelector);
  export type ClientGrantSessionOptions = {
-@@ -68,6 +84,8 @@
+@@ -68,6 +88,8 @@ export type ClientRevokeSessionOptions = {
      signer: Signer;
      session: Session | Hex;
      feeToken?: Address;
@@ -37,7 +43,7 @@
  } & ChainSelector;
  export type ClientRegisterSessionKeyOptions = {
      wallet: Wallet;
-@@ -80,6 +98,9 @@
+@@ -80,6 +102,9 @@ export type ClientBalancesOptions = {
      /** ERC-20 tokens to include. BEP-677 display scaling is applied automatically. */
      tokens?: readonly Address[];
  } & ChainSelector;
@@ -47,7 +53,7 @@
  export type ClientApproveSignatureCheckerOptions = {
      wallet: Wallet;
      signer: Signer;
-@@ -114,6 +135,7 @@
+@@ -114,6 +139,7 @@ export type Client = {
          signer: PasskeySigner;
      }>;
      execute(opts: ClientExecuteOptions): Promise<ExecuteResult>;
@@ -55,9 +61,11 @@
      grantSession(opts: ClientGrantSessionOptions): Promise<Session>;
      revokeSession(opts: ClientRevokeSessionOptions): Promise<ExecuteResult>;
      /** Lazily register a session key granted with `register: false`. Idempotent. */
+diff --git a/dist/client.js b/dist/client.js
+index f6ec4b020f5b904c3a3173feef9d7fa1396235a6..f353e1364b68da1269750e73e91f6e230d159ee1 100644
 --- a/dist/client.js
 +++ b/dist/client.js
-@@ -11,7 +11,7 @@
+@@ -11,7 +11,7 @@ import {} from "./config.js";
  import { createWallet as createWalletImpl, } from "./createWallet.js";
  import { createPasskeyWallet as createPasskeyWalletImpl } from "./createPasskeyWallet.js";
  import { recoverFromPasskey as recoverFromPasskeyImpl } from "./recoverFromPasskey.js";
@@ -66,18 +74,20 @@
  import { grantSession as grantSessionImpl } from "./grantSession.js";
  import { revokeSession as revokeSessionImpl } from "./revokeSession.js";
  import { registerSessionKey as registerSessionKeyImpl } from "./registerSessionKey.js";
-@@ -80,6 +80,10 @@
+@@ -80,6 +80,12 @@ export function createClient(opts) {
              const execOpts = {
                  network: resolve(o.chainId),
                  ...(o.feeToken ? { feeToken: o.feeToken } : {}),
++                ...(o.registrationFee !== undefined ? { registrationFee: o.registrationFee } : {}),
 +                ...(o.nonce !== undefined ? { nonce: o.nonce } : {}),
 +                ...(o.merchantUrl ? { merchantUrl: o.merchantUrl } : {}),
 +                ...(o.preCalls?.length ? { preCalls: o.preCalls } : {}),
 +                ...(o.onSubmitted ? { onSubmitted: o.onSubmitted } : {}),
++                ...(o.onBeforeSubmit ? { onBeforeSubmit: o.onBeforeSubmit } : {}),
                  ...(o.noWait ? { noWait: o.noWait } : {}),
              };
              if ("session" in o) {
-@@ -87,10 +91,15 @@
+@@ -87,10 +93,15 @@ export function createClient(opts) {
              }
              return executeImpl(o.wallet, o.signer, o.calls, execOpts);
          },
@@ -93,7 +103,7 @@
                  ...(o.sessionSigner ? { sessionSigner: o.sessionSigner } : {}),
                  ...(o.register !== undefined ? { register: o.register } : {}),
              }, {
-@@ -102,6 +111,7 @@
+@@ -102,6 +113,7 @@ export function createClient(opts) {
              return revokeSessionImpl(o.wallet, o.signer, o.session, {
                  network: resolve(o.chainId),
                  ...(o.feeToken ? { feeToken: o.feeToken } : {}),
@@ -101,34 +111,8 @@
              });
          },
          registerSessionKey(o) {
---- a/dist/grantSession.js
-+++ b/dist/grantSession.js
-@@ -60,10 +60,12 @@
-     //   [ initialRegisterKey(admin)?, registerKey(session)?, authorizeKeys=[session] ]
-     const callsId = await submitCalls(relayClient, wallet.address, adminSigner, registerCalls, {
-         feeToken,
-+        ...(opts.onBeforeSubmit ? { onBeforeSubmit: opts.onBeforeSubmit } : {}),
-         submittingKey: adminKeyDesc,
-         authorizeKeys: [sessionKeyDesc],
-         network,
-     });
-+    await opts.onSubmitted?.(callsId);
-     const result = await waitForCalls(relayClient, callsId);
-     if (result.status !== "CONFIRMED") {
-         throw new Error(`Session grant did not confirm: status=${result.status}`);
---- a/dist/internal/sessions.d.ts
-+++ b/dist/internal/sessions.d.ts
-@@ -56,6 +56,10 @@
-     permissions: SessionPermissions;
-     /** Unix epoch seconds. Most apps use Date.now()/1000 + N. */
-     expiry: number;
-+    /** Runs after the passkey signature but before the relay submission. */
-+    onBeforeSubmit?: () => void | Promise<void>;
-+    /** Runs with the durable relay id immediately after submission, before polling. */
-+    onSubmitted?: (callsId: Hex) => void | Promise<void>;
-     /**
-      * Provide your own session signer (e.g., generated by your backend and
-      * stored alongside user state). If omitted, the SDK generates a fresh
+diff --git a/dist/execute.d.ts b/dist/execute.d.ts
+index 8efc178ad07c53a4348761fcc3e08a54ec1e152e..12fd5665cb6fc3368c987e22ea83bc4470461fe9 100644
 --- a/dist/execute.d.ts
 +++ b/dist/execute.d.ts
 @@ -1,4 +1,4 @@
@@ -137,7 +121,7 @@
  import { type NetworkConfig } from "./config.js";
  import { type Signer } from "./internal/signer.js";
  import { type Call } from "./internal/relay.js";
-@@ -8,6 +8,14 @@
+@@ -8,6 +8,17 @@ export type ExecuteOptions = {
      /** Which chain to run on. Resolved by the client from a chainId. */
      network: NetworkConfig;
      feeToken?: Address;
@@ -145,6 +129,9 @@
 +    nonce?: bigint;
 +    /** Merchant RPC that signs as fee payer for this execution. */
 +    merchantUrl?: string;
++    /** Buffered first-registration budget already provisioned by the funding quote. */
++    registrationFee?: bigint;
++    onBeforeSubmit?: () => void | Promise<void>;
 +    /** Calls signed separately and executed before fee payment and the main batch. */
 +    preCalls?: readonly Call[];
 +    /** Called after relay submission and before receipt polling. */
@@ -152,20 +139,23 @@
      noWait?: boolean;
  };
  /**
-@@ -23,5 +31,6 @@
+@@ -23,5 +34,6 @@ export type ExecuteOptions = {
   */
  export declare function execute(wallet: Wallet, signer: Signer, calls: Call | readonly Call[], opts: ExecuteOptions): Promise<ExecuteResult>;
  export declare function execute(session: Session, calls: Call | readonly Call[], opts: ExecuteOptions): Promise<ExecuteResult>;
 +export declare function waitForExecution(callsId: Hex, opts: Pick<ExecuteOptions, "network">): Promise<ExecuteResult>;
  export type { Call };
  //# sourceMappingURL=execute.d.ts.map
-\ No newline at end of file
+diff --git a/dist/execute.js b/dist/execute.js
+index 6dcd5ce428bfb52f722f0c10a88f25544180149b..207be23ab5ba7b68696c63b061ee8b4ab1469196 100644
 --- a/dist/execute.js
 +++ b/dist/execute.js
-@@ -34,9 +34,13 @@
+@@ -34,9 +34,15 @@ export async function execute(walletOrSession, signerOrCalls, callsOrOpts, maybe
          };
      const callsId = await submitCalls(relayClient, walletAddress, signer, userCalls, {
          feeToken,
++        registrationFee: opts.registrationFee,
++        onBeforeSubmit: opts.onBeforeSubmit,
 +        ...(opts.nonce !== undefined ? { nonce: opts.nonce } : {}),
 +        ...(opts.merchantUrl ? { merchantUrl: opts.merchantUrl } : {}),
 +        ...(opts.preCalls?.length ? { preCalls: opts.preCalls } : {}),
@@ -176,7 +166,7 @@
      if (opts?.noWait) {
          return { callsId, status: "PENDING" };
      }
-@@ -47,6 +51,14 @@
+@@ -47,6 +53,14 @@ export async function execute(walletOrSession, signerOrCalls, callsOrOpts, maybe
          ...(result.transactionHash ? { transactionHash: result.transactionHash } : {}),
      };
  }
@@ -191,9 +181,70 @@
  function isSession(x) {
      return "walletAddress" in x;
  }
+diff --git a/dist/grantSession.js b/dist/grantSession.js
+index 6f58d9d11befe22031c897cfd5fdde9b83f6d2f5..52b0dd6959eaae6cb0e9359b7fc18624887cbbd0 100644
+--- a/dist/grantSession.js
++++ b/dist/grantSession.js
+@@ -60,10 +60,12 @@ export async function grantSession(wallet, adminSigner, opts, config) {
+     //   [ initialRegisterKey(admin)?, registerKey(session)?, authorizeKeys=[session] ]
+     const callsId = await submitCalls(relayClient, wallet.address, adminSigner, registerCalls, {
+         feeToken,
++        ...(opts.onBeforeSubmit ? { onBeforeSubmit: opts.onBeforeSubmit } : {}),
+         submittingKey: adminKeyDesc,
+         authorizeKeys: [sessionKeyDesc],
+         network,
+     });
++    await opts.onSubmitted?.(callsId);
+     const result = await waitForCalls(relayClient, callsId);
+     if (result.status !== "CONFIRMED") {
+         throw new Error(`Session grant did not confirm: status=${result.status}`);
+diff --git a/dist/internal/keystore.d.ts b/dist/internal/keystore.d.ts
+index c215cdcd5e213dbe62d9e5af2a2554865a5e4f1a..dbe7f0bf951e274c2c65bb3bb3c3f35443acb7a7 100644
+--- a/dist/internal/keystore.d.ts
++++ b/dist/internal/keystore.d.ts
+@@ -43,6 +43,7 @@ export declare function buildFirstActionPrepend(args: {
+     network: NetworkConfig;
+     walletAddress: Address;
+     adminPublicKey: Hex;
++    registrationFee?: bigint;
+ }): Promise<{
+     to: Address;
+     value: bigint;
+diff --git a/dist/internal/keystore.js b/dist/internal/keystore.js
+index 292a0f0da7cb1df6bb1c27b66c675a1cf42a9132..829acfe9162e5fb566fb65ba207f0c631ca8b8ae 100644
+--- a/dist/internal/keystore.js
++++ b/dist/internal/keystore.js
+@@ -96,12 +96,14 @@ export function deriveKeyId(publicKey) {
+     return keccak256(publicKey);
+ }
+ /** Reads the current registration fee from the Controller. */
+-export function readRegistrationFee(publicClient, network) {
+-    return publicClient.readContract({
++export async function readRegistrationFee(publicClient, network) {
++    const fee = await publicClient.readContract({
+         address: network.keyStoreController,
+         abi: CONTROLLER_ABI,
+         functionName: "getRegistrationFeeInWei",
+     });
++    // The oracle can move between preparation, the passkey prompt, and inclusion.
++    return (fee * 10200n + 9999n) / 10000n;
+ }
+ /** Reads the active key ids for a user. Empty array = not yet registered. */
+ export function readActiveKeys(publicClient, network, user) {
+@@ -152,7 +154,7 @@ export async function buildFirstActionPrepend(args) {
+     const active = await readActiveKeys(args.publicClient, args.network, args.walletAddress);
+     if (active.length > 0)
+         return [];
+-    const fee = await readRegistrationFee(args.publicClient, args.network);
++    const fee = args.registrationFee ?? await readRegistrationFee(args.publicClient, args.network);
+     return [
+         buildInitialRegisterCall({
+             publicKey: args.adminPublicKey,
+diff --git a/dist/internal/relay.d.ts b/dist/internal/relay.d.ts
+index 4d616bf5016ae8f20f93f8d7f292ad2ecd6a09bc..ffc1fd18cd9bcf2173a0e85d57bacd24d87832db 100644
 --- a/dist/internal/relay.d.ts
 +++ b/dist/internal/relay.d.ts
-@@ -578,6 +578,14 @@
+@@ -578,6 +578,15 @@ export declare function keyDescriptorFromSigner(signer: Signer, opts: {
   */
  export declare function submitCalls(client: ReturnType<typeof buildRelayClient>, walletAddress: Address, signer: Signer, calls: readonly Call[], opts: {
      feeToken: Address;
@@ -201,6 +252,7 @@
 +    nonce?: bigint;
 +    /** Optional merchant RPC that signs the relay fee-payer digest. */
 +    merchantUrl?: string;
++    registrationFee?: bigint;
 +    /** Calls signed as a pre-call and executed before fee payment. */
 +    preCalls?: readonly Call[];
 +    /** Runs after signing and immediately before the relay submission. */
@@ -208,10 +260,15 @@
      submittingKey: KeyDescriptor;
      authorizeKeys?: readonly KeyDescriptor[];
      revokeKeys?: readonly KeyDescriptor[];
+diff --git a/dist/internal/relay.js b/dist/internal/relay.js
+index 42973a1a4d160c83cbc206a11d76d2e166fbbf6d..7bc67b52b78749eebe47d2515d9bafd80956dd89 100644
 --- a/dist/internal/relay.js
 +++ b/dist/internal/relay.js
-@@ -161,7 +161,14 @@
+@@ -159,9 +159,17 @@ export async function submitCalls(client, walletAddress, signer, calls, opts) {
+             network: opts.network,
+             walletAddress,
              adminPublicKey: signer.publicKey,
++            registrationFee: opts.registrationFee,
          });
          if (prepend.length > 0) {
 -            effectiveCalls = [...prepend, ...calls];
@@ -226,7 +283,7 @@
          }
      }
      // Build the signing Porto Key. The descriptor (role + expiry + permissions)
-@@ -205,10 +212,33 @@
+@@ -205,10 +213,33 @@ export async function submitCalls(client, walletAddress, signer, calls, opts) {
      else {
          throw new Error(unsupportedSignerMessage(signer.type, "sign a transaction"));
      }
@@ -260,7 +317,7 @@
      };
      // Tell Porto which key will sign whenever it's not the implicit admin EOA
      // (i.e. session path always, and passkey path always — there's no EOA for
-@@ -229,6 +259,7 @@
+@@ -229,6 +260,7 @@ export async function submitCalls(client, walletAddress, signer, calls, opts) {
      const signature = await signCalls(prepared, {
          key: signingKeyForPorto,
      });
@@ -268,27 +325,39 @@
      // For non-EOA paths (sessions, passkey admin), the relay needs to know
      // which key authority signed so it can verify with the right scheme.
      // The privateKey admin path can omit this — Porto infers from the EOA.
---- a/dist/revokeSession.d.ts
-+++ b/dist/revokeSession.d.ts
-@@ -13,5 +13,7 @@
- export declare function revokeSession(wallet: Wallet, adminSigner: Signer, sessionOrPublicKey: Session | Hex, config: {
-     network: NetworkConfig;
-     feeToken?: Address;
+@@ -281,13 +313,13 @@ export async function waitForCalls(client, callsId, timeoutMs = 240_000, pollInt
+         try {
+             const status = await getCallsStatus(client, { id: callsId });
+             const code = status?.status;
+-            if (code === 200 || code === "CONFIRMED") {
++            if (code === 200 || code === 201 || code === "CONFIRMED") {
+                 return {
+                     status: "CONFIRMED",
+                     transactionHash: status?.receipts?.[0]?.transactionHash,
+                 };
+             }
+-            if (code === 500 || code === "FAILED") {
++            if ((typeof code === "number" && code >= 300) || code === "FAILED") {
+                 return { status: "FAILED" };
+             }
+         }
+diff --git a/dist/internal/sessions.d.ts b/dist/internal/sessions.d.ts
+index 85042e4cc101d155c6650cae8e0f4f1429ab107e..0e30001289820060e7e3ab4b27da2f8435aff5f6 100644
+--- a/dist/internal/sessions.d.ts
++++ b/dist/internal/sessions.d.ts
+@@ -56,6 +56,10 @@ export type GrantSessionOptions = {
+     permissions: SessionPermissions;
+     /** Unix epoch seconds. Most apps use Date.now()/1000 + N. */
+     expiry: number;
++    /** Runs after the passkey signature but before the relay submission. */
++    onBeforeSubmit?: () => void | Promise<void>;
 +    /** Runs with the durable relay id immediately after submission, before polling. */
 +    onSubmitted?: (callsId: Hex) => void | Promise<void>;
- }): Promise<ExecuteResult>;
- //# sourceMappingURL=revokeSession.d.ts.map
-\ No newline at end of file
---- a/dist/revokeSession.js
-+++ b/dist/revokeSession.js
-@@ -48,6 +48,7 @@
-         revokeKeys: [sessionKeyDesc],
-         network,
-     });
-+    await config.onSubmitted?.(callsId);
-     const result = await waitForCalls(relayClient, callsId);
-     return {
-         callsId,
+     /**
+      * Provide your own session signer (e.g., generated by your backend and
+      * stored alongside user state). If omitted, the SDK generates a fresh
+diff --git a/dist/recoverFromPasskey.js b/dist/recoverFromPasskey.js
+index 9bf335392f30b03fbbfafe0280760050f04a4959..5ea5104f086dee5b95e1ce6d6b41a0e3139fa131 100644
 --- a/dist/recoverFromPasskey.js
 +++ b/dist/recoverFromPasskey.js
 @@ -13,10 +13,18 @@
@@ -311,7 +380,7 @@
  export async function recoverFromPasskey(opts) {
      if (typeof navigator === "undefined" || !navigator.credentials) {
          throw new Error("recoverFromPasskey() needs a browser — it triggers the WebAuthn " +
-@@ -53,21 +61,16 @@
+@@ -53,21 +61,16 @@ export async function recoverFromPasskey(opts) {
              `by createPasskeyWallet.`);
      }
      const walletAddress = bytesToHex(userHandleBytes);
@@ -342,7 +411,7 @@
      // 4. Rebuild the credential reference. PublicKeyCredential.id is already
      //    a base64url string — exactly what ox.WebAuthnP256.sign expects
      //    (it calls Base64.toBytes on it). Do NOT hex-encode rawId here;
-@@ -82,6 +85,7 @@
+@@ -82,6 +85,7 @@ export async function recoverFromPasskey(opts) {
      });
      return {
          address: walletAddress,
@@ -350,20 +419,28 @@
          signer,
      };
  }
---- a/dist/internal/relay.js
-+++ b/dist/internal/relay.js
-@@ -312,12 +312,12 @@
-         try {
-             const status = await getCallsStatus(client, { id: callsId });
-             const code = status?.status;
--            if (code === 200 || code === "CONFIRMED") {
-+            if (code === 200 || code === 201 || code === "CONFIRMED") {
-                 return {
-                     status: "CONFIRMED",
-                     transactionHash: status?.receipts?.[0]?.transactionHash,
-                 };
-             }
--            if (code === 500 || code === "FAILED") {
-+            if ((typeof code === "number" && code >= 300) || code === "FAILED") {
-                 return { status: "FAILED" };
-             }
+diff --git a/dist/revokeSession.d.ts b/dist/revokeSession.d.ts
+index aa3bfdeafa7c5eff9a9de3369ac1af1957647c64..a14520900444c595a0125b6bbf9de1188d1eac11 100644
+--- a/dist/revokeSession.d.ts
++++ b/dist/revokeSession.d.ts
+@@ -13,5 +13,7 @@ import type { ExecuteResult, Wallet } from "./internal/types.js";
+ export declare function revokeSession(wallet: Wallet, adminSigner: Signer, sessionOrPublicKey: Session | Hex, config: {
+     network: NetworkConfig;
+     feeToken?: Address;
++    /** Runs with the durable relay id immediately after submission, before polling. */
++    onSubmitted?: (callsId: Hex) => void | Promise<void>;
+ }): Promise<ExecuteResult>;
+ //# sourceMappingURL=revokeSession.d.ts.map
+\ No newline at end of file
+diff --git a/dist/revokeSession.js b/dist/revokeSession.js
+index 717cdb8bff0afcd0275e8a9b1223166f7e44a47b..78c1029b3585f06d18bb6048c9f8ac69caba535a 100644
+--- a/dist/revokeSession.js
++++ b/dist/revokeSession.js
+@@ -48,6 +48,7 @@ export async function revokeSession(wallet, adminSigner, sessionOrPublicKey, con
+         revokeKeys: [sessionKeyDesc],
+         network,
+     });
++    await config.onSubmitted?.(callsId);
+     const result = await waitForCalls(relayClient, callsId);
+     return {
+         callsId,

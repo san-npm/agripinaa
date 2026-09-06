@@ -213,12 +213,24 @@ async function main() {
     if (strategy) strategyKeySets.set(name, { keySet, module: agents.get(name)!.module });
   }
 
+  let directFunding: { account: `0x${string}`; privateKey: `0x${string}` } | undefined;
+  if (process.env.DIRECT_FUNDING_ENABLED === 'true') {
+    const account = process.env.DIRECT_FUNDING_ACCOUNT;
+    const keyFile = process.env.FUNDING_RECOVERY_KEY_FILE;
+    if (!account || !/^0x[\da-f]{40}$/i.test(account) || !keyFile || !process.env.OPS_TOKEN?.trim()) {
+      throw new Error('Direct funding requires an approved account and dedicated gas-wallet key file');
+    }
+    const key = JSON.parse(readFileSync(keyFile, 'utf8')).privateKey as unknown;
+    if (typeof key !== 'string' || !/^0x[\da-f]{64}$/i.test(key)) throw new Error('Invalid direct funding key file');
+    directFunding = { account: account as `0x${string}`, privateKey: key as `0x${string}` };
+  }
   startX402Server({
     port: PORT,
     facilitatorKey: privateKey,
     agents,
     managers,
     opsToken: process.env.OPS_TOKEN,
+    directFunding,
   });
   console.log(`x402 status server on :${PORT} (${[...agents.keys()].join(', ')})`);
   if (managers.size > 0) {

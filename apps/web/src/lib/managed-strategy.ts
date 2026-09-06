@@ -7,9 +7,10 @@ import {
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { encodeFunctionData, erc20Abi, maxUint256, type Hex } from 'viem';
 
-import { altanaClient } from './altana';
+import type { altanaClient } from './altana';
 import { assertRelayConfirmed } from './relay-execution-result';
 import type { FundingCall } from './funding-bootstrap';
+import { executeFunding } from './funding-execution';
 
 export { buildStrategyScope, describeScope } from './strategy-scope';
 
@@ -28,6 +29,7 @@ export async function approveStrategyVenues(
   bootstrap?: {
     calls: readonly FundingCall[];
     merchantUrl?: string;
+    registrationFee?: bigint;
     onSubmitted?: (callsId: Hex) => void | Promise<void>;
   },
 ) {
@@ -50,12 +52,13 @@ export async function approveStrategyVenues(
       }),
     }];
   });
-  const result = await altanaClient().execute({
+  const result = await executeFunding({
     wallet: wallet as never,
     signer: wallet.signer as never,
     chainId,
     calls: [...(bootstrap?.calls ?? []), ...calls] as never,
     ...(bootstrap?.merchantUrl ? { merchantUrl: bootstrap.merchantUrl } : {}),
+    ...(bootstrap?.registrationFee !== undefined ? { registrationFee: bootstrap.registrationFee } : {}),
     ...(bootstrap?.onSubmitted ? { onSubmitted: bootstrap.onSubmitted } : {}),
   });
   return assertRelayConfirmed(result, bootstrap?.calls.length ? 'Funding preparation' : 'Strategy approvals');

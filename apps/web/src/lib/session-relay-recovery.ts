@@ -1,6 +1,7 @@
 'use client';
 
 import type { Address, Hex } from 'viem';
+import { isDirectFundingId } from '@agripinaa/shared/funding';
 
 const ALTANA_RELAY_URL = 'https://relay.altana.network';
 const CALLS_ID_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -67,7 +68,7 @@ export async function readRelayCallStatus(args: {
   fetcher?: typeof fetch;
 }): Promise<RelayCallStatus> {
   const fetcher = args.fetcher ?? fetch;
-  const response = await fetcher(ALTANA_RELAY_URL, {
+  const response = await fetcher(isDirectFundingId(args.callsId) ? '/api/funding/relay' : ALTANA_RELAY_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

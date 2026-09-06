@@ -15,6 +15,7 @@ import {
   TOKENS_BSC,
   YIELD_ROUTERS_BSC,
   fundingRoute,
+  directFundingDeadline,
   isFundingAsset,
   withFundingQuoteBuffer,
   type FundingAsset,
@@ -128,14 +129,15 @@ export async function fundingQuote(
   asset: FundingAsset,
   now = Date.now(),
 ): Promise<FundingQuoteResponse> {
-  const registrationFee = await client.readContract({
+  const liveRegistrationFee = await client.readContract({
     address: ALTANA_KEYSTORE_CONTROLLER_BSC,
     abi: KEYSTORE_CONTROLLER_ABI,
     functionName: 'getRegistrationFeeInWei',
   });
-  if (typeof registrationFee !== 'bigint' || registrationFee < 0n) {
+  if (typeof liveRegistrationFee !== 'bigint' || liveRegistrationFee < 0n) {
     throw new Error('invalid Altana registration fee');
   }
+  const registrationFee = withFundingQuoteBuffer(liveRegistrationFee);
   if (registrationFee > FUNDING_MAX_REGISTRATION_FEE_WEI) {
     throw new Error('Altana registration fee exceeds the funding safety cap');
   }
@@ -224,7 +226,7 @@ function hasCanonicalMerchantEnvelope(request: MerchantRequest): boolean {
     && capabilities.revokeKeys === undefined
     && capabilities.meta
     && capabilities.meta.feePayer === undefined
-    && capabilities.meta.nonce === undefined
+    && (capabilities.meta.nonce === undefined || validDirectNonce(capabilities.meta.nonce))
     && capabilities.meta.feeToken?.toLowerCase() === ZERO_ADDRESS
     && key
     && key.type === 'webauthnp256'
@@ -232,6 +234,10 @@ function hasCanonicalMerchantEnvelope(request: MerchantRequest): boolean {
     // A WebAuthn P-256 public key is x || y: exactly 64 bytes.
     && /^0x[0-9a-fA-F]{128}$/.test(key.publicKey)
   );
+}
+
+function validDirectNonce(nonce: bigint): boolean {
+  try { return directFundingDeadline(nonce) > Math.floor(Date.now() / 1000); } catch { return false; }
 }
 
 const BATCH_CALLS_ABI = [{
@@ -260,6 +266,23 @@ function decodeCalls(executionData: Hex): readonly MerchantCall[] | null {
   } catch {
     return null;
   }
+}
+
+/** Recover only the first-activation envelope; the normal funding policy still applies. */
+export function fundingRequestFromExecution(executionData: Hex): MerchantRequest {
+  const calls = decodeCalls(executionData);
+  const registration = calls?.find((call) =>
+    call.to.toLowerCase() === ALTANA_KEYSTORE_CONTROLLER_BSC.toLowerCase(),
+  );
+  if (!calls || !registration?.data) throw new Error('Recovery requires initial passkey registration');
+  const decoded = decodeFunctionData({ abi: KEYSTORE_CONTROLLER_ABI, data: registration.data });
+  if (decoded.functionName !== 'initialRegisterKey') throw new Error('Invalid recovery registration');
+  return {
+    chainId: 56,
+    calls,
+    capabilities: { authorizeKeys: [], meta: { feeToken: ZERO_ADDRESS }, preCall: false },
+    key: { prehash: false, publicKey: decoded.args[3], type: 'webauthnp256' },
+  };
 }
 
 function validRelayPreCalls(values: readonly Hex[], request: MerchantRequest): boolean {
@@ -299,6 +322,7 @@ export function validFundingRelayQuote(
     || intent.paymentToken?.toLowerCase() !== ZERO_ADDRESS
     || intent.isMultichain !== false
     || typeof intent.nonce !== 'bigint'
+    || (request.capabilities.meta.nonce !== undefined && intent.nonce !== request.capabilities.meta.nonce)
     || (intent.nonce >> 240n) === 0xc1d0n
     || typeof intent.combinedGas !== 'bigint'
     || intent.combinedGas <= 0n
@@ -551,7 +575,10 @@ export async function validReimbursedFundingRequest(
   const quotedFee = BigInt(quote.bootstrapFeeInput);
   if (!amountCanSatisfyQuote(reimbursement.amount, quotedFee)) return false;
   const quotedReserve = BigInt(quote.gasReserveInput);
-  const freshReserveWei = BigInt(quote.gasReserveWei);
+  // The browser signs one buffered registration budget, not a second oracle read.
+  const freshRegistrationMinimum = BigInt(quote.registrationFeeWei) * BPS_DENOMINATOR
+    / (BPS_DENOMINATOR + FUNDING_QUOTE_BUFFER_BPS);
+  const freshReserveWei = FUNDING_GAS_RESERVE_WEI + freshRegistrationMinimum * FUNDING_REGISTRATION_COUNT;
   const expectedReservePath = exactInputPath(fundingRoute(reimbursement.asset, 'WBNB')).toLowerCase();
   const reserveSwap = accountSwaps.find(({ amountIn, minimum, path, index }) =>
     index === 6
@@ -613,7 +640,8 @@ export async function validReimbursedFundingRequest(
   if (nextIndex !== terminalIndex) return false;
   if (initialRegistration) {
     if (
-      !amountIsSafeOverage(initialRegistration.value, BigInt(quote.registrationFeeWei))
+      !amountIsSafeOverage(initialRegistration.value, freshRegistrationMinimum)
+      || initialRegistration.value > FUNDING_MAX_REGISTRATION_FEE_WEI
       || reserveWithdrawal.amount !== FUNDING_GAS_RESERVE_WEI
         + initialRegistration.value * FUNDING_REGISTRATION_COUNT
       || initialRegistration.index <= reserveWithdrawal.index

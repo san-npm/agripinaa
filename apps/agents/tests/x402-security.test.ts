@@ -18,6 +18,23 @@ const PAYER = '0x2222222222222222222222222222222222222222' as const;
 const PAY_TO = '0x3333333333333333333333333333333333333333' as const;
 const SPENDER = '0x4444444444444444444444444444444444444444' as const;
 
+test('direct funding stays disabled by default and its runner RPC requires the web operations token', async (t) => {
+  const server = startX402Server({ port: 0, facilitatorKey: `0x${'11'.repeat(32)}`, agents: new Map(), opsToken: 'funding-test-token' });
+  t.after(() => server.close());
+  if (!server.listening) await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const url = `http://127.0.0.1:${address.port}/internal/funding-relay`;
+  const request = (authorized: boolean, method: string) => fetch(url, { method: 'POST',
+    headers: { 'content-type': 'application/json', ...(authorized ? { authorization: 'Bearer funding-test-token' } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: [PAYER] }),
+  });
+  assert.equal((await request(false, 'agripinaa_getFundingMode')).status, 401);
+  assert.deepEqual((await (await request(true, 'agripinaa_getFundingMode')).json()).result, { enabled: false });
+  assert.ok((await (await request(true, 'wallet_sendPreparedCalls')).json()).error);
+  assert.ok((await (await request(true, 'eth_sendRawTransaction')).json()).error);
+});
+
 test('plain Permit2 is rejected before signature verification because it is not recipient-bound', async () => {
   const payment: DecodedPayment = {
     rail: 'permit2',
