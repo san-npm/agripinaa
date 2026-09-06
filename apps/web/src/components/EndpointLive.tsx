@@ -12,7 +12,7 @@ export function EndpointLiveBadge({ className = "" }: { className?: string }) {
   return (
     <span
       title="This agent's own endpoint answered a probe in the last 36 hours"
-      className={`inline-flex items-center gap-1 rounded border border-success/30 bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success ${className}`}
+      className={`inline-flex items-center gap-1 rounded border border-success/30 bg-success/10 px-1.5 py-0.5 text-xs font-medium text-success ${className}`}
     >
       <span aria-hidden className="live-dot h-1.5 w-1.5 rounded-full bg-success" />
       live

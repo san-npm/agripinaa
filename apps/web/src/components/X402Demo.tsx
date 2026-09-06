@@ -216,7 +216,7 @@ export function X402Demo({
         <h2 className="text-xs font-medium uppercase tracking-wider text-muted-2">
           x402 status endpoint
         </h2>
-        {tag && <span className="text-[10px] text-muted-2">{tag}</span>}
+        {tag && <span className="text-xs text-muted-2">{tag}</span>}
       </div>
       <p className="text-sm leading-relaxed text-muted">
         Reading this agent&apos;s live status is one paid HTTP call on the B402 wire
@@ -252,7 +252,7 @@ export function X402Demo({
         Example response after payment. The shape is what the runner returns; the values
         are illustrative.
       </p>
-      <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-surface-2 p-3 font-mono text-[11px] leading-relaxed text-muted">
+      <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-surface-2 p-3 font-mono text-xs leading-relaxed text-muted">
         {JSON.stringify(previewPayload(slug), null, 2)}
       </pre>
 
@@ -275,7 +275,7 @@ export function X402Demo({
           <Challenge ask={outcome.ask} payTo={outcome.payTo} storedSession={outcome.storedSession} />
         )}
         {outcome.kind === 'paid' && (
-          <pre className="overflow-x-auto rounded-lg border border-success/25 bg-success/5 p-3 font-mono text-[11px] leading-relaxed text-muted">
+          <pre className="overflow-x-auto rounded-lg border border-success/25 bg-success/5 p-3 font-mono text-xs leading-relaxed text-muted">
             {JSON.stringify(outcome.payload, null, 2)}
           </pre>
         )}

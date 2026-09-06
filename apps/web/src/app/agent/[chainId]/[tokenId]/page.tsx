@@ -177,7 +177,7 @@ async function AgentContent({
   const blockedCopy = blocked ? ACTIVATION_BLOCKED_COPY[blocked] : null;
 
   return (
-    <div className="max-w-4xl">
+    <div className="mx-auto max-w-5xl">
       <Link
         href="/agents"
         className="mb-6 inline-flex items-center gap-1 text-xs text-muted-2 transition-colors hover:text-foreground"
@@ -198,7 +198,7 @@ async function AgentContent({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">{agent.name}</h1>
-            {registryRecord && (
+            {registryRecord && !verified && (
               <span className="rounded-full border border-border-strong bg-surface px-2.5 py-0.5 text-xs text-muted">
                 Agripinaa first-party
               </span>
@@ -230,16 +230,16 @@ async function AgentContent({
             )}
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-            {agent.description || "No description provided by this agent."}
+            {experience?.summary || agent.description || "No description provided by this agent."}
           </p>
           {ownerProvided && (
-            <p className="mt-1.5 font-mono text-[10px] text-muted-2">{ownerProvided}</p>
+            <p className="mt-1.5 font-mono text-xs text-muted-2">{ownerProvided}</p>
           )}
         </div>
         {!blockedCopy ? (
           <Link
             href={`/agent/${agent.chainId}/${agent.tokenId}/activate`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)]"
           >
             {experience?.profileCta ?? "Activate agent"} <ArrowIcon className="h-4 w-4" />
           </Link>
@@ -270,7 +270,13 @@ async function AgentContent({
         </p>
       )}
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+      {experience?.managed && <section className="mt-8 grid gap-6 rounded-xl border border-border bg-surface p-6 sm:grid-cols-2">
+        <div><p className="eyebrow mb-3">The approach</p><h2 className="text-xl font-medium">{experience.managed.heading}</h2><p className="mt-3 text-sm leading-relaxed text-muted">{experience.managed.intro}</p></div>
+        <div className="border-t border-border pt-5 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0"><p className="eyebrow mb-3">Before you activate</p><p className="text-sm text-muted">Review the permissions and fees in setup. Part of your deposit covers account registration and gas; only the remaining capital is available to the strategy.</p><p className="mt-3 text-sm text-muted">Returns are variable. Monitor your account and keep enough gas for withdrawals.</p></div>
+      </section>}
+
+      <details className="mt-6 rounded-xl border border-border bg-surface p-5"><summary className="font-medium">Identity, reputation and contract details</summary>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Panel title="Identity">
           <dl className="space-y-3 text-sm">
             <div className="flex items-center justify-between gap-2">
@@ -361,6 +367,8 @@ async function AgentContent({
         </Panel>
       </div>
 
+      </details>
+
       {verified && (
         <div className="mt-4">
           <ProofPanel agent={verified} />
@@ -439,7 +447,7 @@ function TrustStat({
       >
         {value}
       </div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-2">
+      <div className="mt-0.5 text-xs uppercase tracking-wide text-muted-2">
         {label}
       </div>
     </div>

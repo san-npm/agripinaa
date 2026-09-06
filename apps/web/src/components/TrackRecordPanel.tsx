@@ -46,7 +46,7 @@ export async function TrackRecordPanel({ wallet }: { wallet: string }) {
               hint="UTC"
             />
           </dl>
-          <p className="mt-3 text-[10px] leading-relaxed text-muted-2">
+          <p className="mt-3 text-xs leading-relaxed text-muted-2">
             Ophis-attributed fills within the {EXEC_ORDER_WINDOW} most recent
             orders from this agent&apos;s wallet. Surplus is executed against
             signed amounts.
@@ -70,13 +70,13 @@ function Stat({
 }) {
   return (
     <div className="rounded-lg border border-border bg-surface-2 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-muted-2">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-muted-2">{label}</div>
       <div
         className={`tabular mt-1 font-mono text-lg font-medium ${positive ? "text-success" : "text-foreground"}`}
       >
         {value}
       </div>
-      {hint && <div className="text-[10px] text-muted-2">{hint}</div>}
+      {hint && <div className="text-xs text-muted-2">{hint}</div>}
     </div>
   );
 }

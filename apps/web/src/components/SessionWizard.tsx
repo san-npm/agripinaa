@@ -142,10 +142,10 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
   const funded = balance != null && balance >= BigInt(MIN_NATIVE);
   const stepIndex = { wallet: 0, fund: 1, scope: 2, granted: 3 }[step];
   const primaryBtn =
-    'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
+    'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+    <div className="setup-layout">
       <div className="rounded-2xl border border-border bg-surface p-6">
         <Stepper current={stepIndex} />
 
@@ -313,7 +313,7 @@ export function SessionWizard({ agent }: { agent: WizardAgent }) {
         )}
       </div>
 
-      <aside className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(139,92,246,0.05),transparent_45%)] p-6">
+      <aside className="rounded-2xl border border-border bg-surface p-6">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted-2">
           What you&apos;re granting
         </h3>

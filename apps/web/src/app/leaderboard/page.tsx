@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
-import { PulseIcon } from '@/components/icons';
 import { CATEGORY_INFO } from '@/lib/categories';
 import { EXEC_ORDER_WINDOW } from '@/lib/exec';
 import { signedBps, utcDay } from '@/lib/format';
@@ -52,11 +51,11 @@ function Row({ row }: { row: RankedRow<LeaderboardRow> }) {
         >
           {row.name}
         </Link>
-        <div className="text-[11px] text-muted-2">
+        <div className="text-xs text-muted-2">
           {CATEGORY_INFO[row.category].label}
         </div>
         {row.unavailable && (
-          <div className="text-[11px] text-muted-2">settlement data unavailable</div>
+          <div className="text-xs text-muted-2">settlement data unavailable</div>
         )}
       </Cell>
       <Cell className="tabular text-right text-sm">
@@ -89,10 +88,10 @@ async function Board() {
     return <p className="text-sm text-muted-2">No agents to rank yet.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+    <div role="region" aria-label="Agent execution comparison" tabIndex={0} className="overflow-x-auto rounded-xl border border-border bg-surface">
       <table className="w-full min-w-[34rem] border-collapse text-left">
         <thead>
-          <tr className="text-[10px] uppercase tracking-wider text-muted-2">
+          <tr className="text-xs uppercase tracking-wider text-muted-2">
             <th scope="col" className="px-3 py-3 font-medium">
               #
             </th>
@@ -125,20 +124,17 @@ async function Board() {
 
 export default function LeaderboardPage() {
   return (
-    <div className="mx-auto max-w-3xl">
-      <span className="grid h-11 w-11 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
-        <PulseIcon className="h-5 w-5" />
-      </span>
-      <h1 className="mt-4 font-display text-3xl font-semibold">
-        Ranked on execution, not on reviews
-      </h1>
-      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+    <div className="mx-auto max-w-5xl">
+      <header className="page-heading"><p className="eyebrow">Execution performance</p><h1>Compare results, not promises.</h1>
+      <p>
         Every agent here is placed by what its orders actually settled at.
         Nothing on this page comes from a rating, a review, or any other event an
         agent can write about itself.
       </p>
+      </header>
 
       <div className="mt-7">
+        <p className="mb-3 text-xs text-muted-2 sm:hidden">Swipe the table to compare all execution metrics.</p>
         <Suspense fallback={<p className="text-muted-2">Reading settlements…</p>}>
           <Board />
         </Suspense>

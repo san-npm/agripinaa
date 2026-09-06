@@ -99,15 +99,10 @@ export default function DashboardPage() {
   }, [refresh]);
 
   return (
-    <div className="max-w-3xl">
-      <h1 className="font-display text-2xl font-semibold">My sessions</h1>
-      <p className="mt-2 text-sm text-muted">
-        Track unfinished activations and every key you have granted, with live
-        on-chain status read straight from the KeyStore registry.
-      </p>
-
-      {dashboard !== null && <MissingActivationRecovery />}
-      {dashboard !== null && <LostRangerRecovery />}
+    <div className="mx-auto max-w-5xl">
+      <header className="page-heading flex flex-wrap items-end justify-between gap-5"><div><p className="eyebrow">Your workspace</p><h1>My agents</h1>
+      <p>Follow your balances and agent status. Resume setup, stop an agent, or withdraw from your account.</p></div>
+      <Link href="/agents" className="button-secondary">Explore agents <ArrowIcon className="h-4 w-4" /></Link></header>
 
       {dashboard == null ? (
         <div className="mt-8 h-32 animate-pulse rounded-2xl border border-border bg-surface" />
@@ -156,6 +151,14 @@ export default function DashboardPage() {
         </>
       )}
 
+      {dashboard !== null && (
+        <details className="mt-10 rounded-xl border border-border bg-surface p-5">
+          <summary className="font-medium">Missing an agent or recovering an account?</summary>
+          <p className="mt-2 text-sm text-muted">Use the same passkey to find a funded account. Do not deposit again.</p>
+          <MissingActivationRecovery />
+          <LostRangerRecovery />
+        </details>
+      )}
     </div>
   );
 }
@@ -179,10 +182,6 @@ function PendingActivationCard({ activation }: { activation: PendingActivation }
 
   return (
     <li className="relative overflow-hidden rounded-2xl border border-primary/35 bg-surface p-6">
-      <div
-        aria-hidden
-        className="agp-orb pointer-events-none absolute -right-12 -top-14 h-40 w-40 rounded-full opacity-50"
-      />
       <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-xl">
           <div className="flex flex-wrap items-center gap-2">
@@ -212,14 +211,14 @@ function PendingActivationCard({ activation }: { activation: PendingActivation }
         {session ? (
           <a
             href={`#session-${session.id}`}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all hover:bg-[var(--primary-050)]"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)]"
           >
             Finish handoff <ArrowIcon className="h-4 w-4" />
           </a>
         ) : (
           <Link
             href={`/agent/${chainId}/${agent.tokenId}/activate`}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all hover:bg-[var(--primary-050)]"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)]"
           >
             Resume {agent.name.replace(/^Agripinaa /, '')} <ArrowIcon className="h-4 w-4" />
           </Link>
@@ -232,12 +231,8 @@ function PendingActivationCard({ activation }: { activation: PendingActivation }
 function EmptyState() {
   return (
     <div className="relative mt-8 overflow-hidden rounded-2xl border border-border bg-surface p-8">
-      <div
-        aria-hidden
-        className="agp-orb pointer-events-none absolute -right-10 -top-10 z-0 h-48 w-48 rounded-full opacity-70"
-      />
       <div className="relative z-10">
-        <span className="grid h-12 w-12 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
+        <span className="grid h-12 w-12 place-items-center rounded-xl border border-primary/25 bg-primary/5 text-primary">
           <ShieldIcon className="h-6 w-6" />
         </span>
         <h2 className="mt-4 font-display text-lg font-semibold">No active sessions</h2>
@@ -247,7 +242,7 @@ function EmptyState() {
         </p>
         <Link
           href="/agents"
-          className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)]"
+          className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)]"
         >
           Browse verified agents <ArrowIcon className="h-4 w-4" />
         </Link>
@@ -454,7 +449,7 @@ function LostRangerRecovery() {
           type="button"
           onClick={() => void findAccount()}
           disabled={busy}
-          className="mt-5 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.25)] transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50"
+          className="mt-5 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50"
         >
           {busy ? 'Waiting for passkey…' : 'Find my strategy account'}
         </button>
@@ -507,7 +502,7 @@ function LostRangerRecovery() {
             <button
               type="submit"
               disabled={busy || !destination.trim()}
-              className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.25)] transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50"
+              className="min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-[var(--primary-050)] disabled:opacity-50"
             >
               {busy ? 'Recovering on BNB Chain…' : 'Stop agents and recover funds'}
             </button>

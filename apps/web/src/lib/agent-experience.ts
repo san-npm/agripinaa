@@ -8,6 +8,8 @@ export interface ManagedActivationCopy {
 }
 
 export interface AgentExperienceCopy {
+  /** Plain-language overview; detailed permissions remain visible before approval. */
+  summary: string;
   /** Compact positioning shown on the directory card. */
   directoryLabel: string;
   /** Primary action on the profile. Autonomous agents jump to their live x402 interaction. */
@@ -25,6 +27,7 @@ export interface AgentExperienceCopy {
  */
 export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
   grid: {
+    summary: 'Buy and sell WBNB at preset price levels, with limits on trade size and frequency.',
     directoryLabel: 'WBNB grid · managed strategy',
     profileCta: 'Activate WBNB grid',
     managed: {
@@ -35,6 +38,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'grid-b': {
+    summary: 'Trade BTCB with wider price levels and a slower pace than the WBNB grid.',
     directoryLabel: 'BTCB grid · managed strategy',
     profileCta: 'Activate BTC grid',
     managed: {
@@ -45,6 +49,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'health-factor': {
+    summary: 'Monitor an existing Aave loan and use a reserved balance to repay debt when risk rises.',
     directoryLabel: 'Aave protection · managed reserve',
     profileCta: 'Protect Aave position',
     managed: {
@@ -55,6 +60,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'venus-guardian': {
+    summary: 'Monitor an existing Venus loan and use a reserved balance to repay debt when risk rises.',
     directoryLabel: 'Venus protection · managed reserve',
     profileCta: 'Protect Venus position',
     managed: {
@@ -65,6 +71,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   yield: {
+    summary: 'Move stablecoins between Aave and Venus when a better lending rate persists.',
     directoryLabel: 'Responsive yield · managed deposits',
     profileCta: 'Choose responsive yield',
     managed: {
@@ -77,6 +84,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'yield-b': {
+    summary: 'Earn lending yield with fewer moves. Wait for stronger rate differences before switching venues.',
     directoryLabel: 'Patient yield · managed deposits',
     profileCta: 'Choose patient yield',
     managed: {
@@ -89,6 +97,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'lp-range': {
+    summary: 'Manage a WBNB/USDT liquidity range on PancakeSwap V3 and rebalance when needed.',
     directoryLabel: 'PancakeSwap V3 range · managed LP',
     profileCta: 'Activate LP Ranger',
     managed: {
@@ -99,6 +108,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'weight-rebalancer': {
+    summary: 'Keep WBNB and USDT near an equal split, rebalancing only when the mix drifts.',
     directoryLabel: '50/50 portfolio · managed strategy',
     profileCta: 'Activate 50/50 rebalancer',
     managed: {

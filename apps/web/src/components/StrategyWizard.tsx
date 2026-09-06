@@ -62,6 +62,7 @@ import {
 import { compensateSessionStorageFailure } from '@/lib/session-storage-recovery';
 import { toast } from '@/lib/toast';
 import { ActivationProgress, FundingDeposit, RelayGrantNotice } from './FundingDeposit';
+import { SetupSteps } from './SetupSteps';
 import { CoinsIcon, ShieldIcon, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
@@ -751,11 +752,12 @@ export function StrategyWizard({
               : recoveredFunding || preparedFunding?.status === 'confirmed'
                 ? 'Continue: grant agent mandate'
                 : agent.submitLabel ?? `Activate ${agent.name}`;
-  const primaryBtn = 'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
+  const primaryBtn = 'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+    <div className="setup-layout">
       <div className="rounded-2xl border border-border bg-surface p-6">
+        <SetupSteps current={step === 'wallet' ? 0 : step === 'deposit' ? 1 : 2} />
         {step === 'wallet' && (
           <section className="space-y-4">
             <div>

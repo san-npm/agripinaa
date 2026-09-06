@@ -7,7 +7,6 @@ import {
   ALTANA_KEYSTORE_CONTROLLER_BSC,
   managedTokenForFunding,
 } from '@agripinaa/shared/funding';
-import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { useCallback, useEffect, useState } from 'react';
 import { encodeFunctionData, erc20Abi, parseAbi, type Hex } from 'viem';
 
@@ -82,6 +81,7 @@ import {
 import { receiptProvesFundingMainBatch } from '@/lib/funding-receipt';
 import { recoverableStrategyFundingProblem } from '@/lib/funding-recovery';
 import { ActivationProgress, FundingDeposit, RelayGrantNotice } from './FundingDeposit';
+import { SetupSteps } from './SetupSteps';
 import { CoinsIcon, LightningIcon, ShieldIcon, TokenLogo, VerifiedIcon } from './icons';
 
 type Step = 'wallet' | 'deposit' | 'active';
@@ -1231,13 +1231,13 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
               : agent.submitLabel ?? 'Put funds under management';
   const resetCancelsPending = rotatedGrantReset?.cancellation === true;
   const primaryBtn =
-    'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
+    'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+    <div className="setup-layout">
       <div className="rounded-2xl border border-border bg-surface p-6">
         {bestApyPct != null && bestVenue && (
-          <div className="mb-5 flex items-center justify-between rounded-lg border border-success/20 bg-[linear-gradient(180deg,rgba(16,185,129,0.06),transparent)] px-3 py-2.5">
+          <div className="mb-5 flex items-center justify-between rounded-lg border border-success/20 bg-surface px-3 py-2.5">
             <span className="text-xs text-muted-2">
               {automationReady
                 ? `Live ${token} yield, auto-rotated to the best venue`
@@ -1248,7 +1248,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             </span>
           </div>
         )}
-        <Stepper current={stepIndex} />
+        <SetupSteps current={stepIndex} />
 
         {step === 'wallet' && (
           <section className="mt-6 space-y-4">
@@ -1276,7 +1276,7 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                     aria-pressed={fundingAsset === asset}
                     className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
                       fundingAsset === asset
-                        ? 'border-primary/50 bg-primary/10 text-foreground shadow-[0_0_16px_rgba(245,158,11,0.15)]'
+                        ? 'border-primary/50 bg-primary/10 text-foreground '
                         : 'border-border-strong text-muted-2 hover:border-primary/30 hover:text-foreground'
                     }`}
                   >
@@ -1286,7 +1286,9 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted-2">
-                {fundingAsset === 'USDC' ? 'USDC remains USDC.' : `${fundingAsset} is prepared into USDT.`}{' '}
+                {fundingAsset === 'USDC' || fundingAsset === 'USDT'
+                  ? `${fundingAsset} remains ${fundingAsset}.`
+                  : `${fundingAsset} is converted into USDT.`}{' '}
                 Gas is allocated from the same deposit.
               </p>
             </div>
@@ -1298,8 +1300,8 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
                 </span>
               </div>
               <p className="mt-2 text-xs text-muted-2">
-                Live venue management runs on BNB Chain mainnet. Try it with a
-                few dollars of {token}.
+                Uses real funds on BNB Chain. Review activation costs before depositing;
+                small deposits can leave little {token} for the strategy.
               </p>
             </div>
             <div className="flex flex-wrap gap-3 pt-1">
@@ -1473,10 +1475,10 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         )}
       </div>
 
-      <aside className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(139,92,246,0.05),transparent_45%)] p-6">
+      <aside className="rounded-2xl border border-border bg-surface p-6">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted-2">How your funds are protected</h3>
         <ul className="mt-4 space-y-4 text-sm">
-          <Assurance icon={<ShieldIcon className="h-5 w-5" />} title="Can't be drained">
+          <Assurance icon={<ShieldIcon className="h-5 w-5" />} title="Limited permissions">
             The agent may call only the Router, and every Router action returns
             funds to your account, never to a third party.
           </Assurance>
@@ -1484,9 +1486,9 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
             Your {token} (or its aToken/vToken) always sits in your own passkey
             account. We never hold it.
           </Assurance>
-          <Assurance icon={<LightningIcon className="h-5 w-5" />} title="Withdraw anytime">
-            One tap unwinds to plain {token} in your account; revoking the session
-            stops the agent instantly.
+          <Assurance icon={<LightningIcon className="h-5 w-5" />} title="You control the exit">
+            Stop the agent and withdraw from your dashboard. Transactions need gas
+            and confirmation; debt can prevent a full withdrawal.
           </Assurance>
           <Assurance icon={<VerifiedIcon className="h-5 w-5" />} title="On-chain enforced">
             The scope and expiry are enforced by the account contract, not by us.
@@ -1494,35 +1496,6 @@ export function ManagedWizard({ agent }: { agent: ManagedAgentProps }) {
         </ul>
       </aside>
     </div>
-  );
-}
-
-function Stepper({ current }: { current: number }) {
-  const steps = ['Account', 'Deposit', 'Active'];
-  return (
-    <ol className="flex items-center gap-2">
-      {steps.map((label, i) => {
-        const done = i < current;
-        const active = i === current;
-        return (
-          <li key={label} className="flex flex-1 items-center gap-2">
-            <span
-              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-xs font-medium ${
-                done
-                  ? 'border-primary bg-primary text-on-primary'
-                  : active
-                    ? 'border-primary bg-primary/15 text-primary'
-                    : 'border-border-strong text-muted-2'
-              }`}
-            >
-              {done ? '✓' : i + 1}
-            </span>
-            <span className={`text-sm ${active || done ? 'text-foreground' : 'text-muted-2'}`}>{label}</span>
-            {i < steps.length - 1 && <span className={`h-px flex-1 ${done ? 'bg-primary/50' : 'bg-border'}`} />}
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
