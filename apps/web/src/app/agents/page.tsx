@@ -9,6 +9,7 @@ import { listFirstParty, listRegistryPage, searchDirectory } from "@/lib/data";
 import {
   applyLocalFilters,
   directoryHref,
+  independentListingEmptyReason,
   matchesDirectorySearch,
   parseDirectoryQuery,
   type DirectoryQuery,
@@ -101,7 +102,7 @@ async function Directory({
 
       <section>
         <h2 className="font-display text-2xl font-medium">
-          {listing.searched ? "Search results" : "Independent agent directory"}
+          {listing.searched ? "Independent search results" : "Independent agent directory"}
         </h2>
         <p className="mb-4 mt-1 text-sm text-muted-2">
           {listing.searched
@@ -113,7 +114,7 @@ async function Directory({
 
         {listing.searchUnavailable && (
           <p className="mb-4 rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-sm text-muted">
-            Search is unavailable right now. The ranked listing is below.
+            Independent-directory search is unavailable right now. Its ranked listing is below.
           </p>
         )}
 
@@ -140,23 +141,6 @@ async function Directory({
   );
 }
 
-function emptyReason(query: DirectoryQuery, listing: Listing): string {
-  // A local filter emptying a page that did load agents is a different message
-  // from a page that came back with nothing at all.
-  if ((query.live || query.claimed) && listing.items.length > 0) {
-    return "No agents on the pages loaded so far match this filter.";
-  }
-  if (listing.searched) return `No agents match "${query.query}".`;
-  // A capped walk stops short of where the registry ends, so a page past it is
-  // past what one request reads, not past what the registry holds.
-  if (query.cursor) {
-    return listing.capped
-      ? "This page sits deeper than one walk of the registry reaches."
-      : "This page sits past the end of the listing.";
-  }
-  return "No agents in this listing yet.";
-}
-
 function EmptyListing({
   query,
   listing,
@@ -166,7 +150,7 @@ function EmptyListing({
 }) {
   return (
     <div className="rounded-xl border border-dashed border-border-strong bg-surface p-8 text-center">
-      <p className="text-sm text-muted">{emptyReason(query, listing)}</p>
+      <p className="text-sm text-muted">{independentListingEmptyReason(query, listing)}</p>
       {(query.live || query.claimed) && (
         <p className="mt-1 text-xs text-muted-2">
           The live-endpoint and claimed filters apply to the pages loaded so

@@ -46,6 +46,7 @@ try {
       ['home', '/'], ['agents', '/agents'], ['profile', '/agent/56/307487'],
       ['activation', '/agent/56/307487/activate'], ['dashboard', '/dashboard'], ['category', '/c/yield'],
       ['search', '/agents?q=steward'],
+      ['summary-search', '/agents?q=preset+price+levels'],
       ['activity', '/proof'], ['performance', '/leaderboard'], ['security', '/funds'],
     ]) {
       await cdp('Page.navigate', { url: base + route });
@@ -64,9 +65,21 @@ try {
       assert.equal(page.overflow, false, `${name} at ${width}px overflows`);
       assert.equal(page.main, true, `${name}: missing skip-link destination`);
       assert.equal(page.bad, false, `${name}: Next.js error overlay`);
-      if (name === 'search') {
+      if (name === 'search' || name === 'summary-search') {
         const names = await evaluate(`Array.from(document.querySelectorAll('main section:first-of-type .agent-card h3'), el => el.textContent)`);
-        assert.deepEqual(names, ['Agripinaa Steward'], 'Search must narrow first-party strategies');
+        assert.deepEqual(names, [name === 'search' ? 'Agripinaa Steward' : 'Agripinaa Grid'], 'Search must include displayed strategy summaries');
+        assert.equal(await evaluate(`document.querySelector('main').textContent.includes('No agents match')`), false, 'Independent empty state must not contradict first-party matches');
+      }
+      if (name === 'agents' || name === 'category') {
+        assert.equal(await evaluate(`(() => {
+          const heading = document.querySelector('.agent-card h3');
+          const original = heading.textContent;
+          try {
+            heading.textContent = 'X'.repeat(2000);
+            return heading.getBoundingClientRect().right <= heading.closest('.agent-card').getBoundingClientRect().right
+              && document.documentElement.scrollWidth <= innerWidth + 1;
+          } finally { heading.textContent = original; }
+        })()`), true, 'Unbroken registry names must stay inside their card');
       }
       if (name === 'dashboard') {
         assert.equal(await evaluate(`document.querySelector('main details')?.open`), false, 'Recovery should be available without dominating the dashboard');
