@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { join } from 'node:path';
 
 import {
   isDebtCompleteRouter,
@@ -22,11 +23,13 @@ import {
   type ExpectedAccountSessionPermissions,
 } from '@agripinaa/session-kit/verify';
 import { createX402Merchant } from '@altananetwork/x402-server';
-import type { Hex } from 'viem';
+import { createPublicClient, http, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
 import { collectProofEvents } from './proof';
+import { DATA_DIR } from './chassis';
+import { createDirectFundingRelay } from './direct-funding-relay';
 import {
   createFundingMerchant,
   fundingRequestAccount,
@@ -444,8 +447,14 @@ export function startX402Server(opts: {
   /** Shared secret for web-to-runner operational endpoints. */
   opsToken?: string;
   rpcUrl?: string;
+  directFunding?: { account: Address; privateKey: Hex };
 }): Server {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
+  const directFunding = createDirectFundingRelay({
+    client: createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 30_000, retryCount: 0 }) }),
+    journal: join(DATA_DIR, 'direct-funding.json'),
+    ...opts.directFunding,
+  });
   const managers = opts.managers ?? new Map<string, ManagerSet>();
   const grantLeases = new Map<string, { token: string; expiresAt: number }>();
   const quoteClient = opts.agents.values().next().value?.ctx.publicClient;
@@ -549,6 +558,32 @@ export function startX402Server(opts: {
     const entry = match ? opts.agents.get(match[1]!) : undefined;
     const merchant = match ? merchants.get(match[1]!) : undefined;
 
+    if (pathname === '/internal/funding-relay') {
+      if (!bearerMatches(typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined, opts.opsToken)) {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+        return;
+      }
+      if (req.method !== 'POST') { res.writeHead(405, { allow: 'POST' }); res.end(); return; }
+      const permit = fundingMerchantIngressGate.enter(FUNDING_MERCHANT_GLOBAL_KEY);
+      if (!permit.ok) { res.writeHead(429); res.end(); return; }
+      let id: unknown = null;
+      try {
+        const body = JSON.parse(await readBody(req, FUNDING_MERCHANT_BODY_BYTES, 5_000)) as { id?: unknown };
+        id = typeof body?.id === 'number' || typeof body?.id === 'string' ? body.id : null;
+        const result = await directFunding(body);
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
+      } catch {
+        if (!res.headersSent) {
+          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+          // Do not echo exceptions containing RPC payloads or executable signatures.
+          res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32000,
+            message: 'Funding could not be completed. Check the saved funding status before signing again.' } }));
+        }
+      } finally { permit.release(); }
+      return;
+    }
     if (pathname === '/internal/session-grant-lease') {
       if (!opts.opsToken) {
         res.writeHead(503, { 'content-type': 'application/json' });

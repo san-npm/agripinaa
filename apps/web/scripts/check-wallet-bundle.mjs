@@ -36,9 +36,20 @@ function* nodes(value) {
 }
 
 let checked = 0;
+let feeChecked = 0;
 for (const [path, source] of sources) {
-  if (!source.includes('"PENDING"') || !source.includes('"FAILED"')) continue;
+  if (!source.includes('"PENDING"') && !source.includes('getRegistrationFeeInWei')) continue;
   for (const node of nodes(acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module' }))) {
+    if (node.type === 'FunctionDeclaration' && node.async && node.params.length === 2) {
+      const code = source.slice(node.start, node.end);
+      if (code.includes('"getRegistrationFeeInWei"') && code.includes('10200n')) {
+        const abi = [...nodes(node)].find((child) => child.type === 'Property' && child.key.name === 'abi');
+        assert.equal(abi?.value.type, 'Identifier');
+        const value = await runInNewContext(`(${code})({readContract:async()=>1001n},{})`, { [abi.value.name]: [] });
+        assert.equal(value, 1022n, `${path}: emitted registration fee is not buffered`);
+        feeChecked++;
+      }
+    }
     if (node.type !== 'FunctionDeclaration' || !node.async || node.params.length !== 4) continue;
     if (!node.body.body.some((statement) => ['WhileStatement', 'ForStatement'].includes(statement.type))) continue;
     const code = source.slice(node.start, node.end);
@@ -60,4 +71,5 @@ for (const [path, source] of sources) {
   }
 }
 assert.ok(checked > 0, 'No emitted SDK status poller found; update the bundle check before shipping.');
-console.log(`Wallet bundle check passed (${checked} poller${checked === 1 ? '' : 's'}).`);
+assert.ok(feeChecked > 0, 'No buffered SDK registration-fee reader found in the emitted bundle.');
+console.log(`Wallet bundle check passed (${checked} poller${checked === 1 ? '' : 's'}, ${feeChecked} fee reader${feeChecked === 1 ? '' : 's'}).`);

@@ -1,4 +1,33 @@
 import type { AgentSlug } from './agents';
+import { encodePacked, keccak256, type Address, type Hex } from 'viem';
+
+/** Direct submissions expire at the sender, including when an HTTP response is lost. */
+export function directFundingNonce(random: Hex, now = Date.now()): bigint {
+  if (!/^0x[\da-f]{32}$/i.test(random)) throw new Error('Funding nonce needs 16 random bytes');
+  return (0xa671f00dn << 224n) | (BigInt(Math.floor(now / 1000) + 300) << 192n) | (BigInt(random) << 64n);
+}
+
+export function directFundingDeadline(nonce: bigint): number {
+  if (nonce >> 224n !== 0xa671f00dn || (nonce & ((1n << 64n) - 1n)) !== 0n) {
+    throw new Error('Invalid direct funding nonce');
+  }
+  return Number((nonce >> 192n) & 0xffffffffn);
+}
+
+export function directFundingId(account: Address, nonce: bigint): Hex {
+  const deadline = directFundingDeadline(nonce).toString(16).padStart(8, '0');
+  const hash = keccak256(encodePacked(['uint256', 'address', 'uint256'], [56n, account, nonce]));
+  return `0xa671f00d${deadline}${hash.slice(18)}`;
+}
+
+export function isDirectFundingId(value: string): value is Hex {
+  return /^0xa671f00d[\da-f]{56}$/i.test(value);
+}
+
+export function directFundingIdDeadline(value: Hex): number {
+  if (!isDirectFundingId(value)) throw new Error('Invalid direct funding id');
+  return Number.parseInt(value.slice(10, 18), 16);
+}
 
 /** The four assets a user may send to start any first-party strategy. */
 export const FUNDING_ASSETS = ['BTCB', 'BNB', 'USDT', 'USDC'] as const;

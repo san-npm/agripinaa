@@ -102,6 +102,81 @@ BSC RPC simulation or transaction submission succeeds.
 Read-only chain checks still show account nonce 0, no delegated code, zero BNB,
 and the original 25,976,153,706,966 BTCB base units. The relay's public status
 endpoint exposes no failure reason beyond status 300. The exact rejection cause
-remains unresolved; a public-RPC simulation of the signed payload requires the
-user's approval, or the relay operator must supply its failure logs. Do not
-describe the activation as fixed based on the local simulation.
+remains unresolved. Do not describe the activation as fixed based on the local
+simulation.
+
+After explicit user approval, the complete signed EIP-7702 envelope was also
+simulated using `eth_call` on `https://bsc-dataseed.bnbchain.org`. It returned
+the successful Orchestrator result (`bytes4(0)`), with both authorizations,
+the quoted gas limit and fees, and no account state overrides. No transaction
+was broadcast. This is evidence at the current chain state, not a replay of
+the relay's original failure.
+
+The same provider does not expose `debug_traceCall`. Historical `eth_call`
+at blocks 120159263, 120159264 and 120159265 (surrounding submission timestamp
+1788633215) returned `missing trie node`, so submission-time execution could
+not be verified there.
+
+The next required evidence is the Altana operator's failure log for call
+`0x30b4ae65682e966f05071fb60d0f6268ae80d0a9e90d9ed7790b46095dae6379`:
+the underlying error before status 300, the preflight block/RPC response,
+actual sending account and fee parameters, and any signing/broadcast error.
+The public API does not expose these. No retry or transaction broadcast is
+authorized by the simulation approval.
+
+## Alternate sender pilot (local implementation, not deployed)
+
+Following approval to implement/test an alternate path without moving existing
+funds, `apps/agents/src/recover-funding.ts` adds an operator-only recovery command.
+It reuses the funding policy, gas cap, durable state writer and known-transaction
+handling. Simulation is the default; a separate gas wallet and explicit broadcast
+flag are required for any send. No public endpoint or browser integration was added.
+
+The full ten-call funding envelope succeeded in `eth_call` on a fresh local BSC
+fork using disposable EOA user/payer/sender keys, local USDT/BNB fixtures and the
+deployed contracts. Tests also reject invalid user/payer signatures and excessive
+fees, handle an already delegated payer without reauthorization, and refuse an
+already initialized user. No transaction was broadcast, even on the fork. This
+is not a live passkey end-to-end acceptance test.
+
+The current user's old intent is no longer eligible: its signed registration
+value was 643,173,666,243,097 wei, while the later fee read required
+648,140,581,995,046 wei. The recovery policy stopped before signing. This is a
+stale-quote limitation, not proof of what caused the original status 300.
+Historical fork replay through PublicNode also requires archive access, which
+was unavailable. Fresh quotes and a new user signature are needed; no additional
+agent deposit is indicated by this finding.
+
+Repository tests and `pnpm typecheck:ci` passed. Operational prerequisites and
+remaining browser/live-verification work are in `docs/funding-recovery.md`.
+The marketplace must not be described as restored on the strength of this pilot.
+
+## September 6: browser sender integration and registration-fee consistency
+
+The subsequent implementation connects the alternate sender to both approval
+flows through the existing activation checkpoint. It is a disabled-by-default,
+single-account pilot on the existing runner, not an automatic provider fallback.
+The browser saves a deterministic, deadline-bound ID before submission; the runner
+saves signed outer transaction bytes before sending. Retry/reload polls that ID
+without creating another transaction. Confirmation requires the exact successful
+Orchestrator event and three block confirmations. Missing receipts remain uncertain.
+
+Funding now signs the same 2%-buffered registration budget that its reserve quote
+covers. The SDK no longer rereads a different initial registration amount for this
+flow. Merchant checks use a fresh live minimum and retain their fee caps; tests
+accept a 1% fee rise and reject an uncovered 3% rise. Other SDK registration paths
+also buffer the current fee. This fixes quote consistency, not the unexplained
+historical hosted-relay rejection.
+
+Verification: 1,023 repository tests, all workspace type checks, the production
+webpack build and emitted-bundle checks passed. An actual SDK/headless-passkey
+test with mocked RPCs checks the quoted budget, signature, checkpoint-before-send,
+direct status polling and no hosted fallback after a lost submission response.
+The full ten-call transaction again passed a fresh local BSC fork simulation;
+invalid user and payer signatures were rejected. No live or fork transaction was
+broadcast, and no production wallet key or balance was changed.
+
+Neither the web/runner integration nor its live flag has been deployed in this
+implementation step. Altana still supplies merchant preparation, capabilities and
+authorization reads; only submission/status have an alternate path. Live activation,
+session grant, runner execution and withdrawal are still required acceptance checks.

@@ -45,6 +45,19 @@ import {
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address;
 
+it('SDK buffers registration reads and honors the budget already provisioned by the browser', async () => {
+  const helpers = await import(new URL('./internal/keystore.js', import.meta.resolve('@altananetwork/sdk')).href);
+  assert.equal(await helpers.readRegistrationFee({ readContract: async () => 1001n }, {}), 1022n);
+  const calls = await helpers.buildFirstActionPrepend({
+    publicClient: { readContract: async ({ functionName }: { functionName: string }) => {
+      assert.equal(functionName, 'getKeys', 'must not fetch a different registration fee');
+      return [];
+    } }, network: { keyStoreController: ALTANA_KEYSTORE_CONTROLLER_BSC },
+    walletAddress: ACCOUNT, adminPublicKey: `0x${'11'.repeat(64)}`, registrationFee: 1020n,
+  });
+  assert.equal(calls[0].value, 1020n);
+});
+
 it('merchant signs an EOA payer natively and preserves delegated-key signatures', async () => {
   const privateKey = `0x${'01'.repeat(32)}` as Hex;
   const owner = privateKeyToAccount(privateKey);
@@ -309,11 +322,11 @@ describe('reimbursed funding merchant', () => {
 
   it('quotes both the user-owned reserve and bootstrap reimbursement in the input asset', async () => {
     const quote = await fundingQuote(client as never, 'USDT', 1_000);
-    const provision = FUNDING_GAS_RESERVE_WEI + REGISTRATION_FEE * FUNDING_REGISTRATION_COUNT;
+    const provision = FUNDING_GAS_RESERVE_WEI + withFundingQuoteBuffer(REGISTRATION_FEE) * FUNDING_REGISTRATION_COUNT;
     assert.equal(quote.gasReserveInput, withFundingQuoteBuffer(provision * 1_000n).toString());
     assert.equal(quote.bootstrapFeeInput, withFundingQuoteBuffer(FUNDING_BOOTSTRAP_FEE_WEI * 1_000n).toString());
     assert.equal(quote.feePayer, FUNDING_FEE_PAYER_BSC);
-    assert.equal(quote.registrationFeeWei, REGISTRATION_FEE.toString());
+    assert.equal(quote.registrationFeeWei, withFundingQuoteBuffer(REGISTRATION_FEE).toString());
     assert.equal(quote.registrationCount, Number(FUNDING_REGISTRATION_COUNT));
     assert.equal(quote.expiresAt, 31_000);
   });
@@ -519,7 +532,7 @@ describe('reimbursed funding merchant', () => {
 
     const registration = {
       to: ALTANA_KEYSTORE_CONTROLLER_BSC,
-      value: REGISTRATION_FEE,
+      value: BigInt(quote.registrationFeeWei),
       data: encodeFunctionData({
         abi: KEYSTORE_CONTROLLER_ABI,
         functionName: 'initialRegisterKey',
@@ -536,6 +549,16 @@ describe('reimbursed funding merchant', () => {
       client as never,
       merchantRequest([...calls, registration]),
     ), true);
+    const movedFeeClient = (fee: bigint) => ({ readContract: async (args: Parameters<typeof client.readContract>[0]) =>
+      args.functionName === 'getRegistrationFeeInWei' ? fee : client.readContract(args) });
+    assert.equal(await validReimbursedFundingRequest(
+      movedFeeClient(REGISTRATION_FEE * 101n / 100n) as never,
+      merchantRequest([...calls, registration]),
+    ), true, 'one-percent fee increase between reads is covered by the signed two-percent buffer');
+    assert.equal(await validReimbursedFundingRequest(
+      movedFeeClient(REGISTRATION_FEE * 103n / 100n) as never,
+      merchantRequest([...calls, registration]),
+    ), false, 'a fee above the signed budget remains rejected');
 
     const staleRegistrationFee = REGISTRATION_FEE * 101n / 100n;
     const staleReserveWei = FUNDING_GAS_RESERVE_WEI

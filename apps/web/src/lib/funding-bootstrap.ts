@@ -92,6 +92,8 @@ export interface FundingCall {
 }
 
 export interface FundingBootstrapPlan {
+  /** Same buffered budget used for the reserve and SDK first-registration call. */
+  registrationFee?: bigint;
   /** Atomic funding, gas-provisioning, and strategy-preparation calls. */
   calls: readonly FundingCall[];
   input: FundingAsset;
@@ -407,6 +409,7 @@ export async function buildFundingBootstrapPlan(args: {
 
   return {
     calls,
+    registrationFee: gasQuote.registrationFeeWei,
     input,
     grossInput,
     gasReserveInput,
