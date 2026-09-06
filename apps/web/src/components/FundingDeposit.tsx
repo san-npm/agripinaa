@@ -15,13 +15,6 @@ import { useEffect, useState } from 'react';
 
 import { TokenLogo } from './icons';
 
-function shortAmount(value: bigint, maximumFractionDigits = 6): string {
-  const exact = fromBaseUnits(value, 18);
-  const [whole, fraction = ''] = exact.split('.');
-  const trimmed = fraction.slice(0, maximumFractionDigits).replace(/0+$/, '');
-  return trimmed ? `${whole}.${trimmed}` : whole!;
-}
-
 export function FundingDeposit({
   address,
   asset,
@@ -134,31 +127,38 @@ export function FundingDeposit({
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border" aria-live="polite">
-        <div className="flex items-center justify-between bg-surface-2 px-3 py-2.5 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-surface-2 px-3 py-2.5 text-sm">
           <span className="flex items-center gap-2 text-muted">
             <TokenLogo symbol={asset} className="h-5 w-5" /> Gross deposit
           </span>
-          <span className="font-mono tabular text-foreground">
-            {gross == null ? '…' : `${shortAmount(gross)} ${asset}`}
+          <span className="break-all font-mono tabular text-foreground">
+            {gross == null ? '…' : `${fromBaseUnits(gross, 18)} ${asset}`}
           </span>
         </div>
         <div className="divide-y divide-border border-t border-border bg-surface px-3 text-xs">
           <FundingLine
             label={`BNB provision (${gasQuote?.registrationCount ?? 2} key registrations + your reserve)`}
-            value={gasQuote == null ? 'Quoting…' : `${shortAmount(reserveInput)} ${asset}`}
+            value={gasQuote == null ? 'Quoting…' : `${fromBaseUnits(reserveInput, 18)} ${asset}`}
           />
           <FundingLine
             label="Activation relay fee (fixed)"
-            value={gasQuote == null ? 'Quoting…' : `${shortAmount(bootstrapInput)} ${asset}`}
+            value={gasQuote == null ? 'Quoting…' : `${fromBaseUnits(bootstrapInput, 18)} ${asset}`}
           />
           <FundingLine
             label="Available to strategy"
-            value={gross == null || gasQuote == null ? '…' : `${shortAmount(net)} ${asset}`}
+            value={gross == null || gasQuote == null ? '…' : `${fromBaseUnits(net, 18)} ${asset}`}
             strong
           />
           <FundingLine label="Agripinaa-funded amount" value="0" />
         </div>
       </div>
+
+      {gross != null && gross > 0n && gasQuote && allocation * 2n > gross && (
+        <p role="status" className="rounded-lg border border-primary/35 bg-primary/10 p-3 text-xs text-primary">
+          More than half this deposit is allocated to activation fees and the BNB gas reserve, not strategy capital.
+          Only the “Available to strategy” amount above will be invested. Unspent gas reserves remain in your account.
+        </p>
+      )}
 
       {quoteError && (
         <p role="alert" className="rounded-lg border border-danger/35 bg-danger/10 p-3 text-xs text-danger">
@@ -283,9 +283,9 @@ export function RelayGrantNotice({
 
 function FundingLine({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2.5">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5">
       <span className="text-muted-2">{label}</span>
-      <span className={`shrink-0 font-mono tabular ${strong ? 'font-semibold text-success' : 'text-muted'}`}>
+      <span className={`break-all font-mono tabular ${strong ? 'font-semibold text-success' : 'text-muted'}`}>
         {value}
       </span>
     </div>

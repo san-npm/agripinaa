@@ -6,6 +6,7 @@ import { managedStrategyFor } from '@agripinaa/shared/managed-strategies';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { altanaClient } from '@/lib/altana';
+import { startPolling } from '@/lib/poll';
 import { clearFundingCheckpointForSession } from '@/lib/funding-checkpoint';
 import { registerManaged } from '@/lib/managed';
 import { readableManagedCeilings, readableSessionCeiling } from '@/lib/session-copy';
@@ -38,6 +39,7 @@ export function SessionCard({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (busy) return;
     let cancelled = false;
     async function check() {
       if (!meta.publicKey || meta.account === 'unknown') {
@@ -55,11 +57,12 @@ export function SessionCard({
         if (!cancelled) setValidity('unknown');
       }
     }
-    void check();
+    const stop = startPolling(check);
     return () => {
       cancelled = true;
+      stop();
     };
-  }, [meta]);
+  }, [meta, busy]);
 
   async function revoke() {
     setBusy(true);
