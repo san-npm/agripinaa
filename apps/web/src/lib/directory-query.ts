@@ -1,4 +1,6 @@
 import { CATEGORIES, type AgentSummary, type Category } from '@agripinaa/agent-index/types';
+import { agentByTokenId } from '@agripinaa/shared/agents';
+import { agentExperience } from './agent-experience';
 
 /**
  * What a `/agents` url means.
@@ -104,7 +106,26 @@ export function hasActiveFilters(query: DirectoryQuery): boolean {
 /** First-party cards do not pass through the registry's upstream search. */
 export function matchesDirectorySearch(agent: AgentSummary, query: string): boolean {
   const term = normalizeQuery(query);
-  return !term || `${agent.name}\n${agent.description ?? ''}`.toLowerCase().includes(term);
+  const record = agentByTokenId(agent.tokenId);
+  const summary = record ? agentExperience(record.slug).summary : '';
+  return !term || `${agent.name}\n${summary}\n${agent.description ?? ''}`.toLowerCase().includes(term);
+}
+
+/** This message describes only independent listings, never the first-party section. */
+export function independentListingEmptyReason(
+  query: DirectoryQuery,
+  listing: { items: readonly AgentSummary[]; searched: boolean; capped: boolean },
+): string {
+  if ((query.live || query.claimed) && listing.items.length > 0) {
+    return 'No independent agents on the pages loaded so far match this filter.';
+  }
+  if (listing.searched) return `No independent agents match "${query.query}".`;
+  if (query.cursor) {
+    return listing.capped
+      ? 'This page sits deeper than one walk of the independent registry reaches.'
+      : 'This page sits past the end of the independent listing.';
+  }
+  return 'No independent agents in this listing yet.';
 }
 
 /**

@@ -19,5 +19,7 @@ test('registry cards escape owner text and do not grant first-party verification
     assert.match(html, /&lt;script/);
     assert.match(html, /owner-provided: description/);
     assert.ok(html.includes('href="/agent/56/999999999"'));
+    assert.match(html, /class="agent-card group min-w-0"/, 'cards must shrink in implicit mobile grid tracks');
+    assert.match(html, /<h3[^>]*class="min-w-0 truncate /, 'untrusted names must stay bounded');
   `], { cwd: new URL('..', import.meta.url), stdio: 'pipe' });
 });
