@@ -6,6 +6,7 @@ import {
 } from '@agripinaa/shared/managed-strategies';
 import { formatUnits, type Hex } from 'viem';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { startPolling } from '@/lib/poll';
 
 import { altanaClient } from '@/lib/altana';
 import {
@@ -281,10 +282,7 @@ export function StrategyPositionCard({
   useEffect(() => {
     if (!slug || !strategy || accountProblem) return;
     let cancelled = false;
-    let running = false;
     const load = async () => {
-      if (running) return;
-      running = true;
       try {
         const snapshot = target
           ? await readManagedRunnerSnapshot(slug, meta.account, target)
@@ -309,16 +307,12 @@ export function StrategyPositionCard({
         }
       } catch {
         if (!cancelled) setLoadError(true);
-      } finally {
-        running = false;
       }
     };
-    const timer = window.setTimeout(() => void load(), 0);
-    const poll = window.setInterval(() => void load(), 15_000);
+    const stop = startPolling(load);
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
-      window.clearInterval(poll);
+      stop();
     };
   }, [accountProblem, meta.account, refreshKey, slug, strategy, target]);
 

@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import type { Hex } from 'viem';
 
 import { altanaClient } from '@/lib/altana';
+import { startPolling } from '@/lib/poll';
 import { clearFundingCheckpointForSession } from '@/lib/funding-checkpoint';
 import { managedServiceStatus, readManagedRunnerStatus, type ManagedRunnerStatus } from '@/lib/managed-router';
 import {
@@ -70,6 +71,7 @@ export function ManagedPositionCard({
   onChange: () => void;
 }) {
   const [pos, setPos] = useState<ManagedPosition | null>(null);
+  const [positionUnavailable, setPositionUnavailable] = useState(false);
   const [apys, setApys] = useState<VenueApys | null>(null);
   const [history, setHistory] = useState<RotationHistory | null>(null);
   const [historyUnavailable, setHistoryUnavailable] = useState(false);
@@ -78,6 +80,7 @@ export function ManagedPositionCard({
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [dest, setDest] = useState<string>('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Resolve the UNIQUE router saved in this session, including superseded
   // recovery-only deployments. Activation and the runner deliberately use a
@@ -104,8 +107,10 @@ export function ManagedPositionCard({
         scopedRouterAddress,
       );
       setPos(p);
+      setPositionUnavailable(false);
     } catch {
-      /* transient RPC error; leave the last-known position */
+      setPos(null);
+      setPositionUnavailable(true);
     }
   }
 
@@ -130,40 +135,41 @@ export function ManagedPositionCard({
     return () => {
       cancelled = true;
     };
-  }, [meta.chainId, meta.account, scopedRouterAddress, token]);
+  }, [meta.chainId, meta.account, scopedRouterAddress, token, refreshKey]);
 
   useEffect(() => {
+    if (busy) return;
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      if (scopedRouterAddress) {
-        void readManagedPosition(meta.account as `0x${string}`, meta.chainId, token, scopedRouterAddress)
-          .then((p) => !cancelled && setPos(p))
-          .catch(() => {});
-      }
-      void (async () => {
-        if (!meta.publicKey || meta.account === 'unknown') {
-          if (!cancelled) setValidity('unknown');
-          return;
-        }
-        try {
-          const valid = await isSessionKeyValid({
-            chainId: meta.chainId,
-            account: meta.account as `0x${string}`,
-            sessionPublicKey: meta.publicKey as `0x${string}`,
-          });
-          if (!cancelled) setValidity(valid ? 'valid' : 'invalid');
-        } catch {
-          if (!cancelled) setValidity('unknown');
-        }
-      })();
-      void readManagedRunnerStatus(meta.agent.slug, meta.account, scopedRouterAddress ?? '')
-        .then((status) => !cancelled && setRunnerStatus(status));
-    }, 0);
+    const stop = startPolling(async () => {
+      await Promise.all([
+        scopedRouterAddress ? readManagedPosition(meta.account as `0x${string}`, meta.chainId, token, scopedRouterAddress)
+          .then((p) => { if (!cancelled) { setPos(p); setPositionUnavailable(false); } })
+          .catch(() => { if (!cancelled) { setPos(null); setPositionUnavailable(true); } }) : Promise.resolve(),
+        (async () => {
+          if (!meta.publicKey || meta.account === 'unknown') {
+            if (!cancelled) setValidity('unknown');
+            return;
+          }
+          try {
+            const valid = await isSessionKeyValid({
+              chainId: meta.chainId,
+              account: meta.account as `0x${string}`,
+              sessionPublicKey: meta.publicKey as `0x${string}`,
+            });
+            if (!cancelled) setValidity(valid ? 'valid' : 'invalid');
+          } catch {
+            if (!cancelled) setValidity('unknown');
+          }
+        })(),
+        readManagedRunnerStatus(meta.agent.slug, meta.account, scopedRouterAddress ?? '')
+          .then((status) => !cancelled && setRunnerStatus(status)),
+      ]);
+    });
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      stop();
     };
-  }, [meta.account, meta.agent.slug, meta.chainId, meta.publicKey, scopedRouterAddress, token]);
+  }, [meta.account, meta.agent.slug, meta.chainId, meta.publicKey, scopedRouterAddress, token, busy, refreshKey]);
 
   async function reauth() {
     const client = altanaClient();
@@ -411,6 +417,10 @@ export function ManagedPositionCard({
           {active && <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden />}
           {statusLabel}
         </span>
+        <button type="button" disabled={busy !== null} onClick={() => setRefreshKey((key) => key + 1)}
+          className="text-xs font-medium text-primary hover:underline disabled:opacity-50">
+          Refresh
+        </button>
       </div>
 
       {recoveryOnly && (
@@ -433,7 +443,7 @@ export function ManagedPositionCard({
             {active ? 'Under management' : 'Account position'}
           </p>
           <p className="tabular mt-1 font-mono text-xl font-semibold">
-            {pos ? `${Number(pos.totalUsdt).toFixed(2)} ${token}` : '…'}
+            {pos ? `${Number(pos.totalUsdt).toFixed(2)} ${token}` : positionUnavailable ? 'Balance unavailable' : '…'}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-surface-2 p-3">
@@ -457,6 +467,12 @@ export function ManagedPositionCard({
           <div><dt className="inline text-muted-2">Aave: </dt><dd className="inline tabular font-mono">{Number(pos.aaveUsdt).toFixed(2)}</dd></div>
           <div><dt className="inline text-muted-2">Venus: </dt><dd className="inline tabular font-mono">{Number(pos.venusUsdt).toFixed(2)}</dd></div>
         </dl>
+      )}
+      {pos && (
+        <p className="mt-2 text-xs text-muted-2">
+          Separate gas balance: <span className="font-mono text-foreground">{pos.nativeBnb} BNB</span>.
+          The {token} position above excludes BNB and activation fees. Balances and service status refresh automatically.
+        </p>
       )}
 
       {/* Live yield: what it earns, what it has earned, and why it sits where it does. */}
