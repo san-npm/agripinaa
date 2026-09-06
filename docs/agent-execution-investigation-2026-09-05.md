@@ -248,3 +248,33 @@ exercise contract verification, so it missed this error. The browser now suppres
 viem's full signed-request dump on direct execution failures, while retaining the
 saved checkpoint. Server logging allows only the fixed simulation-error label and
 bytes4 selector, never arbitrary RPC payloads. Workspace tests and type checks pass.
+
+The correction is deployed as `b8b6bfa` on the runner and web; Vercel deployment
+`dpl_GkWsNDEjQfpmfXw8Ug8oyjoiYJNL` is Ready on the production alias. All 1,023 tests,
+the production build, runner-side SDK/framing tests, emitted wallet-bundle checks
+and the production error-redaction check passed. The failed direct ID now returns
+status 300 with no receipt after its submission deadline. User nonce and sender
+nonce remain 0; BTCB remains 25,976,153,706,966 base units and sender BNB remains
+150,000,000,000,000 wei. The expired attempt was not replayed. A fresh user passkey
+approval is needed for live acceptance; do not deposit again.
+
+## September 6: live funding confirmed, status encoding hung the browser
+
+The next direct attempt successfully executed on BSC:
+`0x41524c5f0f2cc60307efd2b165921a8541db2b5f11694fe6481b383d186a8379`.
+Its retained ID is
+`0xa671f00d6a9d427f0690a68e6d5a825a8d96987bb2838f71dcf414d0b9170747`.
+The runner's event/confirmation checks return status 201. The user's account is
+delegated with nonce 1, and the sender has nonce 1. Do not submit funding again.
+
+The browser-facing poll timed out because `receipt.logs` contained viem `bigint`
+metadata (including `blockNumber`). The handler committed HTTP headers before
+`JSON.stringify` threw, so its catch could no longer return the error response and
+left the socket open. This was reproduced directly on the runner: the handler
+returned 201, but encoding it threw `Do not know how to serialize a BigInt`.
+
+The fix projects logs to Porto's actual status schema (`address`, `data`, `topics`)
+and serializes the response before writing HTTP headers. A realistic metadata
+regression failed on the original code and passes with the fix. The saved raw
+transaction and recovery checkpoint remain intact. Funding is genuinely confirmed;
+the user's separate mandate grant and agent execution still need verification.

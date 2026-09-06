@@ -572,8 +572,10 @@ export function startX402Server(opts: {
         const body = JSON.parse(await readBody(req, FUNDING_MERCHANT_BODY_BYTES, 5_000)) as { id?: unknown };
         id = typeof body?.id === 'number' || typeof body?.id === 'string' ? body.id : null;
         const result = await directFunding(body);
+        // Encode before committing headers so an encoding failure returns an RPC error, not a hung socket.
+        const response = JSON.stringify({ jsonrpc: '2.0', id, result });
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
+        res.end(response);
       } catch (error) {
         if (!res.headersSent) {
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });

@@ -105,12 +105,18 @@ test('direct funding journals once, survives a lost response/restart, and confir
     assert.equal(sends, 1); assert.equal(simulations, 1); assert.equal((await status(restarted)).status, 100);
     const saved = JSON.parse(readFileSync(journal, 'utf8'));
     const log = { address: ALTANA_ORCHESTRATOR_BSC,
+      blockHash: `0x${'44'.repeat(32)}`, blockNumber: 5n, blockTimestamp: 1_800_000_000n,
+      transactionHash: saved.hash, transactionIndex: 0, logIndex: 0, removed: false,
       topics: encodeEventTopics({ abi: parseAbi(['event IntentExecuted(address indexed eoa,uint256 indexed nonce,bool incremented,bytes4 err)']), eventName: 'IntentExecuted', args: { eoa: user.address, nonce: recovery.intent.nonce } }),
       data: encodeAbiParameters(parseAbiParameters('bool,bytes4'), [true, '0x00000000']) };
     receipt = { transactionHash: saved.hash, blockHash: `0x${'44'.repeat(32)}`, blockNumber: 5n, gasUsed: 900_000n, status: 'success', logs: [log] };
     assert.equal((await status()).status, 100, 'wait for three confirmations');
     block = 7n;
-    assert.equal((await status()).status, 201);
+    const confirmed = await status();
+    assert.equal(confirmed.status, 201);
+    const wire = JSON.parse(JSON.stringify(confirmed));
+    assert.deepEqual(wire.receipts[0].logs, [{ address: log.address, data: log.data, topics: log.topics }],
+      'status returns only Porto log fields; real viem metadata contains non-JSON bigint values');
     receipt = { ...receipt as object, logs: [] };
     assert.equal((await status()).status, 100, 'EVM success without the funding event is not confirmation');
     receipt = { ...receipt as object, logs: [log], status: 'reverted' };
