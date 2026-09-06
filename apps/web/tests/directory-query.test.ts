@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { AgentSummary } from '@agripinaa/agent-index/types';
+import { AGENT_LIST } from '@agripinaa/shared/agents';
+import { agentExperience } from '../src/lib/agent-experience';
 
 import {
   MAX_QUERY_CHARS,
   applyLocalFilters,
   directoryHref,
+  independentListingEmptyReason,
   matchesDirectorySearch,
   parseDirectoryQuery,
 } from '../src/lib/directory-query';
@@ -99,6 +102,29 @@ test('first-party search matches names and full descriptions, not unrelated stra
   assert.equal(matchesDirectorySearch(steward, 'grid'), false);
   assert.equal(matchesDirectorySearch(base, ''), true);
   assert.equal(matchesDirectorySearch(base, 'missing'), false);
+});
+
+test('first-party search includes the displayed summaries for every registered strategy', () => {
+  for (const agent of AGENT_LIST) {
+    if (!agent.tokenId) continue;
+    const card = { ...base, tokenId: agent.tokenId, name: agent.name, description: 'Legacy registry wording' };
+    assert.equal(matchesDirectorySearch(card, agentExperience(agent.slug).summary.slice(0, 60)), true, agent.slug);
+    assert.equal(matchesDirectorySearch(card, 'legacy registry wording'), true, agent.slug);
+    assert.equal(matchesDirectorySearch(card, 'definitely not a strategy'), false, agent.slug);
+    if (agent.slug === 'grid') assert.equal(matchesDirectorySearch(card, ' PRESET PRICE LEVELS '), true);
+  }
+  assert.equal(matchesDirectorySearch({ ...base, name: 'Agripinaa Grid' }, 'preset price levels'), false);
+});
+
+test('empty states describe the independent section even when a first-party agent matches', () => {
+  const query = parseDirectoryQuery({ q: 'steward' });
+  const listing = { items: [], searched: true, capped: false };
+  assert.equal(independentListingEmptyReason(query, listing), 'No independent agents match "steward".');
+  assert.match(independentListingEmptyReason({ ...query, live: true }, { ...listing, items: [base] }), /No independent agents.*filter/);
+  assert.equal(independentListingEmptyReason(query, { ...listing, searched: false }), 'No independent agents in this listing yet.');
+  for (const capped of [true, false]) {
+    assert.match(independentListingEmptyReason({ ...query, cursor: '24' }, { ...listing, searched: false, capped }), /independent/);
+  }
 });
 
 test('the live filter keeps only endpoints that answered', () => {
