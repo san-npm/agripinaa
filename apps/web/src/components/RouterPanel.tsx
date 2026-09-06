@@ -24,12 +24,12 @@ function rowDate(row: RotationRow): string {
 function Stat({ label, value, unit, note }: { label: string; value: string; unit?: string; note: string }) {
   return (
     <div className="rounded-lg border border-border bg-surface-2 p-3">
-      <dt className="text-[10px] font-medium uppercase tracking-wider text-muted-2">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wider text-muted-2">{label}</dt>
       <dd className="tabular mt-1 font-mono text-lg font-medium text-foreground">
         {value}
         {unit ? <span className="ml-1 text-xs text-muted">{unit}</span> : null}
       </dd>
-      <dd className="mt-1 text-[11px] leading-snug text-muted-2">{note}</dd>
+      <dd className="mt-1 text-xs leading-snug text-muted-2">{note}</dd>
     </div>
   );
 }
@@ -113,7 +113,7 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
       <h3 className="mt-6 text-xs font-medium uppercase tracking-wider text-muted-2">
         Recent permissionless router activity sample
       </h3>
-      <p className="mt-1 text-[11px] leading-relaxed text-muted-2">
+      <p className="mt-1 text-xs leading-relaxed text-muted-2">
         A time-stratified sample of raw calls of at least 0.01 {router.symbol}, capped per account and
         block window. It is not exhaustive and is not proof of a managed mandate or signer.{' '}
         <ExplorerLink href={bscScanAddress(router.chainId, router.address)}>View the complete contract log</ExplorerLink>.
@@ -149,7 +149,7 @@ export async function RouterPanel({ router }: { router: RouterDeployment }) {
         </ul>
       )}
       {funds.rotations && funds.rotations.length > MAX_ROWS ? (
-        <p className="mt-2 text-[11px] text-muted-2">
+        <p className="mt-2 text-xs text-muted-2">
           Showing {MAX_ROWS} rows from the bounded, time-stratified sample.
           Events prove router execution only; they do not identify a managed mandate or agent signer.
         </p>

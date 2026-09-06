@@ -70,7 +70,7 @@ export function FundingDeposit({
               aria-pressed={asset === symbol}
               className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed ${
                 asset === symbol
-                  ? 'border-primary/60 bg-primary/10 text-foreground shadow-[0_0_18px_rgba(245,158,11,0.14)]'
+                  ? 'border-primary/60 bg-primary/10 text-foreground '
                   : 'border-border-strong text-muted-2 hover:border-primary/35 hover:text-foreground disabled:opacity-45'
               }`}
             >
@@ -108,7 +108,7 @@ export function FundingDeposit({
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-surface-2 p-3">
+      {!preparationStatus && <div className="rounded-xl border border-border bg-surface-2 p-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-2">Send {asset} once</p>
           <button
@@ -124,7 +124,7 @@ export function FundingDeposit({
           One asset transfer only. Do not send a second asset or a separate BNB top-up. Activation
           prepares the deposit in one funding transaction, then grants the scoped agent mandate separately.
         </p>
-      </div>
+      </div>}
 
       <div className="overflow-hidden rounded-xl border border-border" aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-2 bg-surface-2 px-3 py-2.5 text-sm">
@@ -137,7 +137,7 @@ export function FundingDeposit({
         </div>
         <div className="divide-y divide-border border-t border-border bg-surface px-3 text-xs">
           <FundingLine
-            label={`BNB provision (${gasQuote?.registrationCount ?? 2} key registrations + your reserve)`}
+            label={`Account setup (${gasQuote?.registrationCount ?? 2} keys) + BNB gas reserve`}
             value={gasQuote == null ? 'Quoting…' : `${fromBaseUnits(reserveInput, 18)} ${asset}`}
           />
           <FundingLine
@@ -149,7 +149,6 @@ export function FundingDeposit({
             value={gross == null || gasQuote == null ? '…' : `${fromBaseUnits(net, 18)} ${asset}`}
             strong
           />
-          <FundingLine label="Agripinaa-funded amount" value="0" />
         </div>
       </div>
 
@@ -165,7 +164,9 @@ export function FundingDeposit({
           {quoteError}
         </p>
       )}
-      <p className="text-xs leading-relaxed text-muted-2">
+      <p className="text-xs text-muted">Fees and gas are paid from your deposit. Agripinaa does not sponsor gas.</p>
+      <details className="border-t border-border pt-2"><summary className="text-sm font-medium">How funding and fees work</summary>
+      <p className="mt-2 text-xs leading-relaxed text-muted-2">
         The BNB provision covers the live Altana key-registration fees and leaves an operating reserve in
         your account; any unused BNB remains yours and is withdrawable. {asset === 'BNB'
           ? 'Your account pays its first relay operation from the displayed fixed budget.'
@@ -173,6 +174,7 @@ export function FundingDeposit({
         Agripinaa does not sponsor gas. Remaining capital is prepared into the assets required by the selected
         agent with on-chain slippage protection.
       </p>
+      </details>
     </div>
   );
 }

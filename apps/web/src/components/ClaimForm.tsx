@@ -61,7 +61,7 @@ const EMPTY: ClaimFormValues = {
 };
 
 const primaryBtn =
-  'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
+  'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-[var(--primary-050)] disabled:opacity-50 disabled:shadow-none';
 const inputCls =
   'w-full rounded-lg border border-border-strong bg-surface-2 p-2.5 text-sm focus:border-primary focus:outline-none';
 const labelCls = 'mb-1 block text-xs uppercase tracking-wide text-muted-2';

@@ -151,7 +151,7 @@ function RangerDetails({
           <dd className="mt-0.5 font-mono">{ranger.currentTick ?? 'unavailable'}</dd>
         </div>
       </dl>
-      <p className="mt-2 text-[11px] text-muted-2">
+      <p className="mt-2 text-xs text-muted-2">
         Position asset amounts above are live estimates from the NFT liquidity and current pool tick.
       </p>
     </div>
@@ -377,7 +377,7 @@ export function StrategyPositionCard({
                       <p className="mt-1 font-mono text-xl font-semibold tabular-nums">
                         {conciseAmount(idle + deployed, asset.symbol)}
                       </p>
-                      <p className="mt-1 text-[11px] text-muted-2">
+                      <p className="mt-1 text-xs text-muted-2">
                         {deployed > 0
                           ? `${conciseAmount(idle, asset.symbol)} idle + ~${conciseAmount(deployed, asset.symbol)} in position`
                           : 'Idle in your strategy account'}

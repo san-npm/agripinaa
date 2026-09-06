@@ -7,6 +7,7 @@ import {
   MAX_QUERY_CHARS,
   applyLocalFilters,
   directoryHref,
+  matchesDirectorySearch,
   parseDirectoryQuery,
 } from '../src/lib/directory-query';
 
@@ -90,6 +91,15 @@ const base = {
   tokenId: '1',
   name: 'One',
 } as unknown as AgentSummary;
+
+test('first-party search matches names and full descriptions, not unrelated strategies', () => {
+  const steward = { ...base, name: 'Agripinaa Steward', description: 'x'.repeat(100) + ' patient yield' };
+  assert.equal(matchesDirectorySearch(steward, '  STEWARD '), true);
+  assert.equal(matchesDirectorySearch(steward, 'patient yield'), true);
+  assert.equal(matchesDirectorySearch(steward, 'grid'), false);
+  assert.equal(matchesDirectorySearch(base, ''), true);
+  assert.equal(matchesDirectorySearch(base, 'missing'), false);
+});
 
 test('the live filter keeps only endpoints that answered', () => {
   const agents = [
