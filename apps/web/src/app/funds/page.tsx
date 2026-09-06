@@ -36,19 +36,13 @@ function Claim({ title, children }: { title: string; children: React.ReactNode }
 
 export default function FundsPage() {
   return (
-    <div className="mx-auto max-w-3xl">
-      <span className="grid h-11 w-11 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
+    <div className="mx-auto max-w-5xl">
+      <span className="grid h-11 w-11 place-items-center rounded-xl border border-primary/25 bg-primary/5 text-primary">
         <ShieldIcon className="h-5 w-5" />
       </span>
-      <h1 className="mt-4 font-display text-3xl font-semibold">Router security, in the open</h1>
-      <p className="mt-2 text-sm leading-relaxed text-muted">
-        When you hand Agripinaa&apos;s yield agent a session key, the key is scoped to
-        one contract: the AgripinaaYieldRouter. Your funds never leave your own
-        smart account, and the agent&apos;s only power is to move them between Aave,
-        Venus, and idle. The published deployments are below with contract custody
-        and a bounded permissionless activity sample. Those events prove router execution,
-        not a managed mandate or which agent or owner signed.
-      </p>
+      <header className="page-heading mt-4"><p className="eyebrow">Security and permissions</p><h1>Understand the boundaries.</h1>
+      <p>Yield agents can move your lending position between Aave, Venus and idle funds through a restricted router. They cannot choose a different recipient. Review the deployed contracts and their limitations below.</p></header>
+      <p className="rounded-lg border border-border bg-surface p-4 text-sm text-muted">This page covers the yield routers. Trading, loan-protection and liquidity agents have different permissions, shown during their setup. Restricted permissions do not remove market or smart-contract risk.</p>
 
       <div className="mt-8 space-y-6">
         {YIELD_ROUTERS_BSC.map((router) => (

@@ -9,6 +9,7 @@ import { listFirstParty, listRegistryPage, searchDirectory } from "@/lib/data";
 import {
   applyLocalFilters,
   directoryHref,
+  matchesDirectorySearch,
   parseDirectoryQuery,
   type DirectoryQuery,
 } from "@/lib/directory-query";
@@ -72,10 +73,11 @@ async function Directory({
   searchParams,
 }: Pick<PageProps<"/agents">, "searchParams">) {
   const query = parseDirectoryQuery(await searchParams);
-  const [firstParty, listing] = await Promise.all([
+  const [ownAgents, listing] = await Promise.all([
     listFirstParty(query.category),
     loadListing(query),
   ]);
+  const firstParty = ownAgents.filter((agent) => matchesDirectorySearch(agent, query.query));
   // Liveness and claims are ours, not fields the index can filter on upstream,
   // so these two narrow what the walk already loaded. The empty state says so.
   const shown = applyLocalFilters(listing.items, query);
@@ -84,12 +86,10 @@ async function Directory({
     <>
       {firstParty.length > 0 && (
         <section className="mb-12">
-          <h2 className="font-display text-lg font-semibold">Agripinaa agents</h2>
+          <h2 className="font-display text-2xl font-medium">Strategies by Agripinaa</h2>
           <p className="mb-4 mt-1 text-sm text-muted-2">
-            Eight live strategies built and run by Agripinaa, all open to public
-            managed mandates. Harvester and Steward use deliberately different
-            yield policies; the other six expose their own grid, protection, LP,
-            and rebalancing workflows.
+            Compare yield, trading, borrowing protection and liquidity strategies.
+            Review each agent’s permissions and funding requirements before activation.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {firstParty.map((agent) => (
@@ -100,8 +100,8 @@ async function Directory({
       )}
 
       <section>
-        <h2 className="font-display text-lg font-semibold">
-          {listing.searched ? "Search results" : "ERC-8004 registry"}
+        <h2 className="font-display text-2xl font-medium">
+          {listing.searched ? "Search results" : "Independent agent directory"}
         </h2>
         <p className="mb-4 mt-1 text-sm text-muted-2">
           {listing.searched
@@ -224,11 +224,8 @@ function Pager({
 export default function AgentsPage(props: PageProps<"/agents">) {
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold">All agents</h1>
-      <p className="mt-2 max-w-2xl text-sm text-muted">
-        Agents that prove their execution, kept clearly apart from the
-        permissionless registry we merely index.
-      </p>
+      <header className="page-heading"><p className="eyebrow">The marketplace</p><h1>Choose your next strategy.</h1>
+      <p>Explore what each agent does, inspect its track record, and decide what fits your needs. Agripinaa strategies and independent listings are clearly separated.</p></header>
       {/* The filters and the listing read the url, so each sits behind its own
           boundary and the rest of the page is still part of the static shell. */}
       <div className="mt-6">

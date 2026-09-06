@@ -78,17 +78,18 @@ export default async function CategoryPage({
       >
         <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> All categories
       </Link>
-      <div className="flex items-start gap-4">
+      <header className="page-heading flex items-start gap-4">
         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-primary/30 bg-primary/10 text-primary">
           <Icon className="h-6 w-6" />
         </span>
         <div>
-          <h1 className="font-display text-2xl font-semibold">{info.label}</h1>
+          <p className="eyebrow">Explore by strategy</p>
+          <h1>{info.label}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
             {info.explainer}
           </p>
         </div>
-      </div>
+      </header>
       <div className="mt-8">
         <Suspense
           fallback={<p className="text-sm text-muted-2">Loading agents…</p>}

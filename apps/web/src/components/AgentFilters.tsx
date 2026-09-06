@@ -107,9 +107,9 @@ export function AgentFilters({ query }: { query: DirectoryQuery }) {
     navigate({ ...target.current, query: normalizeQuery(term), ...patch });
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 sm:flex-row sm:items-center">
+    <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface p-5">
       <label className="flex-1">
-        <span className="sr-only">Search agents</span>
+        <span className="mb-1.5 block text-xs font-medium text-muted">Search agents</span>
         <input
           type="search"
           value={term}
@@ -121,7 +121,7 @@ export function AgentFilters({ query }: { query: DirectoryQuery }) {
       </label>
 
       <label>
-        <span className="sr-only">Category</span>
+        <span className="mb-1.5 block text-xs font-medium text-muted">Strategy type</span>
         <select
           value={category ?? ''}
           onChange={(e) =>

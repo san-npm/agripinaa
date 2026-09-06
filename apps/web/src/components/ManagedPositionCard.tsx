@@ -400,10 +400,10 @@ export function ManagedPositionCard({
   const fmtChange = (n: number) => (Math.abs(n) >= 0.01 ? n.toFixed(2) : n.toFixed(6));
 
   return (
-    <li id={`session-${meta.id}`} className="scroll-mt-24 rounded-xl border border-border bg-surface p-5">
+    <li id={`session-${meta.id}`} className="scroll-mt-24 rounded-xl border border-border bg-surface p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5">
+          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/25 bg-primary/5">
             <TokenLogo symbol={token} className="h-7 w-7" />
           </span>
           <div>
@@ -442,7 +442,7 @@ export function ManagedPositionCard({
           <p className="text-xs uppercase tracking-wide text-muted-2">
             {active ? 'Under management' : 'Account position'}
           </p>
-          <p className="tabular mt-1 font-mono text-xl font-semibold">
+          <p className="tabular mt-2 text-3xl font-medium tracking-tight">
             {pos ? `${Number(pos.totalUsdt).toFixed(2)} ${token}` : positionUnavailable ? 'Balance unavailable' : '…'}
           </p>
         </div>
@@ -477,13 +477,13 @@ export function ManagedPositionCard({
 
       {/* Live yield: what it earns, what it has earned, and why it sits where it does. */}
       {(netChange != null || rationale) && (
-        <div className={`mt-3 rounded-lg border border-border bg-[linear-gradient(180deg,rgba(16,185,129,0.05),transparent)] p-3 ${active ? 'agp-working' : ''}`}>
+        <div className={`mt-3 rounded-lg border border-border bg-surface p-3 ${active ? 'agp-working' : ''}`}>
           {active && (
-            <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-success">
+            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-success">
               <span className="agp-think-dots inline-flex items-center gap-[3px]" aria-hidden>
                 <i /><i /><i />
               </span>
-              Agent is optimizing your yield
+              Strategy monitoring is active
             </p>
           )}
           {netChange != null && deployed && (
@@ -547,7 +547,7 @@ export function ManagedPositionCard({
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11px] text-muted-2">
+          <p className="mt-2 text-xs text-muted-2">
             Permissionless calls by this account; the event does not identify which agent or owner action signed it.
             {!history.complete && history.scannedFrom != null
               ? ` Recent scan only, from block ${history.scannedFrom.toString()}.`

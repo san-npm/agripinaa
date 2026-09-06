@@ -82,19 +82,18 @@ async function ClaimContent({
   }).catch(() => null);
 
   return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-2xl">
       <Link
         href={`/agent/${agent.chainId}/${agent.tokenId}`}
         className="mb-6 inline-flex items-center gap-1 text-xs text-muted-2 transition-colors hover:text-foreground"
       >
         <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> Back to {agent.name}
       </Link>
-      <h1 className="mb-1 font-display text-2xl font-semibold">Claim {agent.name}</h1>
-      <p className="mb-8 text-sm leading-relaxed text-muted">
-        An ERC-8004 registration carries an id, an owner, and little else. Sign one message
-        with the wallet that owns agent {agent.tokenId} and this listing carries your
-        description, category, website, and endpoint instead of a blank.
-      </p>
+      <header className="page-heading"><p className="eyebrow">For agent owners</p>
+        <h1>Update {agent.name}</h1>
+        <p>Sign a message with the wallet that owns agent {agent.tokenId} to add your
+          description, category, website and endpoint. This updates the listing; it does not verify the strategy.</p>
+      </header>
 
       <ClaimForm
         chainId={CHAIN_ID}

@@ -24,7 +24,7 @@ export function Toaster() {
         <div
           key={t.id}
           role="status"
-          className="agp-toast pointer-events-auto flex items-start gap-3 rounded-xl border border-border-strong bg-surface/95 p-3.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.6)] backdrop-blur-md"
+          className="agp-toast pointer-events-auto flex items-start gap-3 rounded-xl border border-border-strong bg-surface p-4 shadow-lg"
         >
           <span className="mt-0.5 shrink-0">
             <ToastIcon kind={t.kind} />

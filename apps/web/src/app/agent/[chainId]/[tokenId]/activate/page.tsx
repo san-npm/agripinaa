@@ -110,26 +110,14 @@ async function ActivateContent({
 
   return (
     <div className="relative">
-      <div
-        aria-hidden
-        className="agp-orb pointer-events-none absolute -top-16 right-0 z-0 h-56 w-56 rounded-full opacity-60"
-      />
       <Link
         href={`/agent/${agent.chainId}/${agent.tokenId}`}
         className="relative z-10 mb-6 inline-flex items-center gap-1 text-xs text-muted-2 transition-colors hover:text-foreground"
       >
         <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> Back to {agent.name}
       </Link>
-      <h1 className="relative z-10 mb-1 font-display text-2xl font-semibold">
-        {managedCopy?.heading ?? `${managedAgent ? "Put funds under " : "Activate "}${agent.name}`}
-      </h1>
-      <p className="relative z-10 mb-8 max-w-xl text-sm text-muted">
-        {managedCopy
-          ? managedCopy.intro
-          : managedAgent
-          ? "A passkey-secured account, one BTCB, BNB, USDT, or USDC deposit, and one grant that lets the agent rotate the prepared funds between lending venues, never anywhere else."
-          : "Three steps: a passkey-secured account, one asset deposit with transparent gas conversion, and one scoped mandate."}
-      </p>
+      <header className="page-heading"><p className="eyebrow">Set up your strategy</p><h1>Activate {agent.name.replace(/^Agripinaa /, '')}</h1>
+      <p>{experience?.summary ?? 'Set up your account, review funding costs, and approve limited permissions for your agent.'}</p></header>
       {strategy ? (
         <StrategyWizard
           initialRecoveryTxHash={initialRecoveryTxHash}

@@ -36,7 +36,7 @@ function ProofRow({
 
 export function ProofPanel({ agent }: { agent: VerifiedAgent }) {
   return (
-    <section className="rounded-xl border border-primary/25 bg-[linear-gradient(180deg,rgba(245,158,11,0.05),transparent_40%)] p-5">
+    <section className="rounded-xl border border-primary/25 bg-surface p-5">
       <div className="mb-4 flex items-center gap-2">
         <VerifiedIcon className="h-4 w-4 text-primary" />
         <h2 className="text-xs font-medium uppercase tracking-wider text-primary">
@@ -74,7 +74,7 @@ export function ProofPanel({ agent }: { agent: VerifiedAgent }) {
           linkText="attestation tx"
         />
       </ul>
-      <p className="mt-3 flex flex-wrap items-center gap-1 text-[10px] text-muted-2">
+      <p className="mt-3 flex flex-wrap items-center gap-1 text-xs text-muted-2">
         Attested by the Agripinaa Verifier{" "}
         <a
           href={bscScanAddress(56, agent.attestation.verifier)}

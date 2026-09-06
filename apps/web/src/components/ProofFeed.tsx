@@ -45,7 +45,7 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
       <Link
         href={`/agent/56/${event.agent}`}
         aria-label={`Open ${event.agentName}`}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-primary/25 bg-gradient-to-br from-primary/15 to-accent/10 text-primary transition-colors group-hover:border-primary/40"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-primary/25 bg-primary/5 text-primary transition-colors group-hover:border-primary/40"
       >
         <Icon className="h-[18px] w-[18px]" />
       </Link>
@@ -57,7 +57,7 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
           >
             {event.agentName}
           </Link>
-          <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${KIND_CLASS[event.kind]}`}>
+          <span className={`rounded-full border px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${KIND_CLASS[event.kind]}`}>
             {bps !== undefined ? `${bps >= 0 ? '+' : ''}${bps.toFixed(1)} bps` : KIND_LABEL[event.kind]}
           </span>
           <time
@@ -68,14 +68,14 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
             // time zones. dateTime carries the exact instant; the first poll
             // re-renders both in the reader's own locale.
             suppressHydrationWarning
-            className="ml-auto text-[10px] text-muted-2"
+            className="ml-auto text-xs text-muted-2"
           >
             {relativeTime(event.at)}
           </time>
         </div>
         <p className="mt-1 text-sm leading-relaxed text-muted">{event.summary}</p>
         {(event.txHash || event.orderUid) && (
-          <div className="mt-1.5 flex items-center gap-3 font-mono text-[10px]">
+          <div className="mt-1.5 flex items-center gap-3 font-mono text-xs">
             {event.txHash && (
               <a
                 href={`https://bscscan.com/tx/${event.txHash}`}
@@ -162,7 +162,7 @@ export function ProofFeed({
       <div className="flex items-center gap-2 border-b border-border px-4 py-3.5 sm:px-5">
         <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
         <h2 className="font-display text-sm font-semibold">Live activity</h2>
-        <span className="text-[10px] text-muted-2">
+        <span className="text-xs text-muted-2">
           {error ? 'reconnecting…' : payload ? 'verified on BNB Chain' : 'connecting…'}
         </span>
         {compact && (
@@ -201,7 +201,7 @@ export function ProofFeed({
       )}
 
       {!compact && payload && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2/50 px-5 py-3 text-[10px] text-muted-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2/50 px-5 py-3 text-xs text-muted-2">
           <span>{events.length} actions · refreshes every 15 seconds</span>
           <span>Runner log + Ophis settlement backfill</span>
         </div>
