@@ -1,28 +1,24 @@
 @import "tailwindcss";
 
-/*
- * Agripinaa design system: "Bitcoin DeFi" dark-only.
- * Amber-gold = trust/primary, violet = tech accent (used sparingly),
- * deep-void surfaces, monospace for on-chain data, ultra-thin borders.
- */
+/* Quiet, readable surfaces shared by discovery, activation and recovery. */
 :root {
-  --background: #0b0f1a;      /* deep void */
-  --surface: #111827;         /* card */
-  --surface-2: #0e1422;       /* raised panel on card */
-  --foreground: #f8fafc;
-  --muted: #94a3b8;           /* secondary text */
-  --muted-2: #64748b;         /* tertiary text */
-  --border: #1e293b;          /* ultra-thin hairline */
-  --border-strong: #334155;
-  --primary: #f59e0b;         /* amber-gold */
-  --primary-050: #fbbf24;
-  --on-primary: #0b0f1a;
-  --accent: #8b5cf6;          /* violet, tech accent */
-  --success: #34d399;         /* surplus / active */
-  --danger: #ef4444;
-  --ring: #f59e0b;
+  color-scheme: light;
+  --background: #f6f7f3;
+  --surface: #ffffff;
+  --surface-2: #f0f3ed;
+  --foreground: #202d26;
+  --muted: #536157;
+  --muted-2: #637166;
+  --border: #dce2d9;
+  --border-strong: #7b8a7d;
+  --primary: #294f3c;
+  --primary-050: #1c3c2b;
+  --on-primary: #ffffff;
+  --accent: #5d5278;
+  --success: #207044;
+  --danger: #b33435;
+  --ring: #294f3c;
 }
-
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -39,208 +35,85 @@
   --color-danger: var(--danger);
   --color-ring: var(--ring);
   --font-sans: var(--font-inter);
-  --font-display: var(--font-space-grotesk);
+  --font-display: var(--font-inter);
   --font-mono: var(--font-jetbrains);
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
 }
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  body { background: var(--background); color: var(--foreground); font-family: var(--font-inter), system-ui, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6; }
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -0.035em; line-height: 1.25; }
+  p { text-wrap: pretty; }
+  button, summary, select { cursor: pointer; }
+  button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 2.75rem; }
+  button:disabled { cursor: not-allowed; }
+  input, select, textarea { accent-color: var(--primary); }
+  input::placeholder { color: var(--muted-2); opacity: 1; }
+  summary { min-height: 2.75rem; align-content: center; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+  :target { scroll-margin-top: 7rem; }
+  ::selection { background: #dbe9d4; color: #202d26; }
 }
-
-/* Subtle top-of-page gold aura, the DeFi "deep void" treatment. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(60rem 30rem at 50% -10rem, rgba(245, 158, 11, 0.06), transparent 70%);
-  z-index: 0;
+.tabular { font-variant-numeric: tabular-nums; }
+.site-container { width: min(100% - 3rem, 1200px); margin-inline: auto; }
+.site-header { background: var(--surface); border-bottom: 1px solid var(--border); }
+.site-nav { min-height: 5rem; display: flex; align-items: center; gap: 2.5rem; }
+.brand { display: inline-flex; align-items: center; gap: .7rem; font-size: 1.2rem; font-weight: 650; letter-spacing: -.05em; }
+.brand-mark { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: .4rem; background: var(--primary); color: white; }
+.nav-links { display: flex; align-items: center; gap: .3rem; }
+.nav-links a { padding: .65rem .85rem; color: var(--muted); font-size: .9rem; border-radius: .4rem; }
+.nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--primary); background: var(--surface-2); }
+.nav-account { margin-left: auto; }
+.mobile-nav { display: none; }
+.eyebrow { font-size: .75rem; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.page-heading { margin-bottom: 2rem; }
+.page-heading h1 { margin-top: .6rem; font-size: clamp(2rem, 4vw, 3rem); font-weight: 550; }
+.page-heading p:last-child { margin-top: .9rem; max-width: 44rem; color: var(--muted); }
+.button-primary, .button-secondary { display: inline-flex; justify-content: center; align-items: center; gap: .6rem; min-height: 3rem; padding: .7rem 1.2rem; border: 1px solid var(--primary); border-radius: .4rem; font-size: .9rem; font-weight: 600; transition: background .15s; }
+.button-primary { background: var(--primary); color: var(--on-primary); }
+.button-primary:hover { background: var(--primary-050); }
+.button-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--foreground); }
+.button-secondary:hover { background: var(--surface-2); }
+.home-hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: 5rem; align-items: center; padding-block: 2rem 4rem; }
+.home-hero h1 { margin-top: 1.25rem; font-size: clamp(2.8rem, 5vw, 4.6rem); font-weight: 500; line-height: 1.04; letter-spacing: -.065em; }
+.home-hero h1 span { color: var(--primary); }
+.journey-panel { background: #e9eee3; padding: 2rem; border-radius: .75rem; }
+.journey-panel li { display: flex; align-items: flex-start; gap: 1rem; padding-block: 1.25rem; border-bottom: 1px solid #cdd7c5; }
+.journey-panel li:last-child { border-bottom: 0; padding-bottom: 0; }
+.journey-number { flex: none; width: 2rem; height: 2rem; display: grid; place-items: center; border: 1px solid #9cae92; border-radius: 50%; font-size: .75rem; font-weight: 600; }
+.section-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; margin-bottom: 1.5rem; }
+.section-heading h2 { font-size: 1.65rem; font-weight: 550; }
+.agent-card { display: flex; flex-direction: column; padding: 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: .65rem; transition: border-color .15s, box-shadow .15s; }
+.agent-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px #202d2608; }
+.agent-card h3 { font-size: 1.15rem; font-weight: 600; }
+.setup-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 2rem; }
+.setup-layout > :first-child { padding: clamp(1.25rem, 3vw, 2rem); }
+.setup-layout aside { padding: 1.5rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: .65rem; }
+.site-footer { margin-top: 4rem; border-top: 1px solid var(--border); padding-block: 2rem; }
+.live-dot { display: inline-block; }
+.agp-think-dots { display: none; }
+@keyframes toast-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.agp-toast, .agp-proof-event { animation: toast-enter .15s ease-out; }
+@media (max-width: 900px) {
+  .site-nav { gap: 1rem; }
+  .desktop-nav { display: none; }
+  .mobile-nav { display: block; margin-left: auto; position: relative; }
+  .mobile-nav summary { list-style: none; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: .4rem; font-size: .875rem; }
+  .mobile-nav summary::-webkit-details-marker { display: none; }
+  .mobile-nav .nav-links { position: absolute; z-index: 50; top: 3.3rem; right: 0; width: 15rem; padding: .5rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); box-shadow: 0 8px 24px #202d2614; flex-direction: column; align-items: stretch; }
+  .nav-account { margin-left: 0; }
+  .home-hero { gap: 2rem; }
+  .setup-layout { grid-template-columns: minmax(0, 1fr); }
 }
-
-h1, h2, h3 {
-  font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
-  letter-spacing: -0.01em;
+@media (max-width: 640px) {
+  .site-container { width: calc(100% - 2rem); }
+  .site-nav { min-height: 4.5rem; }
+  .brand { font-size: 1.1rem; }
+  .nav-account { display: none; }
+  .home-hero { grid-template-columns: 1fr; padding-block: 1rem 2.5rem; }
+  .journey-panel { padding: 1.5rem; }
+  .section-heading { align-items: flex-start; flex-direction: column; gap: .5rem; }
 }
-
-.font-mono, .tabular {
-  font-family: var(--font-jetbrains), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Motion system (transitions.dev principles): combine fade + translate +
-   blur for reveals, spring-ish easing, staggered list entrances. */
-:root {
-  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes agp-reveal-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.99);
-    filter: blur(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-.agp-reveal {
-  animation: agp-reveal-in 0.45s var(--ease-out) both;
-}
-/* Stagger cards inside a grid: each child enters slightly later. */
-.agp-reveal:nth-child(1) { animation-delay: 0.02s; }
-.agp-reveal:nth-child(2) { animation-delay: 0.06s; }
-.agp-reveal:nth-child(3) { animation-delay: 0.10s; }
-.agp-reveal:nth-child(4) { animation-delay: 0.14s; }
-.agp-reveal:nth-child(5) { animation-delay: 0.18s; }
-.agp-reveal:nth-child(6) { animation-delay: 0.22s; }
-
-/* Card hover lift, spring easing. */
-.agp-reveal:hover {
-  transform: translateY(-2px);
-  transition: transform 0.25s var(--ease-spring), border-color 0.2s ease;
-}
-
-/* Pulsing "live" status dot. */
-@keyframes agp-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
-  50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(52, 211, 153, 0); }
-}
-.live-dot {
-  animation: agp-pulse 2s ease-in-out infinite;
-}
-
-/* Hero orbs: slow-drifting glow spheres behind the headline (orbs.jakubantalik). */
-@keyframes agp-orb-drift {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(6%, -4%) scale(1.06); }
-  66% { transform: translate(-4%, 3%) scale(0.97); }
-}
-@keyframes agp-orb-drift-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-8%, 6%) scale(1.1); }
-}
-.agp-orb {
-  background: radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.6), rgba(245, 158, 11, 0.12) 55%, transparent 72%);
-  filter: blur(44px);
-  animation: agp-orb-drift 16s ease-in-out infinite;
-  will-change: transform;
-}
-.agp-orb-2 {
-  background: radial-gradient(circle at 60% 40%, rgba(139, 92, 246, 0.42), transparent 68%);
-  filter: blur(56px);
-  animation: agp-orb-drift-2 22s ease-in-out infinite;
-  will-change: transform;
-}
-
-/* Animated gradient sweep on gradient text. */
-@keyframes agp-sweep {
-  to { background-position: 200% center; }
-}
-.agp-gradient-text {
-  background: linear-gradient(100deg, var(--primary) 20%, var(--primary-050) 40%, #fff 50%, var(--primary-050) 60%, var(--primary) 80%);
-  background-size: 200% auto;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  animation: agp-sweep 5s linear infinite;
-}
-
-/* Faint dot-grid backdrop for depth. */
-.agp-dotgrid {
-  background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(60% 60% at 50% 0%, #000, transparent);
-  mask-image: radial-gradient(60% 60% at 50% 0%, #000, transparent);
-}
-
-/* Toast: slide up + fade + blur in (transitions.dev). */
-@keyframes agp-toast-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); filter: blur(6px); }
-  to { opacity: 1; transform: none; filter: blur(0); }
-}
-.agp-toast {
-  animation: agp-toast-in 0.35s var(--ease-spring) both;
-}
-
-/* New proof rows arrive with the same bottom-up, fade + blur motion as toasts. */
-.agp-proof-event {
-  animation: agp-toast-in 0.4s var(--ease-spring) both;
-  animation-delay: var(--agp-delay, 0ms);
-}
-
-/* Card sheen on hover: a soft moving highlight. */
-.agp-sheen { position: relative; overflow: hidden; }
-.agp-sheen::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(120deg, transparent 40%, rgba(245, 158, 11, 0.06) 50%, transparent 60%);
-  transform: translateX(-100%);
-  transition: transform 0.7s var(--ease-out);
-  pointer-events: none;
-}
-.agp-sheen:hover::after { transform: translateX(100%); }
-
-/* Agent "working" state (aicss agent-UI): a soft shimmer sweeping across a
-   panel signals the agent is live and deciding, not a static record. Meaning,
-   not decoration, only shown while a mandate is actively being managed. */
-@keyframes agp-shimmer {
-  0% { transform: translateX(-130%); }
-  100% { transform: translateX(330%); }
-}
-.agp-working { position: relative; overflow: hidden; }
-.agp-working::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 38%;
-  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.10), transparent);
-  animation: agp-shimmer 2.6s var(--ease-out) infinite;
-  pointer-events: none;
-}
-
-/* Three-dot "thinking" cue for an agent that is deciding (aicss reasoning). */
-@keyframes agp-think-dot {
-  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-2px); }
-}
-.agp-think-dots > i {
-  display: inline-block;
-  width: 4px; height: 4px; border-radius: 9999px;
-  background: currentColor;
-  animation: agp-think-dot 1.4s ease-in-out infinite;
-}
-.agp-think-dots > i:nth-child(2) { animation-delay: 0.18s; }
-.agp-think-dots > i:nth-child(3) { animation-delay: 0.36s; }
-
-/* Enrich the orbs with a brighter inner core (orbs.jakubantalik layering). */
-.agp-orb { background:
-  radial-gradient(circle at 32% 30%, rgba(251, 191, 36, 0.42) 0%, transparent 38%),
-  radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.6), rgba(245, 158, 11, 0.12) 55%, transparent 72%); }
-.agp-orb-2 { background:
-  radial-gradient(circle at 58% 38%, rgba(167, 139, 250, 0.34) 0%, transparent 40%),
-  radial-gradient(circle at 60% 40%, rgba(139, 92, 246, 0.42), transparent 68%); }
-
 @media (prefers-reduced-motion: reduce) {
-  .live-dot, .agp-orb, .agp-orb-2, .agp-gradient-text, .agp-toast, .agp-proof-event { animation: none; }
-  .agp-reveal { animation: none; }
-  .agp-working::before, .agp-think-dots > i { animation: none; }
-  .agp-working::before { display: none; }
-  .agp-gradient-text { background-position: center; }
-  .agp-sheen:hover::after { transform: translateX(-100%); }
-  * { transition-duration: 0.01ms !important; }
-}
-
-/* Focus ring for keyboard users. */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: 4px;
+  *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

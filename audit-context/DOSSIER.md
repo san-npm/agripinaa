@@ -1,5 +1,19 @@
 # Saved-session, managed-worker, and withdrawal context dossier
 
+## 2026-09-06 frontend-makeover differential context addendum
+
+Baseline: `3df55c2b370daf5e2b4113428d1b21967b7e6a6f`. This addendum concerns only the uncommitted frontend makeover. The older investigation below is historical; its line numbers and unresolved questions are not current findings.
+
+Targeted records: [FundingDeposit presentation](functions/makeover-funding-deposit.md) and [dashboard recovery disclosure](functions/makeover-dashboard-recovery.md). These are context-only records, not vulnerability verdicts.
+
+- **Caller coverage:** exactly two production `FundingDeposit` render sites: `ManagedWizard.tsx:L1347` and `StrategyWizard.tsx:L824`. Each supplies `preparedPlan` and `preparationStatus` from the same `preparedFunding` object (`L1353-L1354`, `L830-L831`). `MissingActivationRecovery` and `LostRangerRecovery` each have exactly one production render site, `dashboard/page.tsx:L158-L159`.
+- **Changed boundary:** `FundingDeposit.tsx:L111-L127` suppresses the transfer-address box when any preparation status exists. It does not submit transactions, clear checkpoints, grant authority, or choose a sender. The existing status notice still requires both plan and status (`L84-L109`). Fee arithmetic remains at `L44-L51`; the majority-allocation warning remains at `L155-L161`.
+- **Unchanged authority boundary:** funding reservation, submission/confirmation persistence, pending-result guards, passkey signing, session-grant checkpointing, runner handoff, and withdrawal handlers have no executable-code changes in the reviewed diff. Relevant source anchors: `ManagedWizard.tsx:L333-L1207`, `StrategyWizard.tsx:L305-L723`, `dashboard/page.tsx:L336-L429`. The removed managed-wizard token import was unused; the removed Stepper only rendered labels.
+- **Journal dependency:** `FundingCheckpoint` requires a plan (`funding-checkpoint.ts:L38-L59`); stored checkpoints are parsed and executable calls deliberately restored as an empty list (`L134-L215`). The changed UI neither validates nor mutates the journal.
+- **Recovery visibility:** the native `details` wrapper moves existing recovery forms below sessions and starts collapsed (`dashboard/page.tsx:L153-L161`); child components remain mounted once dashboard data exists. It has no `onToggle`, transaction effect, or alternate recovery handler. Existing forms require their own explicit clicks/submits (`L287-L298`, `L447-L461`).
+- **Assumption boundary:** the presentational prop type permits a status without a plan (`FundingDeposit.tsx:L36-L37`); no component-local coupling check exists. Both current production callers establish coupling. The rendering test now covers both status-only address hiding and paired plan/status inputs: both status banners, persisted gross/strategy allocations despite a spent live balance, four locked asset selectors, and confirmed-only receipt links (`tests/funding-disclosure.test.ts:L30-L44`). This closes the earlier presentation-test coverage question; it does not exercise journal persistence or live signing.
+- **Open questions:** real browser-storage loss after direct submission and live relay/chain availability are not exercised by this read-only context task. Whether the collapsed recovery disclosure remains sufficiently discoverable for affected users is a usability check, not established by source alone. Full grant SDK and chain-contract correctness is outside this bounded differential context.
+
 ## Scope and coverage
 
 This dossier follows the dashboard paths visible in the 2026-09-02 screenshots: saved-session classification, on-chain key validity, runner liveness/registration, managed worker sweeps, and owner withdrawal/recovery. It is an orientation artifact only: it records what the code assumes and enforces, without naming vulnerabilities or recommending changes.

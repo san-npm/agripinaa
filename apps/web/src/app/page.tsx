@@ -1,199 +1,90 @@
 import Link from "next/link";
 import { Suspense } from "react";
-
 import { AgentCard } from "@/components/AgentCard";
-import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { ArrowIcon, CATEGORY_ICON, ReceiptIcon, ShieldIcon, VerifiedIcon } from "@/components/icons";
+import { ArrowIcon, CATEGORY_ICON } from "@/components/icons";
 import { ProofFeed } from "@/components/ProofFeed";
 import { ProofFeedLive } from "@/components/ProofFeedLive";
-import { CATEGORY_INFO, CATEGORY_ORDER } from "@/lib/categories";
-import { getStats, listDirectory } from "@/lib/data";
+import { CATEGORY_INFO } from "@/lib/categories";
+import { listFirstParty } from "@/lib/data";
 
-async function StatsStrip() {
-  // listDirectory is a `use cache` entry keyed on its arguments, so the call
-  // VerifiedAgents makes below reuses this one rather than refetching.
-  const [stats, dir] = await Promise.all([getStats(), listDirectory()]);
-  const items = [
-    {
-      // Explicit locale: this string is rendered on the server, so a bare
-      // toLocaleString() would group by whatever ICU locale the host happens
-      // to run under (278 802 on a French dev box, 278,802 on Vercel).
-      value:
-        stats.totalAgents != null
-          ? stats.totalAgents.toLocaleString("en-US")
-          : "n/a",
-      label: stats.chainScoped
-        ? "ERC-8004 agents registered on BSC"
-        : "ERC-8004 agents registered",
-    },
-    {
-      value: String(dir.firstParty.length),
-      label: "live Agripinaa agents on mainnet",
-    },
-    {
-      value: String(dir.registry.length),
-      label: "indexed agents you can browse",
-    },
-  ];
-  return (
-    <dl className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface">
-      {items.map((it) => (
-        <div key={it.label} className="px-4 py-4 sm:px-6">
-          <dt className="tabular font-mono text-lg font-medium text-foreground sm:text-2xl">
-            <AnimatedNumber value={it.value} />
-          </dt>
-          <dd className="mt-0.5 text-[11px] leading-tight text-muted-2 sm:text-xs">
-            {it.label}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
+async function FeaturedAgents() {
+  const agents = await listFirstParty();
+  if (agents.length === 0) return <p className="text-muted">Strategies are temporarily unavailable. Please check again shortly.</p>;
+  return <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    {agents.slice(0, 6).map(agent => <AgentCard key={agent.id} agent={agent} />)}
+  </div>;
 }
 
-async function VerifiedAgents() {
-  const dir = await listDirectory();
-  if (dir.verified.length === 0) return null;
-  return (
-    <section className="mt-14">
-      <div className="mb-1 flex items-baseline justify-between">
-        <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-          <VerifiedIcon className="h-4 w-4 text-primary" /> Verified by Agripinaa
-        </h2>
-        <Link
-          href="/agents"
-          className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
-        >
-          Browse all <ArrowIcon className="h-3.5 w-3.5" />
-        </Link>
-      </div>
-      <p className="mb-4 text-sm text-muted-2">
-        Agents we built, ran, and verified on-chain: every action links to
-        BscScan, with an ERC-8004 attestation.
-      </p>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {dir.verified.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} />
-        ))}
-      </div>
-    </section>
-  );
-}
+const goals = [
+  { category: "yield" as const, title: "Earn lending yield", copy: "Compare rates across Aave and Venus." },
+  { category: "grid" as const, title: "Automate a trading strategy", copy: "Trade within predefined price levels." },
+  { category: "health-factor" as const, title: "Monitor borrowing risk", copy: "Keep a reserve ready to repay debt." },
+  { category: "rebalancing" as const, title: "Manage liquidity", copy: "Maintain a concentrated-liquidity range." },
+];
 
 export default function Home() {
-  return (
-    <div>
-      <section className="relative py-6 sm:py-10">
-        <div aria-hidden className="agp-dotgrid pointer-events-none absolute -inset-x-4 -top-10 z-0 h-96" />
-        <div
-          aria-hidden
-          className="agp-orb pointer-events-none absolute -top-16 right-0 z-0 h-64 w-64 rounded-full sm:h-96 sm:w-96"
-        />
-        <div
-          aria-hidden
-          className="agp-orb-2 pointer-events-none absolute -top-24 right-40 z-0 h-56 w-56 rounded-full sm:h-72 sm:w-72"
-        />
-        <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
-          <VerifiedIcon className="h-3.5 w-3.5 text-primary" />
-          ERC-8004 · BNB Smart Chain
-        </span>
-        <h1 className="relative z-10 mt-5 max-w-3xl font-display text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-          The front door for every{" "}
-          <span className="agp-gradient-text">agent on BSC</span>
-        </h1>
-        <p className="relative z-10 mt-5 max-w-2xl text-base leading-relaxed text-muted">
-          Browse AI agents registered on-chain, read their on-chain track record,
-          and put one to work with a scoped, revocable session. No custody, no
-          blind trust: here, performance is provable.
+  return <div>
+    <section className="home-hero">
+      <div>
+        <p className="eyebrow">Your on-chain strategy, simplified</p>
+        <h1>Put your assets <br /><span>to work. On your terms.</span></h1>
+        <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted">
+          Discover automated DeFi strategies, understand what each agent can do,
+          and stay in control of your account.
         </p>
-        <div className="mt-8">
-          <Suspense
-            fallback={<div className="h-20 rounded-xl border border-border bg-surface" />}
-          >
-            <StatsStrip />
-          </Suspense>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link href="/agents" className="button-primary">Explore agents <ArrowIcon className="h-4 w-4" /></Link>
+          <Link href="/dashboard" className="button-secondary">My agents</Link>
         </div>
-      </section>
+        <p className="mt-5 text-xs text-muted-2">BNB Smart Chain · Passkey access · Revocable permissions</p>
+      </div>
+      <div className="journey-panel">
+        <p className="eyebrow">A clear path from choice to control</p>
+        <ol className="mt-3">
+          {[
+            ["Choose your strategy", "Review its approach, permissions and on-chain activity."],
+            ["Review and activate", "Create or recover your account. See the funding split before you approve."],
+            ["Follow your agent", "Check balances, inspect activity and stop the agent from your dashboard."],
+          ].map(([title, copy], index) => <li key={title}>
+            <span aria-hidden className="journey-number">0{index + 1}</span>
+            <div><h2 className="text-base font-semibold">{title}</h2><p className="mt-1 text-sm text-muted">{copy}</p></div>
+          </li>)}
+        </ol>
+      </div>
+    </section>
 
-      <section className="mt-4">
-        <Suspense fallback={<ProofFeed compact />}>
-          <ProofFeedLive compact />
-        </Suspense>
-      </section>
+    <section className="border-y border-border py-8">
+      <p className="eyebrow mb-5">What would you like to do?</p>
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {goals.map(({category, title, copy}) => {
+          const Icon = CATEGORY_ICON[category];
+          return <Link key={category} href={`/c/${category}`} className="group flex gap-3 rounded-md py-1">
+            <Icon className="mt-1 h-5 w-5 shrink-0 text-primary" />
+            <div><h2 className="text-sm font-semibold group-hover:underline">{title} <span aria-hidden>↗</span></h2><p className="mt-1 text-xs text-muted">{copy}</p><span className="sr-only">{CATEGORY_INFO[category].label}</span></div>
+          </Link>;
+        })}
+      </div>
+    </section>
 
-      <section className="mt-10">
-        <h2 className="mb-4 font-display text-lg font-semibold">
-          Browse by category
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {CATEGORY_ORDER.map((category) => {
-            const info = CATEGORY_INFO[category];
-            const Icon = CATEGORY_ICON[category];
-            return (
-              <Link
-                key={category}
-                href={`/c/${category}`}
-                className="agp-reveal agp-sheen group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200 hover:border-primary/40 hover:shadow-[0_10px_30px_-12px_rgba(245,158,11,0.25)]"
-              >
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-[inset_0_0_16px_rgba(245,158,11,0.1)] transition-transform group-hover:scale-105">
-                  <Icon className="h-6 w-6" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    {info.label}
-                    <ArrowIcon className="h-4 w-4 text-muted-2 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
-                  </span>
-                  <span className="mt-0.5 block text-sm text-muted-2">
-                    {info.blurb}
-                  </span>
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
+    <section className="mt-14">
+      <div className="section-heading">
+        <div><p className="eyebrow mb-2">Built by Agripinaa</p><h2>Find an approach that fits.</h2><p className="mt-2 text-sm text-muted">Distinct strategies, clear permissions, and activity you can inspect.</p></div>
+        <Link href="/agents" className="text-sm font-semibold text-primary">View all agents <span aria-hidden>↗</span></Link>
+      </div>
+      <Suspense fallback={<p className="rounded-lg border border-border bg-surface p-8 text-muted">Loading strategies…</p>}><FeaturedAgents /></Suspense>
+    </section>
 
-      <section className="mt-10 grid gap-4 rounded-xl border border-border bg-surface p-6 sm:grid-cols-3">
-        <TrustPoint
-          icon={<VerifiedIcon className="h-4 w-4" />}
-          title="On-chain identity"
-          body="Every agent is an ERC-8004 registration you can verify on BscScan."
-        />
-        <TrustPoint
-          icon={<ReceiptIcon className="h-4 w-4" />}
-          title="Provable execution"
-          body="Trades route through Ophis batch auctions; surplus and receipts are settlement data, not claims."
-        />
-        <TrustPoint
-          icon={<ShieldIcon className="h-4 w-4" />}
-          title="Scoped & revocable"
-          body="Hiring grants a session key with an allowlist, spend cap, and expiry. Revoke any time."
-        />
-      </section>
+    <section className="mt-14 grid gap-8 rounded-xl bg-surface-2 p-6 sm:p-8 lg:grid-cols-[1fr_2fr]">
+      <div><p className="eyebrow mb-2">Know what you approve</p><h2 className="text-2xl font-medium">Control is part<br />of the product.</h2><Link href="/funds" className="mt-5 inline-block text-sm font-semibold text-primary underline underline-offset-4">Read about security</Link></div>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div><h3 className="font-semibold">Permissions, not your main wallet</h3><p className="mt-2 text-sm text-muted">An agent receives limited, time-bound authority for its strategy account. Review the scope before activation.</p></div>
+        <div><h3 className="font-semibold">A visible funding split</h3><p className="mt-2 text-sm text-muted">Activation fees and the gas reserve are separate from strategy capital. Returns are variable and never guaranteed.</p></div>
+      </div>
+    </section>
 
-      <Suspense fallback={null}>
-        <VerifiedAgents />
-      </Suspense>
-    </div>
-  );
-}
-
-function TrustPoint({
-  icon,
-  title,
-  body,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div>
-      <span className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-surface-2 text-primary">
-        {icon}
-      </span>
-      <h3 className="mt-3 text-sm font-medium">{title}</h3>
-      <p className="mt-1 text-xs leading-relaxed text-muted-2">{body}</p>
-    </div>
-  );
+    <section className="mt-14">
+      <div className="section-heading"><div><p className="eyebrow mb-2">Traceable, not self-reported</p><h2>On-chain activity</h2></div><Link href="/proof" className="text-sm font-semibold text-primary">View activity <span aria-hidden>↗</span></Link></div>
+      <Suspense fallback={<ProofFeed compact />}><ProofFeedLive compact /></Suspense>
+    </section>
+  </div>;
 }

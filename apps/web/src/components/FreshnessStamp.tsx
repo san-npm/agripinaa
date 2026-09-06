@@ -6,7 +6,7 @@ export function FreshnessStamp({
   source: string;
 }) {
   return (
-    <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-2">
+    <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-2">
       <span className="live-dot inline-block h-1 w-1 rounded-full bg-success" />
       <span className="font-mono">{source}</span>
       <span>·</span>

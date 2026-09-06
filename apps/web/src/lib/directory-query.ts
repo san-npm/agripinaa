@@ -101,6 +101,12 @@ export function hasActiveFilters(query: DirectoryQuery): boolean {
   return query.query !== '' || query.category != null || query.live || query.claimed;
 }
 
+/** First-party cards do not pass through the registry's upstream search. */
+export function matchesDirectorySearch(agent: AgentSummary, query: string): boolean {
+  const term = normalizeQuery(query);
+  return !term || `${agent.name}\n${agent.description ?? ''}`.toLowerCase().includes(term);
+}
+
 /**
  * The two filters the index cannot answer upstream.
  *

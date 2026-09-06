@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
+import { Suspense } from "react";
+import { SiteNav } from "@/components/SiteNav";
 import "./globals.css";
 
 import { Toaster } from "@/components/Toaster";
@@ -9,11 +11,6 @@ import { SITE_URL } from "@/lib/site";
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
-});
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
 });
 const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
@@ -46,84 +43,34 @@ export const metadata: Metadata = {
 };
 
 function Logo() {
-  return (
-    <span className="flex items-center gap-2">
-      <span
-        aria-hidden
-        className="inline-block h-5 w-5 rounded-sm bg-gradient-to-br from-[var(--primary-050)] to-[var(--primary)] shadow-[0_0_12px_rgba(245,158,11,0.5)]"
-      />
-      <span className="font-display text-base font-semibold tracking-tight">
-        Agripinaa
-      </span>
-    </span>
-  );
+  return <span className="brand">
+    <span aria-hidden className="brand-mark"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 16 10 3l7 13M6 11h8" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg></span>
+    Agripinaa
+  </span>;
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrains.variable} h-full`}
-    >
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable} h-full`}>
       <body className="min-h-full flex flex-col">
-        <header className="sticky top-0 z-40 border-b border-border bg-[color:var(--background)]/80 backdrop-blur-md">
-          <nav className="relative mx-auto flex max-w-6xl items-center gap-6 px-4 py-3.5 text-sm">
-            <Link href="/" className="hover:opacity-90">
-              <Logo />
-            </Link>
-            <Link
-              href="/agents"
-              className="text-muted transition-colors hover:text-foreground"
-            >
-              Agents
-            </Link>
-            <Link
-              href="/proof"
-              className="text-muted transition-colors hover:text-foreground"
-            >
-              Proof
-            </Link>
-            <Link
-              href="/leaderboard"
-              className="text-muted transition-colors hover:text-foreground"
-            >
-              Leaderboard
-            </Link>
-            <Link
-              href="/funds"
-              className="whitespace-nowrap text-muted transition-colors hover:text-foreground"
-            >
-              Router security
-            </Link>
-            <Link
-              href="/dashboard"
-              className="text-muted transition-colors hover:text-foreground"
-            >
-              My sessions
-            </Link>
-            <span className="ml-auto flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted">
-              <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-success" />
-              BNB Smart Chain
-            </span>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:block focus:bg-surface focus:p-3">Skip to content</a>
+        <header className="site-header">
+          <nav aria-label="Main navigation" className="site-container site-nav">
+            <Link href="/" aria-label="Agripinaa home"><Logo /></Link>
+            <Suspense fallback={<Link href="/dashboard" className="button-primary nav-account">My agents</Link>}><SiteNav /></Suspense>
           </nav>
         </header>
-        <main className="relative z-10 mx-auto w-full max-w-6xl flex-1 px-4 py-10">
-          {children}
-        </main>
-        <footer className="relative z-10 border-t border-border">
-          <div className="mx-auto max-w-6xl space-y-2 px-4 py-8 text-xs text-muted-2">
-            <p>
-              Execution powered by{" "}
-              <a
-                href="https://ophis.fi"
-                className="text-muted underline decoration-border-strong underline-offset-2 hover:text-foreground"
-              >
-                Ophis
-              </a>
-              . Identity and reputation from ERC-8004 registries on BNB Smart
-              Chain. Trust is reputation-based: no validation registry is
-              deployed yet. Open source under MIT.
-            </p>
+        <main id="main-content" tabIndex={-1} className="site-container flex-1 py-10 sm:py-14">{children}</main>
+        <footer className="site-footer">
+          <div className="site-container grid gap-6 sm:grid-cols-[1fr_2fr] text-xs text-muted-2">
+            <div><Logo /><p className="mt-3">Independent strategies. Transparent execution.</p><p className="mt-1">Built on BNB Smart Chain.</p></div>
+            <div>
+              <div className="mb-4 flex flex-wrap gap-5 text-sm text-foreground">
+                <Link href="/agents">Explore agents</Link><Link href="/dashboard">My agents</Link><Link href="/funds">Security</Link><Link href="/proof">Activity</Link>
+              </div>
+              <p>Trade execution powered by <a href="https://ophis.fi" className="underline underline-offset-2">Ophis</a>. Identity and reputation from ERC-8004 registries on BNB Smart Chain. Trust is reputation-based; no validation registry is deployed yet. Open source under MIT.</p>
+              <p className="mt-2">DeFi involves risk. Returns are variable, and fees reduce the amount invested.</p>
+            </div>
           </div>
         </footer>
         <Toaster />
