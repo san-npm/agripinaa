@@ -28,7 +28,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
   return (
     <Link
       href={`/agent/${agent.chainId}/${agent.tokenId}`}
-      className="agent-card group"
+      className="agent-card group min-w-0"
     >
       <div className="mb-4 min-h-5 text-xs text-primary">
         {verified && <span className="flex items-center gap-1.5"><VerifiedIcon className="h-3.5 w-3.5" /> Verified by Agripinaa</span>}
@@ -45,7 +45,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h3 className="font-medium leading-tight text-foreground">
+            <h3 title={agent.name} className="min-w-0 truncate font-medium leading-tight text-foreground">
               {agent.name}
             </h3>
             {agent.trust.isVerified && (
