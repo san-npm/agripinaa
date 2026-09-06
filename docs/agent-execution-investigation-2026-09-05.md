@@ -180,3 +180,71 @@ Neither the web/runner integration nor its live flag has been deployed in this
 implementation step. Altana still supplies merchant preparation, capabilities and
 authorization reads; only submission/status have an alternate path. Live activation,
 session grant, runner execution and withdrawal are still required acceptance checks.
+
+## September 6: approved deployment and gas-wallet preparation
+
+After the user approved deployment and a one-account live test capped at 0.0002 BNB
+in gas, commit `b0678e60aa3eda93378416d93a63a02ed0c5c1ce` was pushed and deployed
+to the web and existing Aleph runner. Production deployment
+`dpl_8PGN2BXbDhofPapzoq3Z6h8PGFVs` is Ready. The live browser-bundle check passed;
+runner health lists all eight agents. The new gateway returns disabled funding mode
+and successful read-only health/capabilities responses. The BTCB fee quote is live.
+
+The separate gas wallet was created locally and funded from the project's existing
+`spike-a` funding wallet with 0.00015 BNB. Transaction
+`0x063d635b03bf639ab1ad8c5325109880ded22ee475cad04843d8629cdccbce82` succeeded,
+costing 0.00000105 BNB in gas. The affected user's nonce remains 0 and their BTCB
+balance remains 25,976,153,706,966 base units. No activation transaction was sent.
+
+Automated review blocked the full deployment script's wallet-key export. Code-only
+deployment succeeded without copying any credentials. Direct sending remains off;
+installing only the new dedicated key on the existing runner requires explicit
+approval. `docs/funding-recovery.md` records the exact key destination and retained
+gas-transfer journal. Do not fund again, clear checkpoints, or claim live restoration.
+
+## September 6: dedicated key installed after explicit approval
+
+The user explicitly approved copying only the newly created gas-wallet key to the
+existing Aleph runner. The single file was transferred over pinned SSH, verified
+to derive `0x270C1136Eab831b0D5c18aA1BBCcf87d95bd14F7`, and checked at mode 0600.
+No other wallet key or the user's passkey was transferred. The dedicated gas
+balance was rechecked at 0.00015 BNB; no additional funding transfer was sent.
+
+A systemd drop-in enables the sender only for the approved account and points to
+the installed key. After restart, the production funding route returns enabled for
+that account and disabled for an unrelated address. The runner and tunnel are
+healthy. No direct activation journal or lock exists; the user still needs to
+refresh the existing activation page and authorize a fresh quote with their passkey.
+An old failed checkpoint must be resolved with the existing status-check button,
+not by depositing again or manually clearing browser storage. End-to-end live
+activation, mandate, execution and withdrawal remain unverified.
+
+## September 6: direct sender omitted the passkey signature envelope
+
+The user's first direct attempt reached `wallet_sendPreparedCalls` but failed before
+the signed-transaction journal was created. The user, payer and dedicated sender
+nonces remained 0, 8 and 0 respectively. No activation transaction was submitted.
+
+Replaying the exact user-reported request through `signedDirectFunding` and
+`prepareFundingRecovery` passed request/policy/authorization/gas checks, but BSC
+`eth_call` returned `0xfbcb0b34` (`VerificationError()` in the installed Orchestrator
+ABI). Porto `signCalls` deliberately returns an **unwrapped** main-bundle signature
+(`wrap: isPrecall`); the hosted relay normally adds the key hash and prehash byte.
+Our direct sender incorrectly assigned the raw WebAuthn bytes to `intent.signature`.
+This is a bug in the new sender, not evidence about the earlier hosted rejection.
+
+The fix reuses Porto's `Key.wrapSignature` for the validated WebAuthn key. It adds
+`Key.hash(key)` and `prehash=false` without changing the user's signed calls, nonce,
+amounts, payer signature or either delegation authorization. The exact original
+request, with its original 1,784,140 gas limit, then passed full public BSC simulation
+with no state overrides. The patched parser itself was rerun and passed too. These
+were read-only simulations; sender-deadline validation was evaluated at the original
+submission time for diagnosis only, not bypassed in the service or used to broadcast.
+
+Regression assertions now check the exact 33-byte framing on an actual SDK-generated
+headless-passkey request and that native payer signatures remain unchanged. The old
+test only checked that the RPC parsed and mocked the contract call; it did not
+exercise contract verification, so it missed this error. The browser now suppresses
+viem's full signed-request dump on direct execution failures, while retaining the
+saved checkpoint. Server logging allows only the fixed simulation-error label and
+bytes4 selector, never arbitrary RPC payloads. Workspace tests and type checks pass.
