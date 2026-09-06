@@ -13,6 +13,8 @@ const { Scan8004Source } = await import('../src/sources/scan8004');
 
 test('an upstream that takes the request and never answers is given up on', { timeout: 5_000 }, async () => {
   const realFetch = globalThis.fetch;
+  // The mock has no socket to keep Node alive; AbortSignal.timeout is unref'd.
+  const socketLifetime = setInterval(() => {}, 1_000);
   let signalled = false;
   globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
     signalled = init?.signal instanceof AbortSignal;
@@ -24,9 +26,13 @@ test('an upstream that takes the request and never answers is given up on', { ti
   }) as typeof fetch;
 
   try {
-    await assert.rejects(() => new Scan8004Source().listAgents({ chainId: 56, limit: 10 }));
+    await assert.rejects(
+      () => new Scan8004Source().listAgents({ chainId: 56, limit: 10 }),
+      { name: 'TimeoutError' },
+    );
     assert.ok(signalled, 'the request went out without a deadline attached');
   } finally {
+    clearInterval(socketLifetime);
     globalThis.fetch = realFetch;
   }
 });

@@ -78,6 +78,10 @@ Shared CSS has site-wide visual impact. Browser checks complement the source rev
 
 ## Recommendations and deployment boundary
 
+### CI portability follow-up
+
+Before merge, GitHub CI exposed a pre-existing failure also present on baseline run `34035162769`: `packages/agent-index/tests/scan8004.test.ts` was cancelled because its pending fetch mock had no referenced event-loop handle while `AbortSignal.timeout` uses an unreferenced timer. The test now keeps a referenced interval for the simulated socket lifetime and always clears it in `finally`. The request deadline, test timeout and rejection assertion are retained; no production timeout or indexer code changes. This additional test-only diff was reviewed separately from the 39 frontend files above.
+
 No confirmed security finding requires a code fix before merge. Keep the added regression tests and existing patched-wallet build check. Merge only after CI succeeds, then verify the production alias and the new homepage/dashboard output.
 
 Deploy the web application only. Do not rotate keys, change the runner, modify contracts, clear funding journals, sign transactions, or request another deposit as part of this release.
