@@ -574,10 +574,13 @@ export function startX402Server(opts: {
         const result = await directFunding(body);
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
-      } catch {
+      } catch (error) {
         if (!res.headersSent) {
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
           // Do not echo exceptions containing RPC payloads or executable signatures.
+          if (error instanceof Error && /^Funding simulation rejected \(0x[\da-f]{8}\)$/i.test(error.message)) {
+            console.warn(error.message); // Only our fixed simulation label and bytes4 selector.
+          }
           res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32000,
             message: 'Funding could not be completed. Check the saved funding status before signing again.' } }));
         }

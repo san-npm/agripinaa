@@ -6,6 +6,7 @@ import { createHeadlessPasskey } from '@altananetwork/sdk';
 import { ALTANA_ORCHESTRATOR_BSC, FUNDING_FEE_PAYER_BSC, directFundingId } from '@agripinaa/shared/funding';
 import { decodeFunctionData, encodeAbiParameters, keccak256, parseAbi, parseAbiParameters, toHex, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { Key } from 'porto/viem';
 import { signedDirectFunding } from '../src/direct-funding-relay';
 
 // Next compiles these client modules as ESM; the web package's Node test default is CJS.
@@ -36,6 +37,7 @@ test('actual SDK signs a passkey funding request, checkpoints before send, and p
   let preparedId: Hex | undefined;
   let sends = 0;
   let failSend = false;
+  let failPrepare = false;
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: 'https://app.test' } } });
   t.after(() => {
@@ -58,6 +60,7 @@ test('actual SDK signs a passkey funding request, checkpoints before send, and p
       assert.equal(request.url, 'https://app.test/api/funding/relay');
       result = { quoteSigner: quoteSigner.address.toLowerCase(), status: 'healthy', version: 'test' };
     } else if (rpc.method === 'wallet_prepareCalls') {
+      if (failPrepare) return Response.json({ jsonrpc: '2.0', id: rpc.id, error: { code: -32000, message: 'preparation unavailable' } });
       assert.equal(request.url, 'https://merchant.test/');
       const prepared = rpc.params[0];
       assert.equal(prepared.key.publicKey, signer.publicKey);
@@ -75,7 +78,10 @@ test('actual SDK signs a passkey funding request, checkpoints before send, and p
     } else if (rpc.method === 'wallet_sendPreparedCalls') {
       assert.equal(request.url, 'https://app.test/api/funding/relay');
       assert.equal(checkpoint, preparedId, 'checkpoint must exist before the signed payload leaves');
-      assert.equal(signedDirectFunding(rpc.params[0]).id, preparedId, 'real Porto wire format must parse at the alternate sender');
+      const funding = signedDirectFunding(rpc.params[0]);
+      assert.equal(funding.id, preparedId, 'real Porto wire format must parse at the alternate sender');
+      const keyHash = Key.hash({ type: 'webauthn-p256', publicKey: signer.publicKey });
+      assert.equal(funding.recovery.intent.signature, `${rpc.params[0].signature}${keyHash.slice(2)}00`, 'actual SDK signatures need the relay-added key hash and prehash flag');
       assert.ok(rpc.params[0].signature.length > 132, 'a real headless WebAuthn signature was produced');
       order.push('send'); sends++;
       if (failSend) return Response.json({ jsonrpc: '2.0', id: rpc.id, error: { code: -32000, message: 'lost response' } });
@@ -93,9 +99,16 @@ test('actual SDK signs a passkey funding request, checkpoints before send, and p
   assert.deepEqual(order, ['checkpoint', 'send']);
   assert.equal((await readRelayCallStatus({ callsId: checkpoint! })).status, 'confirmed');
   failSend = true;
-  await assert.rejects(executeFunding(options), /lost response/);
+  await assert.rejects(executeFunding(options), (error: Error) => {
+    assert.match(error.message, /Check funding status/);
+    assert.doesNotMatch(error.message, /Request body|feeSignature|wallet_sendPreparedCalls|0x/);
+    return true;
+  });
   assert.equal(sends, 2, 'a selected direct send must not fall back or resubmit automatically');
   assert.ok(checkpoint, 'the failed response must leave a checkable id');
+  failPrepare = true;
+  await assert.rejects(executeFunding(options), /stopped before submission/);
+  assert.equal(sends, 2, 'preparation failure must not send or clear the existing checkpoint');
 });
 
 test('funding configuration errors stop before signing', async (t) => {

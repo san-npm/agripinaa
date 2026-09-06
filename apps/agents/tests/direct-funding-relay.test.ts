@@ -12,6 +12,7 @@ import {
   keccak256, maxUint256, parseAbi, parseAbiParameters, toHex, type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { Key } from 'porto/viem';
 import { createDirectFundingRelay, signedDirectFunding } from '../src/direct-funding-relay';
 import { fundingQuote } from '../src/funding-merchant';
 
@@ -52,10 +53,14 @@ test('direct funding binds identity, nonce deadline, passkey and deployment befo
   const body = await request();
   const parsed = signedDirectFunding(body);
   assert.equal(parsed.id, directFundingId(user.address, parsed.recovery.intent.nonce));
+  const keyHash = Key.hash({ type: 'webauthn-p256', publicKey });
+  assert.equal(parsed.recovery.intent.signature, `${body.signature}${keyHash.slice(2)}00`, 'the sender must add the contract key envelope to the raw RPC signature');
+  assert.equal(parsed.recovery.intent.paymentSignature, body.capabilities.feeSignature, 'native payer signatures must stay unwrapped');
   assert.throws(() => signedDirectFunding(body, Date.now() + 301_000), /expired/);
   assert.throws(() => signedDirectFunding(body, Date.now() - 100_000), /expired/);
   assert.throws(() => signedDirectFunding({ ...body, key: { ...body.key, publicKey: '0x11' } }), /passkey/);
   assert.throws(() => signedDirectFunding({ ...body, signature: '0x' }), /Unsafe/);
+  assert.throws(() => signedDirectFunding({ ...body, signature: '0x123' }), /Unsafe/);
   const quote = body.context.quote.quotes[0]!;
   for (const patch of [{ chainId: '0x1' }, { orchestrator: zero }, { authorizationAddress: zero }, { txGas: toHex(3_000_000n) }]) {
     assert.throws(() => signedDirectFunding({ ...body, context: { quote: { quotes: [{ ...quote, ...patch }] } } }));

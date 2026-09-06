@@ -23,10 +23,21 @@ export async function executeFunding(options: ClientExecuteOptions) {
   const nonce = directFundingNonce(toHex(crypto.getRandomValues(new Uint8Array(16))));
   const id = directFundingId(options.wallet.address as Address, nonce);
   const client = createClient({ chains: [{ ...BNB, relayUrl: new URL('/api/funding/relay', window.location.origin).href }], defaultChainId: 56 });
-  return client.execute({ ...options, nonce,
-    onBeforeSubmit: () => options.onSubmitted!(id),
-    onSubmitted: (returnedId) => {
-      if (returnedId !== id) throw new Error('Funding response could not be matched. Check the saved funding status before retrying.');
-    },
-  });
+  let checkpointStarted = false;
+  try {
+    return await client.execute({ ...options, nonce,
+      onBeforeSubmit: () => {
+        checkpointStarted = true;
+        return options.onSubmitted!(id);
+      },
+      onSubmitted: (returnedId) => {
+        if (returnedId !== id) throw new Error('Funding response could not be matched. Check the saved funding status before retrying.');
+      },
+    });
+  } catch {
+    // viem errors embed the full request, including executable passkey/fee signatures.
+    throw new Error(checkpointStarted
+      ? 'Funding was not confirmed. Use “Check funding status” before retrying; do not deposit again.'
+      : 'Funding preparation stopped before submission. Refresh the quote and try again.');
+  }
 }

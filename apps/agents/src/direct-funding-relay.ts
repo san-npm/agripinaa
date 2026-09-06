@@ -6,6 +6,7 @@ import {
 } from '@agripinaa/shared';
 import { keccak256, toHex, type Address, type Hex, type PublicClient } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { Key } from 'porto/viem';
 import { ensureDataDir } from './chassis';
 import { fundingRequestFromExecution } from './funding-merchant';
 import { fundingReceiptStatus, parseFundingQuote, prepareFundingRecovery, relayRpc, submitSavedFunding } from './recover-funding';
@@ -29,8 +30,16 @@ export function signedDirectFunding(value: unknown, now = Date.now()) {
     || typeof key.publicKey !== 'string' || key.publicKey.toLowerCase() !== registration.key?.publicKey.toLowerCase()) {
     throw new Error('Funding passkey does not match registration');
   }
+  if (typeof request.signature !== 'string' || !/^0x(?:[\da-f]{2})+$/i.test(request.signature)) {
+    throw new Error('Unsafe funding recovery intent');
+  }
+  // Porto signCalls leaves main-bundle signatures unwrapped for the relay.
+  // The contract needs innerSignature || Key.hash(key) || prehash, not raw WebAuthn bytes.
+  const signature = Key.wrapSignature(request.signature as Hex, {
+    keyType: 'webauthn-p256', publicKey: key.publicKey as Hex, prehash: false,
+  });
   const recovery = parseFundingQuote({ ...quote, intent: {
-    ...original, signature: request.signature, paymentSignature: object(request.capabilities).feeSignature,
+    ...original, signature, paymentSignature: object(request.capabilities).feeSignature,
   } }, account as Address, now);
   const deadline = directFundingDeadline(recovery.intent.nonce);
   if (deadline <= Math.floor(now / 1000) || deadline > Math.floor(now / 1000) + 360) {

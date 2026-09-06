@@ -2,12 +2,52 @@
 
 This contains a **single-account alternate funding sender** connected to the
 activation wizard, plus an operator-only recovery command for older hosted-relay
-attempts. Neither is enabled on production. This is not a general relay replacement.
+attempts. The code is deployed on production; direct sending is enabled only for
+the approved account after explicit key-installation approval. Live passkey
+activation remains to be verified. This is not a general relay replacement.
 
 The command defaults to simulation. It has not been used to broadcast on BSC.
 User deposits and production wallet keys were not touched during testing.
 Ponytail scope: reuse the funding merchant policy, fee cap, atomic state writer,
 SDK submission callback and existing runner; no additional provider service.
+
+The September 6 first direct attempt exposed a missing passkey envelope in the new
+sender. Porto sends raw WebAuthn bytes at this RPC boundary; `Key.wrapSignature`
+must add the key hash and prehash byte before Orchestrator execution. The correction
+passed a full read-only BSC simulation of the exact reported request. Native payer
+signatures and already-wrapped hosted recovery signatures are not wrapped again.
+See the investigation log for the before/after evidence. No activation was broadcast.
+
+## September 6 deployment status
+
+- Web and runner code: `b0678e60aa3eda93378416d93a63a02ed0c5c1ce`.
+  Vercel production deployment: `dpl_8PGN2BXbDhofPapzoq3Z6h8PGFVs`.
+- Production browser-bundle checks passed; runner health reports all eight agents.
+  Funding mode initially returned `enabled: false`; gateway health/capabilities and BTCB
+  fee-quote reads return HTTP 200.
+- Under the approved live-test gas budget, the existing project gas-funding wallet
+  funded the new dedicated sender `0x270C1136Eab831b0D5c18aA1BBCcf87d95bd14F7`
+  with 0.00015 BNB. Transfer
+  `0x063d635b03bf639ab1ad8c5325109880ded22ee475cad04843d8629cdccbce82`
+  succeeded with a fee of 0.00000105 BNB. No activation was submitted; the user's
+  BTCB balance and account nonce were unchanged.
+- The full deployment script was blocked by automated review because it copies
+  wallet credentials. A code-only deployment succeeded using existing remote keys;
+  no wallet file was transferred in that deployment. After subsequent explicit
+  approval, **only the new dedicated key** was copied from `wallets/direct-funding.json` to
+  `agripinaa-aleph:/root/agripinaa/wallets/direct-funding.json`, over pinned SSH.
+  Its derived public address and mode 0600 were verified remotely; no other key was copied.
+- The runner loads the enabled account and dedicated key path from
+  `/etc/systemd/system/agripinaa-runner.service.d/direct-funding.conf`.
+  The source configuration is retained locally at `ops/run/direct-funding.conf`.
+  Production funding mode now returns `enabled: true` for the approved account and
+  `false` for an unrelated account. Runner and tunnel are healthy after restart.
+  No activation journal exists: a fresh browser passkey signature is still needed.
+  To disable new sends, set `DIRECT_FUNDING_ENABLED=false` in that drop-in, run
+  `systemctl daemon-reload`, and restart `agripinaa-runner`; keep the key and journals.
+- Local operator setup and the signed gas-transfer journal are retained under
+  `apps/agents/data/prepare-direct-funding.ts` and
+  `apps/agents/data/direct-funding-gas-transfer.json`. Use `--status`; do not fund again.
 
 ## Browser activation path
 
@@ -156,4 +196,4 @@ The recovery policy correctly refused it. That establishes a stale-fee problem
 for reusing this old signature, **not the cause of the relay's original rejection**.
 A stale signed amount cannot safely be edited: it requires a fresh user signature,
 not another deposit. The buffered quote and browser integration above address those
-implementation gaps; deployment and live acceptance remain outstanding.
+implementation gaps; live passkey activation and end-to-end acceptance remain outstanding.
