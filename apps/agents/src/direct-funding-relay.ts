@@ -113,7 +113,9 @@ export function createDirectFundingRelay(opts: {
       return { id: parameter, status: status === 'confirmed' ? 201 : 500, receipts: [{
         transactionHash: receipt.transactionHash, blockHash: receipt.blockHash,
         blockNumber: toHex(receipt.blockNumber), chainId: '0x38', gasUsed: toHex(receipt.gasUsed),
-        status: receipt.status === 'success' ? '0x1' : '0x0', logs: receipt.logs,
+        status: receipt.status === 'success' ? '0x1' : '0x0',
+        // Porto's status schema needs only these fields; viem metadata contains bigint.
+        logs: receipt.logs.map(({ address, data, topics }) => ({ address, data, topics })),
       }] };
     }
     if (rpc.method !== 'wallet_sendPreparedCalls') throw new Error('Unsupported funding RPC method');
