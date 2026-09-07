@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { getRunnerEvents } from '../src/lib/proof';
+import { getRunnerEvents, mergeEvents, normalizeProofEvents } from '../src/lib/proof';
+import { signedBps } from '../src/lib/format';
 
 import { newState, recordingFetch, RUNNER_BASE, streamBody, withFetch } from './fetch-stub';
 
 process.env.AGENTS_BASE_URL = RUNNER_BASE;
+
+test('BPS formatting rounds once with truthful signs and handles missing precision', () => {
+  assert.equal(signedBps(48.6148199243626), '+48.61');
+  assert.equal(signedBps(0.149), '+0.15');
+  assert.equal(signedBps(-0.149), '-0.15');
+  assert.equal(signedBps(0), '0.00');
+  assert.equal(signedBps(-0.001), '0.00');
+  assert.equal(signedBps(NaN), 'n/a');
+  assert.equal(signedBps(Infinity), 'n/a');
+});
 
 const EVENT = {
   agent: '269703',
@@ -14,6 +25,15 @@ const EVENT = {
   at: '2026-08-24T00:00:00.000Z',
   txHash: `0x${'ab'.repeat(32)}`,
 };
+
+test('fresh orderbook BPS cannot be overwritten by old runner math', () => {
+  const normalized = normalizeProofEvents([{ ...EVENT, surplusBps: 100 }]);
+  assert.equal(normalized[0]?.surplusBps, undefined, 'runner-reported BPS is not independently verified');
+  const runner = normalized.map((event) => ({ ...event, surplusBps: 100 }));
+  const chain = normalizeProofEvents([EVENT]).map((event) => ({ ...event, surplusBps: 48.6148199243626 }));
+  assert.equal(mergeEvents(runner, chain)[0]?.surplusBps, 48.6148199243626);
+  assert.equal(mergeEvents(runner, normalizeProofEvents([EVENT]))[0]?.surplusBps, undefined);
+});
 
 test('a runner redirecting to a private address yields no events and the target is never fetched', async () => {
   const state = newState();

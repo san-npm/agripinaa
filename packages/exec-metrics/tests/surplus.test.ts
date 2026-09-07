@@ -8,7 +8,7 @@ import { loadOrderFixture } from './fixtures';
 // Real fulfilled sell order captured from the BSC orderbook:
 // executedBuyAmount 12057295806540799277, signed buyAmount 11998963063678816893.
 const FIXTURE_SURPLUS_RAW = 58332742861982384n;
-const FIXTURE_SURPLUS_BPS = 48.61;
+const FIXTURE_SURPLUS_BPS = 48.614819924362;
 
 const buyOrderFull: SurplusOrder = {
   kind: 'buy',
@@ -61,6 +61,38 @@ test('buy order surplus is unspent sell amount in sell-token units', () => {
 test('unfilled order has null surplus', () => {
   assert.equal(calcSurplusRaw(unfilledOrder), null);
   assert.equal(surplusBps(unfilledOrder), null);
+});
+
+test('signed fees do not inflate the filled fraction or fabricate a loss', () => {
+  const sell = { ...sellOrderPartial, executedSellAmount: '1010000000000000000', executedFeeAmount: '10000000000000000', executedSellAmountBeforeFees: '1000000000000000000' };
+  assert.equal(surplusBps(sell), 2000);
+  assert.equal(surplusBps({ ...sell, executedSellAmountBeforeFees: undefined }), 2000);
+  const buy = { ...buyOrderFull, executedSellAmount: '910000000000000000', executedSellAmountBeforeFees: '900000000000000000', executedFeeAmount: '10000000000000000' };
+  assert.equal(surplusBps(buy), 1000);
+});
+
+test('partial-fill BPS uses the rational limit, not a rounded token amount', () => {
+  const order = { ...sellOrderPartial, sellAmount: '3', buyAmount: '2', executedSellAmount: '1', executedBuyAmount: '1' };
+  assert.equal(calcSurplusRaw(order), 0n);
+  assert.equal(surplusBps(order), 5000);
+  assert.equal(surplusBps({ ...buyOrderFull, sellAmount: '3', buyAmount: '2', executedSellAmount: '1', executedBuyAmount: '1' }), 3333.333333333333);
+});
+
+test('bad or missing amounts are unavailable, never manufactured gains', () => {
+  for (const field of ['sellAmount', 'buyAmount', 'executedSellAmount', 'executedBuyAmount'] as const) {
+    for (const value of ['', '-1', 'oops', '1.2', '9'.repeat(79)]) {
+      assert.equal(surplusBps({ ...buyOrderFull, [field]: value }), null);
+    }
+  }
+  assert.equal(surplusBps({ ...buyOrderFull, executedSellAmountBeforeFees: '950000000000000000' }), null);
+  assert.equal(surplusBps({ ...buyOrderFull, executedFeeAmount: '-1' }), null);
+  assert.equal(surplusBps({ ...buyOrderFull, executedBuyAmount: '0' }), null);
+});
+
+test('negative surplus and zero retain their signs and no early truncation', () => {
+  assert.equal(surplusBps({ ...buyOrderFull, executedSellAmount: '1100000000000000000' }), -1000);
+  assert.equal(surplusBps({ ...buyOrderFull, executedSellAmount: buyOrderFull.sellAmount }), 0);
+  assert.equal(surplusBps({ ...buyOrderFull, executedSellAmount: '999985100000000000' }), 0.149);
 });
 
 test('partial fill compares against the fill-scaled limit', () => {

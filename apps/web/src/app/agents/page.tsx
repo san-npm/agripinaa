@@ -89,10 +89,9 @@ async function Directory({
         <section className="mb-12">
           <h2 className="font-display text-2xl font-medium">Strategies by Agripinaa</h2>
           <p className="mb-4 mt-1 text-sm text-muted-2">
-            Compare yield, trading, borrowing protection and liquidity strategies.
-            Review each agent’s permissions and funding requirements before activation.
+            Review permissions and funding costs before activating.
           </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="agent-grid">
             {firstParty.map((agent) => (
               <AgentCard key={agent.id} agent={agent} />
             ))}
@@ -119,7 +118,7 @@ async function Directory({
         )}
 
         {shown.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="agent-grid">
             {shown.map((agent) => (
               <AgentCard key={agent.id} agent={agent} />
             ))}
@@ -208,8 +207,8 @@ function Pager({
 export default function AgentsPage(props: PageProps<"/agents">) {
   return (
     <div>
-      <header className="page-heading"><p className="eyebrow">The marketplace</p><h1>Choose your next strategy.</h1>
-      <p>Explore what each agent does, inspect its track record, and decide what fits your needs. Agripinaa strategies and independent listings are clearly separated.</p></header>
+      <header className="page-heading directory-heading"><p className="eyebrow">The agent collection</p><h1>Find your kind<br />of intelligence.</h1>
+      <p>Different strategies. Distinct personalities. Your choice.</p></header>
       {/* The filters and the listing read the url, so each sits behind its own
           boundary and the rest of the page is still part of the static shell. */}
       <div className="mt-6">

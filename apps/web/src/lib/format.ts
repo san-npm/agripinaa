@@ -8,9 +8,13 @@
  * component may import it too.
  */
 
-/** "+4.2" / "-1.0": the sign carries the meaning, so never assume a plus. */
+/** Round once at display time; no fake positive sign on losses or rounded zero. */
 export function signedBps(value: number): string {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}`;
+  if (!Number.isFinite(value)) return 'n/a';
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+    signDisplay: 'exceptZero', useGrouping: false,
+  }).format(value);
 }
 
 /** "18 Aug 2026", read off the UTC string so no locale shifts the day. */

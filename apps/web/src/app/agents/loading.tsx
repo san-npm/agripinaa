@@ -15,7 +15,7 @@ export default function Loading() {
     <div aria-busy="true" aria-label="Loading">
       <div className="h-8 w-64 animate-pulse rounded-lg bg-surface" />
       <div className="mt-3 h-4 w-96 max-w-full animate-pulse rounded bg-surface" />
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="agent-grid mt-8">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div
             key={i}

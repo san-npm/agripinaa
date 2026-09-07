@@ -65,7 +65,6 @@ export function normalizeProofEvents(value: unknown): ProofEvent[] {
       ? row.orderUid as `0x${string}`
       : undefined;
     if (!txHash && !orderUid) return [];
-    const surplus = optionalNumber(row.surplusBps);
     const hf = optionalNumber(row.hf);
     const id = typeof row.id === 'string' && row.id.length > 0
       ? row.id.slice(0, 240)
@@ -81,7 +80,8 @@ export function normalizeProofEvents(value: unknown): ProofEvent[] {
       at,
       ...(txHash ? { txHash } : {}),
       ...(orderUid ? { orderUid } : {}),
-      ...(surplus !== undefined && Math.abs(surplus) <= 100_000 ? { surplusBps: surplus } : {}),
+      // Runner versions can lag this deployment. Only independently fetched
+      // order amounts earn a BPS badge in getOnchainTradeBackfill below.
       ...(hf !== undefined && hf > 0 && hf < 1_000 ? { hf } : {}),
     }];
   });
@@ -146,7 +146,7 @@ export async function getRunnerEvents(): Promise<ProofEvent[]> {
   return payload ? normalizeProofEvents((payload as { events?: unknown }).events) : [];
 }
 
-function mergeEvents(runner: ProofEvent[], chain: ProofEvent[]): ProofEvent[] {
+export function mergeEvents(runner: ProofEvent[], chain: ProofEvent[]): ProofEvent[] {
   const merged = new Map<string, ProofEvent>();
   const key = (event: ProofEvent) => event.orderUid ?? event.txHash ?? event.id;
   for (const event of chain) merged.set(key(event), event);
@@ -157,7 +157,9 @@ function mergeEvents(runner: ProofEvent[], chain: ProofEvent[]): ProofEvent[] {
           ...previous,
           ...event,
           txHash: event.txHash ?? previous.txHash,
-          surplusBps: event.surplusBps ?? previous.surplusBps,
+          // Recomputed orderbook math wins over a potentially older runner version.
+          // Undefined also wins: invalid execution amounts must not revive old BPS.
+          surplusBps: previous.surplusBps,
         }
       : event);
   }
