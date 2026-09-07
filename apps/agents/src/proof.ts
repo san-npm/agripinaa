@@ -315,7 +315,7 @@ export async function enrichOphisTrades(
     lookup?: OphisTradeLookup;
     now?: () => number;
   } = {},
-): Promise<ProofEvent[]> {
+): Promise<{ events: ProofEvent[]; complete: boolean }> {
   const now = options.now ?? Date.now;
   const budgetMs = Math.max(0, Math.floor(options.budgetMs ?? VERIFICATION_BUDGET_MS));
   const deadline = now() + budgetMs;
@@ -327,16 +327,21 @@ export async function enrichOphisTrades(
   });
   const client = options.lookup ?? new CowOrderbookClient({ fetch: timedFetch });
   const limit = Math.max(0, Math.floor(options.limit ?? events.length));
+  // Completeness covers this bounded scan, not lifetime log history. Preserve
+  // verified rows on partial failure, but never present an omission as zero activity.
+  let complete = true;
 
   const verify = async (event: ProofCandidate): Promise<ProofEvent | null> => {
     const { fulfilledSummary, ...publicEvent } = event;
     if (!event.orderUid) return publicEvent;
-    if (now() >= deadline) return null;
+    if (now() >= deadline) { complete = false; return null; }
     try {
       const order = await client.getOrder(event.orderUid);
       if (order.status !== 'fulfilled') return null;
-      const trades = now() < deadline
-        ? await client.getTrades({ orderUid: event.orderUid }).catch(() => [])
+      const canReadTrades = now() < deadline;
+      if (!canReadTrades) complete = false;
+      const trades = canReadTrades
+        ? await client.getTrades({ orderUid: event.orderUid }).catch(() => { complete = false; return []; })
         : [];
       const trade = trades.find((candidate) => candidate.orderUid === event.orderUid);
       const txHash = txValue(trade?.txHash);
@@ -350,6 +355,7 @@ export async function enrichOphisTrades(
     } catch {
       // Without a fulfilled orderbook lookup, a submission is not proof of an
       // execution. Omit it until a later cached read can verify settlement.
+      complete = false;
       return null;
     }
   };
@@ -365,13 +371,13 @@ export async function enrichOphisTrades(
     );
     verified.push(...batch.filter((event): event is ProofEvent => event !== null));
   }
-  return verified.slice(0, limit);
+  return { events: verified.slice(0, limit), complete };
 }
 
 export async function collectProofEvents(
   agents: readonly string[],
   limit = 40,
-): Promise<ProofEvent[]> {
+): ReturnType<typeof enrichOphisTrades> {
   const entries = agents.flatMap((name) => {
     if (!(name in PROOF_AGENTS)) return [];
     return readTail(join(DATA_DIR, `${name}.log.jsonl`)).map((entry) => ({

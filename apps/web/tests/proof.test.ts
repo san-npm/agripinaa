@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { getRunnerEvents, mergeEvents, normalizeProofEvents } from '../src/lib/proof';
+import { getRunnerEvents, getRunnerEvidence, mergeEvents, normalizeProofEvents } from '../src/lib/proof';
 import { signedBps } from '../src/lib/format';
 
 import { newState, recordingFetch, RUNNER_BASE, streamBody, withFetch } from './fetch-stub';
@@ -25,6 +25,24 @@ const EVENT = {
   at: '2026-08-24T00:00:00.000Z',
   txHash: `0x${'ab'.repeat(32)}`,
 };
+
+test('only explicitly complete runner scans suppress incomplete-history warnings', async () => {
+  for (const complete of [true, false, undefined, null, 'true', 1]) {
+    const stub = recordingFetch(newState(), url => new Response(JSON.stringify(
+      url.startsWith(RUNNER_BASE) ? { events: [EVENT], complete } : [],
+    ), { status: 200 }));
+    await withFetch(stub, async () => {
+      const evidence = await getRunnerEvidence();
+      assert.equal(evidence.events.length, 1, 'partial or legacy feeds retain usable evidence');
+      assert.equal(evidence.available, complete === true);
+    });
+  }
+  for (const events of [[], null, {}]) {
+    const stub = recordingFetch(newState(), () => new Response(JSON.stringify({ events, complete: true })));
+    const evidence = await withFetch(stub, () => getRunnerEvidence());
+    assert.equal(evidence.available, Array.isArray(events));
+  }
+});
 
 test('fresh orderbook BPS cannot be overwritten by old runner math', () => {
   const normalized = normalizeProofEvents([{ ...EVENT, surplusBps: 100 }]);
