@@ -2,8 +2,18 @@ import 'server-only';
 
 import { AGENT_LIST, type AgentCategory, type AgentRecord } from '@agripinaa/shared/agents';
 import { cacheLife } from 'next/cache';
+import { CowOrderbookClient, isManagerSignedOrder, summarizeSurplus, surplusBps, type CowOrder } from '@agripinaa/exec-metrics';
+import type { ProofEvent } from '@agripinaa/shared';
 
-import { getTrackRecord, type TrackRecord } from './exec';
+import { bestAndFirstFill, getWalletOphisOrders, type TrackRecord } from './exec';
+import { getRunnerEvidence } from './proof';
+
+const cow = new CowOrderbookClient({ fetch: (input, init) => fetch(input, {
+  ...init, signal: AbortSignal.timeout(3_000),
+}) });
+// ponytail: recent feed only; a durable signed-execution index is needed for lifetime history.
+export const MANAGED_PROOF_WINDOW = 40;
+type LeaderboardRecord = TrackRecord & { managedFills?: number; managedUnavailable?: boolean };
 
 /**
  * How many fills an agent needs before its average surplus is taken at face
@@ -40,6 +50,8 @@ export interface ExecutionRow {
 export interface LeaderboardRow extends ExecutionRow {
   category: AgentCategory;
   unavailable: boolean;
+  managedFills: number;
+  managedUnavailable: boolean;
 }
 
 /**
@@ -63,8 +75,7 @@ export type RankedRow<T extends ExecutionRow = ExecutionRow> = T & {
  * that filled twenty at 10 bps. Squaring leaves 9% instead, which prices the
  * thin sample for its thinness: 8.1 against 10, deep record first.
  *
- * A null average (fills whose surplus never computed) scores zero rather than
- * NaN, which would make the sort order depend on the input order.
+ * A missing average gets a finite sorting placeholder, but no public score or rank.
  */
 function executionScore(row: ExecutionRow): number {
   const confidence = Math.min(1, Math.max(0, row.fills / FULL_CONFIDENCE_FILLS));
@@ -88,7 +99,7 @@ export function rankByExecution<T extends ExecutionRow>(rows: readonly T[]): Ran
   const scored = rows.map((row) => ({
     ...row,
     score: executionScore(row),
-    unranked: row.fills === 0,
+    unranked: row.fills === 0 || row.avgSurplusBps === null || !Number.isFinite(row.avgSurplusBps),
   }));
 
   scored.sort((a, b) => {
@@ -135,7 +146,7 @@ function isLive(agent: RankableAgent): agent is LiveAgent {
  */
 export async function gatherExecutionRows(
   agents: readonly RankableAgent[],
-  readRecord: (wallet: string) => Promise<TrackRecord>,
+  readRecord: (wallet: string) => Promise<LeaderboardRecord>,
 ): Promise<LeaderboardRow[]> {
   const live = agents.filter(isLive);
   const settled = await Promise.allSettled(live.map((agent) => readRecord(agent.wallet)));
@@ -150,13 +161,15 @@ export async function gatherExecutionRows(
       avgSurplusBps: record?.avgSurplusBps ?? null,
       firstSeen: record?.firstSeen ?? null,
       unavailable: record === null,
+      managedFills: record?.managedFills ?? 0,
+      managedUnavailable: record?.managedUnavailable ?? false,
     };
   });
 }
 
 /**
- * The leaderboard as rendered: every registered first-party agent, ranked on
- * its own settlement history.
+ * Swap-capable first-party agents, ranked on own-wallet history plus
+ * signature-attributed managed orders. Lending/protection use activity evidence.
  *
  * Registry records with a null token id or a null wallet are skipped. Those
  * agents are configured but not yet minted or funded, so they have no identity
@@ -173,6 +186,56 @@ export async function getExecutionLeaderboard(
 ): Promise<RankedRow<LeaderboardRow>[]> {
   'use cache';
   cacheLife('minutes');
-  const firstParty = await gatherExecutionRows(AGENT_LIST, getTrackRecord);
+  const feed = await getRunnerEvidence().catch(() => ({ events: [], available: false }));
+  const reads = new Map<string, Promise<CowOrder>>();
+  const readOrder = (uid: string) => {
+    if (!reads.has(uid)) reads.set(uid, cow.getOrder(uid));
+    return reads.get(uid)!;
+  };
+  const agents = AGENT_LIST.filter(agent => agent.category === 'grid' || agent.category === 'rebalancing');
+  const firstParty = await gatherExecutionRows(agents, async wallet => {
+    const agent = agents.find(agent => agent.wallet === wallet)!;
+    const record = await readLeaderboardRecord(agent, feed.events, getWalletOphisOrders, readOrder);
+    return { ...record, managedUnavailable: !feed.available || record.managedUnavailable };
+  });
   return rankByExecution([...firstParty, ...extra]);
+}
+
+/** Feed references only discover orders. The order signature determines attribution. */
+export async function readLeaderboardRecord(
+  agent: Pick<AgentRecord, 'wallet' | 'managerKeys'>,
+  events: readonly ProofEvent[],
+  readOwn: (wallet: string) => Promise<CowOrder[]>,
+  readOrder: (uid: string) => Promise<CowOrder>,
+): Promise<LeaderboardRecord> {
+  const own = await readOwn(agent.wallet!);
+  const orders = new Map(own.map(order => [order.uid.toLowerCase(), order]));
+  const candidates = [...new Set(events.slice(0, MANAGED_PROOF_WINDOW)
+    .map(event => event.orderUid?.toLowerCase())
+    .filter((uid): uid is string => !!uid && /^0x[0-9a-f]{112}$/.test(uid) && !orders.has(uid)))];
+  const managers = Object.values(agent.managerKeys ?? {});
+  let managedUnavailable = false;
+  let managedFills = 0;
+  // Each agent sees the same bounded candidate set: an untrusted agent label
+  // cannot reassign a signed order or credit it to a different strategy.
+  const settled = await Promise.all(candidates.map(async uid => {
+    const order = await readOrder(uid);
+    if (order.uid.toLowerCase() !== uid || order.owner.toLowerCase() === agent.wallet!.toLowerCase()
+      || !await isManagerSignedOrder(order, managers)) return null;
+    return order;
+  }).map(promise => promise.catch(() => { managedUnavailable = true; return null; })));
+  for (const order of settled) {
+    if (!order) continue;
+    orders.set(order.uid.toLowerCase(), order);
+    if (order.status === 'fulfilled') managedFills++;
+  }
+  const all = [...orders.values()];
+  const summary = summarizeSurplus(all);
+  return {
+    fills: summary.filledOrders,
+    avgSurplusBps: summary.avgSurplusBps,
+    ...bestAndFirstFill(all.map(order => ({ ...order, surplusBps: surplusBps(order) }))),
+    managedFills,
+    managedUnavailable,
+  };
 }
