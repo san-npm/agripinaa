@@ -159,7 +159,7 @@ test('publishes Ophis submissions only after the orderbook confirms fulfillment'
     [fulfilledLp, 'fulfilled'],
     [cancelledLp, 'cancelled'],
   ]);
-  const events = await enrichOphisTrades(candidates, {
+  const { events, complete } = await enrichOphisTrades(candidates, {
     lookup: {
       async getOrder(uid) {
         const status = statuses.get(uid);
@@ -173,6 +173,7 @@ test('publishes Ophis submissions only after the orderbook confirms fulfillment'
     },
   });
 
+  assert.equal(complete, false, 'failed lookups must flag a partial feed');
   assert.deepEqual(events.map((event) => event.orderUid).sort(), [fulfilledGrid, fulfilledLp]);
   assert.equal(events.find((event) => event.orderUid === fulfilledGrid)?.txHash, trade(fulfilledGrid).txHash);
   assert.equal(events.find((event) => event.orderUid === fulfilledLp)?.txHash, undefined);
@@ -190,7 +191,7 @@ test('verifies more than one lookup batch when the feed has over 12 fulfilled or
     side: 'sell',
   })));
   const lookedUp: string[] = [];
-  const events = await enrichOphisTrades(candidates, {
+  const { events, complete } = await enrichOphisTrades(candidates, {
     limit: 40,
     lookup: {
       async getOrder(uid) {
@@ -203,6 +204,7 @@ test('verifies more than one lookup batch when the feed has over 12 fulfilled or
     },
   });
 
+  assert.equal(complete, true);
   assert.equal(events.length, 20);
   assert.equal(lookedUp.length, 20);
 });
@@ -228,7 +230,7 @@ test('applies the output limit after unsettled candidates are rejected', async (
   let orderLookups = 0;
   let tradeLookups = 0;
   let clock = 0;
-  const events = await enrichOphisTrades(candidates, {
+  const { events, complete } = await enrichOphisTrades(candidates, {
     budgetMs: 2,
     limit: 1,
     now: () => clock,
@@ -245,6 +247,7 @@ test('applies the output limit after unsettled candidates are rejected', async (
     },
   });
 
+  assert.equal(complete, false, 'a deadline-skipped order leaves the bounded scan incomplete');
   assert.equal(events.length, 1);
   assert.equal(events[0]?.kind, 'rotate');
   assert.equal(orderLookups, 2);
@@ -261,7 +264,7 @@ test('bounds total order verification work when the upstream remains unavailable
   })));
   let clock = 0;
   let orderLookups = 0;
-  const events = await enrichOphisTrades(candidates, {
+  const { events, complete } = await enrichOphisTrades(candidates, {
     budgetMs: 5,
     limit: 40,
     now: () => clock,
@@ -277,11 +280,45 @@ test('bounds total order verification work when the upstream remains unavailable
     },
   });
 
+  assert.equal(complete, false);
   assert.deepEqual(events, []);
   assert.equal(orderLookups, 5);
 });
 
 /* ------------------- the agents registered after the first four ----------- */
+
+test('trade-detail failures and deadline skips preserve fulfilled references but flag incompleteness', async () => {
+  const candidates = mapProofLogEntries([{ at: '2026-08-18T18:25:00.000Z', agent: 'grid',
+    event: 'trade-submitted', orderUid: orderUid(9) }]);
+  for (const expireAfterOrder of [false, true]) {
+    let clock = 0;
+    const result = await enrichOphisTrades(candidates, {
+      budgetMs: 1, now: () => clock,
+      lookup: {
+        async getOrder(uid) { if (expireAfterOrder) clock = 1; return order(uid, 'fulfilled'); },
+        async getTrades() { assert.equal(expireAfterOrder, false); throw new Error('trade lookup failed'); },
+      },
+    });
+    assert.equal(result.events.length, 1);
+    assert.equal(result.complete, false);
+  }
+});
+
+test('empty, fully checked unsettled, and output-limited scans are complete within their window', async () => {
+  const candidates = mapProofLogEntries(Array.from({ length: 20 }, (_, index) => ({
+    at: new Date(Date.UTC(2026, 7, 18, 18, 25, index)).toISOString(), agent: 'grid',
+    event: 'trade-submitted', orderUid: orderUid(index + 50),
+  })));
+  for (const [input, status, limit, expected] of [
+    [[], 'open', 40, 0], [candidates, 'open', 40, 0], [candidates, 'fulfilled', 1, 1],
+  ] as const) {
+    const result = await enrichOphisTrades([...input], {
+      limit, lookup: { async getOrder(uid) { return order(uid, status); }, async getTrades() { return []; } },
+    });
+    assert.equal(result.complete, true);
+    assert.equal(result.events.length, expected);
+  }
+});
 
 /*
  * Registration now admits all four expansion agents to PROOF_AGENTS. Without
