@@ -1,7 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
+import bscSnapshot from '../../data/agents-56.json';
 import { parseSnapshot } from '../snapshot';
 import type { AgentIndexSource } from '../source';
 import type {
@@ -15,12 +12,9 @@ import type {
 import { readAgentFromRegistry } from './registry-viem';
 import { Scan8004Source } from './scan8004';
 
-const SNAPSHOT_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  'data',
-);
+// Bundle the fallback: webpack turns import.meta.url into a build-machine path,
+// which is not the path where Vercel runs the deployed function.
+const BSC_SNAPSHOT = JSON.stringify(bscSnapshot);
 
 interface CacheEntry<T> {
   value: T;
@@ -66,17 +60,8 @@ export class MergedSource implements AgentIndexSource {
   }
 
   private async loadSnapshot(chainId: number): Promise<AgentSummary[] | null> {
-    try {
-      const raw = await readFile(
-        join(SNAPSHOT_DIR, `agents-${chainId}.json`),
-        'utf8',
-      );
-      // Rows are stored compact (see src/snapshot.ts) and rebuilt here, so the
-      // rest of this class and every consumer keeps working in AgentSummary.
-      return parseSnapshot(raw)?.items ?? null;
-    } catch {
-      return null;
-    }
+    if (chainId !== bscSnapshot.chainId) return null;
+    return parseSnapshot(BSC_SNAPSHOT)?.items ?? null;
   }
 
   async listAgents(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
