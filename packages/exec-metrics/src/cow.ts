@@ -5,7 +5,7 @@
  * from api.cow.fi/bnb).
  */
 
-import { concatHex, hashTypedData, isAddress, keccak256, numberToHex, toBytes, type Hex } from 'viem';
+import { concatHex, encodeAbiParameters, hashTypedData, isAddress, keccak256, numberToHex, padHex, recoverAddress, sliceHex, toBytes, type Hex } from 'viem';
 
 export type Address = `0x${string}`;
 
@@ -41,6 +41,8 @@ export interface CowOrder {
   fullAppData: string | null;
   /** ISO-8601 timestamp. */
   creationDate: string;
+  signingScheme?: string;
+  signature?: string;
 }
 
 /** Trade as returned by GET /trades. */
@@ -260,4 +262,31 @@ export function isOrderUidValid(order: CowOrder): boolean {
 
 export function isAuthenticOphisOrder(order: CowOrder): boolean {
   return isOphisOrder(order) && isOrderUidValid(order);
+}
+
+/** Attribute an Altana managed order to its actual pinned session signer.
+ * Mirrors the installed SDK's internal/erc1271.js and Porto Key.wrapSignature.
+ * A runner's claimed agent ID or a user's wallet address alone is not proof.
+ */
+export async function isManagerSignedOrder(order: CowOrder, managers: readonly Address[]): Promise<boolean> {
+  if (!isAuthenticOphisOrder(order) || order.signingScheme !== 'eip1271'
+    || !/^0x[0-9a-fA-F]{194}00$/.test(order.signature ?? '')) return false;
+  try {
+    const signature = order.signature as Hex;
+    const hash = hashTypedData({
+      domain: { verifyingContract: order.owner as Address },
+      types: { ERC1271Sign: [{ name: 'digest', type: 'bytes32' }] },
+      primaryType: 'ERC1271Sign',
+      message: { digest: sliceHex(order.uid as Hex, 0, 32) },
+    });
+    const signer = await recoverAddress({ hash, signature: sliceHex(signature, 0, 65) });
+    if (!managers.some(manager => manager.toLowerCase() === signer.toLowerCase())) return false;
+    const keyHash = keccak256(encodeAbiParameters(
+      [{ type: 'uint256' }, { type: 'bytes32' }],
+      [BigInt(2), keccak256(padHex(signer, { size: 32 }))],
+    ));
+    return sliceHex(signature, 65, 97).toLowerCase() === keyHash.toLowerCase();
+  } catch {
+    return false;
+  }
 }
