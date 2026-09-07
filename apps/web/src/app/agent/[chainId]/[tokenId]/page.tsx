@@ -6,12 +6,14 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { EndpointLiveBadge } from "@/components/EndpointLive";
+import { AgentArtwork } from "@/components/AgentArtwork";
 import { ExecutionQualityPanel } from "@/components/ExecutionQualityPanel";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { ProofPanel } from "@/components/ProofPanel";
 import { TrackRecordPanel } from "@/components/TrackRecordPanel";
 import { X402DemoLive } from "@/components/X402DemoLive";
-import { ArrowIcon, CATEGORY_ICON, TokenLogo, VerifiedIcon } from "@/components/icons";
+import { ArrowIcon, CATEGORY_ICON, VerifiedIcon } from "@/components/icons";
+import { AgentProtocols } from "@/components/ProtocolLogo";
 import {
   ACTIVATION_BLOCKED_COPY,
   activationBlockedReason,
@@ -185,6 +187,10 @@ async function AgentContent({
         <ArrowIcon className="h-3.5 w-3.5 rotate-180" /> All agents
       </Link>
 
+      {registryRecord && <div className="profile-art agent-visual" data-agent={registryRecord.slug}>
+        <div><p className="eyebrow">The Agripinaa collection</p><p className="profile-art-label">{experience?.directoryLabel}</p><AgentProtocols slug={registryRecord.slug} /></div>
+        <AgentArtwork slug={registryRecord.slug} tokens eager />
+      </div>}
       <div className="flex flex-wrap items-start gap-4">
         <span
           className={`grid h-14 w-14 shrink-0 place-items-center rounded-xl border ${
@@ -216,16 +222,6 @@ async function AgentContent({
             {category && (
               <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-muted">
                 {category.label}
-              </span>
-            )}
-            {verified && category && (
-              <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-muted">
-                <span className="flex -space-x-1">
-                  {category.tokens.map((t) => (
-                    <TokenLogo key={t} symbol={t} className="h-4 w-4 rounded-full ring-2 ring-surface" />
-                  ))}
-                </span>
-                {category.tokens.join(" · ")}
               </span>
             )}
           </div>

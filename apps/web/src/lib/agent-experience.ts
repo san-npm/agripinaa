@@ -8,6 +8,8 @@ export interface ManagedActivationCopy {
 }
 
 export interface AgentExperienceCopy {
+  /** Strategy venues only, not deposit conversion routes or endorsements. */
+  protocols: ('aave' | 'venus' | 'pancakeswap' | 'ophis')[];
   /** Plain-language overview; detailed permissions remain visible before approval. */
   summary: string;
   /** Compact positioning shown on the directory card. */
@@ -27,8 +29,9 @@ export interface AgentExperienceCopy {
  */
 export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
   grid: {
+    protocols: ['ophis'],
     summary: 'Buy and sell WBNB at preset price levels, with limits on trade size and frequency.',
-    directoryLabel: 'WBNB grid · managed strategy',
+    directoryLabel: 'WBNB · managed grid',
     profileCta: 'Activate WBNB grid',
     managed: {
       heading: 'Run the WBNB mean-reversion grid',
@@ -38,8 +41,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'grid-b': {
+    protocols: ['ophis'],
     summary: 'Trade BTCB with wider price levels and a slower pace than the WBNB grid.',
-    directoryLabel: 'BTCB grid · managed strategy',
+    directoryLabel: 'BTCB · managed wide grid',
     profileCta: 'Activate BTC grid',
     managed: {
       heading: 'Run the patient BTCB grid',
@@ -49,8 +53,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'health-factor': {
+    protocols: ['aave'],
     summary: 'Monitor an existing Aave loan and use a reserved balance to repay debt when risk rises.',
-    directoryLabel: 'Aave protection · managed reserve',
+    directoryLabel: 'Aave · debt repair reserve',
     profileCta: 'Protect Aave position',
     managed: {
       heading: 'Guard an Aave borrowing position',
@@ -60,8 +65,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'venus-guardian': {
+    protocols: ['venus'],
     summary: 'Monitor an existing Venus loan and use a reserved balance to repay debt when risk rises.',
-    directoryLabel: 'Venus protection · managed reserve',
+    directoryLabel: 'Venus · debt repair reserve',
     profileCta: 'Protect Venus position',
     managed: {
       heading: 'Guard a Venus borrowing position',
@@ -71,8 +77,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   yield: {
+    protocols: ['aave', 'venus'],
     summary: 'Move stablecoins between Aave and Venus when a better lending rate persists.',
-    directoryLabel: 'Responsive yield · managed deposits',
+    directoryLabel: 'Responsive yield · managed lending',
     profileCta: 'Choose responsive yield',
     managed: {
       heading: 'Capture yield changes sooner',
@@ -84,8 +91,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'yield-b': {
+    protocols: ['aave', 'venus'],
     summary: 'Earn lending yield with fewer moves. Wait for stronger rate differences before switching venues.',
-    directoryLabel: 'Patient yield · managed deposits',
+    directoryLabel: 'Patient yield · managed lending',
     profileCta: 'Choose patient yield',
     managed: {
       heading: 'Wait for stronger yield signals',
@@ -97,8 +105,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'lp-range': {
+    protocols: ['pancakeswap', 'ophis'],
     summary: 'Manage a WBNB/USDT liquidity range on PancakeSwap V3 and rebalance when needed.',
-    directoryLabel: 'PancakeSwap V3 range · managed LP',
+    directoryLabel: 'Managed liquidity · PancakeSwap V3',
     profileCta: 'Activate LP Ranger',
     managed: {
       heading: 'Run a managed Pancake V3 range',
@@ -108,8 +117,9 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'weight-rebalancer': {
+    protocols: ['ophis'],
     summary: 'Keep WBNB and USDT near an equal split, rebalancing only when the mix drifts.',
-    directoryLabel: '50/50 portfolio · managed strategy',
+    directoryLabel: 'Managed 50/50 · WBNB / USDT',
     profileCta: 'Activate 50/50 rebalancer',
     managed: {
       heading: 'Keep WBNB and USDT near 50/50',

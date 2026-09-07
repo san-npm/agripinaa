@@ -28,7 +28,7 @@ import {
 const SEARCH_DEBOUNCE_MS = 300;
 
 const controlCls =
-  'rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none';
+  'rounded-lg border border-border-strong bg-surface-2 px-3 py-2 text-foreground focus:border-primary';
 
 export function AgentFilters({ query }: { query: DirectoryQuery }) {
   const router = useRouter();
@@ -107,7 +107,7 @@ export function AgentFilters({ query }: { query: DirectoryQuery }) {
     navigate({ ...target.current, query: normalizeQuery(term), ...patch });
 
   return (
-    <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface p-5">
+    <div className="directory-filters">
       <label className="flex-1">
         <span className="mb-1.5 block text-xs font-medium text-muted">Search agents</span>
         <input
