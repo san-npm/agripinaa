@@ -14,7 +14,9 @@ import {
 } from '@agripinaa/exec-metrics';
 import { cacheLife } from 'next/cache';
 
-const cow = new CowOrderbookClient();
+const cow = new CowOrderbookClient({ fetch: (input, init) => fetch(input, {
+  ...init, signal: AbortSignal.timeout(5_000),
+}) });
 
 /**
  * How many of a wallet's most recent orders one fetch covers. Every figure
@@ -49,23 +51,22 @@ export interface ExecSummary {
  * Execution history for one wallet, Ophis-attributed orders only (gated on
  * appCode in the order's appData, never the shared EIP-712 domain).
  */
-export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
+export async function getWalletOphisOrders(owner: string): Promise<CowOrder[]> {
   'use cache';
   cacheLife('minutes');
   // owner can be an agent's on-chain agentWallet, which is attacker-settable
   // metadata: validate before it reaches the upstream URL path or cache key.
-  if (!isAddress(owner)) {
-    return {
-      owner,
-      rows: [],
-      summary: { totalOrders: 0, filledOrders: 0, avgSurplusBps: null, totalSurplusRaw: {} },
-      asOf: new Date().toISOString(),
-    };
-  }
+  if (!isAddress(owner)) return [];
   const orders = await cow.getAccountOrders(owner as `0x${string}`, {
     limit: EXEC_ORDER_WINDOW,
   });
-  const ophisOrders = orders.filter((o) => isAuthenticOphisOrder(o));
+  return orders.filter((o) => o.owner.toLowerCase() === owner.toLowerCase() && isAuthenticOphisOrder(o));
+}
+
+export async function getExecutionSummary(owner: string): Promise<ExecSummary> {
+  'use cache';
+  cacheLife('minutes');
+  const ophisOrders = await getWalletOphisOrders(owner.toLowerCase());
   const summary = summarizeSurplus(ophisOrders);
   return {
     owner,
@@ -108,7 +109,7 @@ export interface TrackRecord {
   avgSurplusBps: number | null;
   /** Highest surplus of any single fill, which can be negative. */
   bestFillBps: number | null;
-  /** ISO timestamp of the earliest fill in the window. */
+  /** Creation timestamp of the earliest fulfilled order in the window, NOT settlement time. */
   firstSeen: string | null;
 }
 

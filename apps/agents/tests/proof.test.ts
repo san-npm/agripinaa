@@ -8,6 +8,15 @@ import { enrichOphisTrades, mapProofLogEntries } from '../src/proof';
 
 const orderUid = (value: number) => `0x${value.toString(16).padStart(112, '0')}`;
 
+test('managed lending reports retain confirmed receipt references, not failed or pending attempts', () => {
+  const entries = ['pending-confirmed', 'enter-confirmed-awaiting-chain', 'rotate-confirmed-awaiting-chain', 'enter-pending', 'pending-reverted', 'rotate-failed', 'hold']
+    .map((decision, index) => ({ agent: 'yield-b', event: 'managed-tick', decision,
+      at: '2026-09-07T10:00:00.000Z', txHash: `0x${String(index + 1).repeat(64)}` }));
+  const events = mapProofLogEntries(entries);
+  assert.equal(events.length, 3);
+  assert.ok(events.every(event => event.agent === '307487' && event.kind === 'rotate' && event.summary.startsWith('Runner reported')));
+});
+
 function order(uid: string, status: string): CowOrder {
   return {
     uid,

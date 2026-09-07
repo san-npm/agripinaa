@@ -128,6 +128,16 @@ function mapLogEntry(
     at,
   } as const;
 
+  if (meta.category === 'yield' && event === 'managed-tick'
+    && ['pending-confirmed', 'enter-confirmed-awaiting-chain', 'rotate-confirmed-awaiting-chain'].includes(String(entry.decision))) {
+    const txHash = txValue(entry.txHash);
+    if (!txHash) return null;
+    return {
+      ...base, id: eventId(meta.tokenId, event, at, txHash), kind: 'rotate', txHash,
+      summary: 'Runner reported a managed lending transaction; inspect the receipt for its outcome',
+    };
+  }
+
   if (meta.category === 'grid' && event === 'trade-submitted') {
     const orderUid = orderValue(entry.orderUid);
     if (!orderUid) return null;
