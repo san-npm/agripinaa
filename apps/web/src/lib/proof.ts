@@ -147,8 +147,13 @@ export async function getRunnerEvidence(): Promise<{ events: ProofEvent[]; avail
     timeoutMs: 5_000,
     maxBytes: PROOF_MAX_BYTES,
   });
-  const events = (payload as { events?: unknown } | null)?.events;
-  return { events: normalizeProofEvents(events), available: Array.isArray(events) };
+  const scan = payload as { events?: unknown; complete?: unknown } | null;
+  // Older runners omit this flag; an array alone does not prove that their
+  // order verification finished. Keep partial evidence with the warning set.
+  return {
+    events: normalizeProofEvents(scan?.events),
+    available: Array.isArray(scan?.events) && scan?.complete === true,
+  };
 }
 
 export function mergeEvents(runner: ProofEvent[], chain: ProofEvent[]): ProofEvent[] {

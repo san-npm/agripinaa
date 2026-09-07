@@ -872,12 +872,12 @@ export function startX402Server(opts: {
         return;
       }
       try {
-        const events = await getProofEvents();
+        const scan = await getProofEvents();
         res.writeHead(200, {
           'cache-control': 'public, max-age=15, stale-while-revalidate=30',
           'content-type': 'application/json',
         });
-        res.end(JSON.stringify({ events, asOf: new Date().toISOString() }));
+        res.end(JSON.stringify({ ...scan, asOf: new Date().toISOString() }));
       } catch {
         proofCache = null;
         res.writeHead(500, { 'content-type': 'application/json' });
