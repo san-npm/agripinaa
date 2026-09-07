@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { test } from 'node:test';
 
 import { MergedSource } from '../src/sources/merged';
@@ -12,6 +14,34 @@ import { MergedSource } from '../src/sources/merged';
  * `searchAgentsWithSource` keeps the two apart.
  */
 const BSC = 56;
+
+test('the bundled snapshot survives an indexer outage without source-tree file access', async (t) => {
+  const read = t.mock.method(fs, 'readFile', async () => {
+    throw new Error('ENOENT: build-machine source path does not exist at runtime');
+  });
+  syncBuiltinESMExports();
+  try {
+    await withFetch(async () => new Response('unavailable', { status: 503 }), async () => {
+      const source = new MergedSource();
+      const page = await source.listAgents({ chainId: BSC, limit: 24 });
+      assert.equal(page.source, 'snapshot');
+      assert.equal(page.items.length, 24);
+      assert.ok(page.items.every((agent) => agent.chainId === BSC));
+      const found = await source.searchAgentsWithSource(BSC, 'grid');
+      assert.equal(found.source, 'fallback');
+      assert.ok(found.items.length > 0);
+      const stats = await source.stats(BSC);
+      assert.equal(stats.source, 'snapshot');
+      assert.equal(stats.totalAgents, page.total);
+      assert.equal(stats.chainScoped, true);
+      await assert.rejects(source.listAgents({ chainId: 999999 }), /no snapshot/);
+      assert.equal(read.mock.callCount(), 0);
+    });
+  } finally {
+    read.mock.restore();
+    syncBuiltinESMExports();
+  }
+});
 
 async function withFetch<T>(stub: typeof fetch, run: () => Promise<T>): Promise<T> {
   const original = globalThis.fetch;
