@@ -18,10 +18,10 @@ export async function TrackRecordPanel({ wallet }: { wallet: string }) {
   return (
     <section className="rounded-xl border border-border bg-surface p-5">
       <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-2">
-        Track record
+        Own-wallet swap record
       </h2>
       {record.fills === 0 ? (
-        <p className="text-sm text-muted-2">No fills yet.</p>
+        <p className="text-sm text-muted-2">No completed Ophis swaps in this wallet&apos;s recent order window. Lending, protection and managed-account activity are separate.</p>
       ) : (
         <>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -41,9 +41,9 @@ export async function TrackRecordPanel({ wallet }: { wallet: string }) {
               positive={record.bestFillBps != null && record.bestFillBps > 0}
             />
             <Stat
-              label="First fill"
+              label="Earliest order"
               value={record.firstSeen != null ? utcDay(record.firstSeen) : "n/a"}
-              hint="UTC"
+              hint="creation date · UTC"
             />
           </dl>
           <p className="mt-3 text-xs leading-relaxed text-muted-2">

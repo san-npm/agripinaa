@@ -139,11 +139,16 @@ async function getOnchainTradeBackfill(): Promise<ProofEvent[]> {
  * an empty list; the on-chain backfill still fills the feed.
  */
 export async function getRunnerEvents(): Promise<ProofEvent[]> {
+  return (await getRunnerEvidence()).events;
+}
+
+export async function getRunnerEvidence(): Promise<{ events: ProofEvent[]; available: boolean }> {
   const payload = await safeFetchJson(await proofEndpoint(), {
     timeoutMs: 5_000,
     maxBytes: PROOF_MAX_BYTES,
   });
-  return payload ? normalizeProofEvents((payload as { events?: unknown }).events) : [];
+  const events = (payload as { events?: unknown } | null)?.events;
+  return { events: normalizeProofEvents(events), available: Array.isArray(events) };
 }
 
 export function mergeEvents(runner: ProofEvent[], chain: ProofEvent[]): ProofEvent[] {
