@@ -11,7 +11,7 @@
  */
 
 import { isAuthenticOphisOrder, type CowOrder, type CowTrade } from '../cow';
-import { calcSurplusRaw } from '../surplus';
+import { surplusRatio } from '../surplus';
 
 /**
  * CIP-75 partner-fee config baked into the order's appData. Only the two
@@ -112,35 +112,6 @@ export function extractPartnerFees(fullAppData: string | null): PartnerFeeInfo[]
   }
 }
 
-/**
- * Fractional surplus versus the signed limit. Uses surplus.ts's partial-fill
- * aware raw surplus (scales the signed limit to the filled fraction, so a
- * half-filled order is not reported as a large loss), divided by the same
- * scaled limit at full float precision for this display ratio.
- */
-function calcSurplusVsQuote(order: CowOrder): number | null {
-  const raw = calcSurplusRaw(order);
-  if (raw === null) return null;
-  let sell: bigint;
-  let buy: bigint;
-  let execSell: bigint;
-  let execBuy: bigint;
-  try {
-    sell = BigInt(order.sellAmount);
-    buy = BigInt(order.buyAmount);
-    execSell = BigInt(order.executedSellAmount);
-    execBuy = BigInt(order.executedBuyAmount);
-  } catch {
-    return null;
-  }
-  const scaledLimit =
-    order.kind === 'sell'
-      ? sell === BigInt(0) ? BigInt(0) : (buy * execSell) / sell
-      : buy === BigInt(0) ? BigInt(0) : (sell * execBuy) / buy;
-  if (scaledLimit <= BigInt(0)) return null;
-  return Number(raw) / Number(scaledLimit);
-}
-
 export function buildReceipt({ order, trade, chainId }: BuildReceiptInput): MevProofReceipt {
   if (!isAuthenticOphisOrder(order)) {
     throw new TypeError('receipt source is not an authentic Ophis order');
@@ -163,7 +134,7 @@ export function buildReceipt({ order, trade, chainId }: BuildReceiptInput): MevP
     settlementBlock: trade?.blockNumber ?? null,
     status: order.status,
     partnerFee: extractPartnerFees(order.fullAppData),
-    surplusVsQuote: trade ? calcSurplusVsQuote(order) : null,
+    surplusVsQuote: trade ? surplusRatio(order) : null,
     receiptVersion: '3',
     generatedAt: new Date().toISOString(),
   };

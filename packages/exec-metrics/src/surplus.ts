@@ -5,7 +5,7 @@
  * final bps figure.
  *
  * Sell order: surplus = executedBuyAmount - buyAmount, in buy-token units.
- * Buy order: surplus = sellAmount - executedSellAmount, in sell-token units.
+ * Buy order: surplus = sellAmount - executedSellAmountBeforeFees, in sell-token units.
  * For partial fills the signed limit is scaled to the filled fraction so a
  * half-filled order is not reported as negative surplus; on a full fill the
  * scaled limit equals the signed limit and the formulas above hold exactly.
@@ -18,7 +18,6 @@ import type { CowOrder } from './cow';
 // BigInt() calls instead of literals: consumers typecheck this source at
 // whatever target their toolchain applies (Next.js pins one below ES2020).
 const BIGINT_ZERO = BigInt(0);
-const BIGINT_MILLION = BigInt(1_000_000);
 
 export type SurplusOrder = Pick<
   CowOrder,
@@ -30,15 +29,37 @@ export type SurplusOrder = Pick<
   | 'buyAmount'
   | 'executedSellAmount'
   | 'executedBuyAmount'
+  | 'executedSellAmountBeforeFees'
+  | 'executedFeeAmount'
 >;
 
-function toBigInt(value: string | undefined): bigint {
-  if (!value) return BIGINT_ZERO;
-  try {
-    return BigInt(value);
-  } catch {
-    return BIGINT_ZERO;
+function toBigInt(value: string | undefined): bigint | null {
+  // API amounts are uint256 decimal strings. Missing or malformed is not zero.
+  if (typeof value !== 'string' || !/^[0-9]{1,78}$/.test(value)) return null;
+  const amount = BigInt(value);
+  return amount < BigInt(2) ** BigInt(256) ? amount : null;
+}
+
+/** Exact rational surplus; do not round the partial-fill limit before division. */
+function surplusFraction(order: SurplusOrder) {
+  const sell = toBigInt(order.sellAmount);
+  const buy = toBigInt(order.buyAmount);
+  const grossSell = toBigInt(order.executedSellAmount);
+  const execBuy = toBigInt(order.executedBuyAmount);
+  const fee = toBigInt(order.executedFeeAmount ?? '0');
+  const execSell = order.executedSellAmountBeforeFees !== undefined
+    ? toBigInt(order.executedSellAmountBeforeFees)
+    : grossSell !== null && fee !== null ? grossSell - fee : null;
+  if (sell === null || buy === null || grossSell === null || execBuy === null || fee === null || execSell === null
+    || sell <= BIGINT_ZERO || buy <= BIGINT_ZERO || execSell <= BIGINT_ZERO || execBuy <= BIGINT_ZERO
+    || execSell > grossSell || (order.executedFeeAmount !== undefined && execSell + fee !== grossSell)) return null;
+  if (order.kind === 'sell') {
+    return { numerator: execBuy * sell - buy * execSell, limit: buy * execSell, scale: sell };
   }
+  if (order.kind === 'buy') {
+    return { numerator: sell * execBuy - execSell * buy, limit: sell * execBuy, scale: buy };
+  }
+  return null;
 }
 
 /** Token address the surplus is denominated in: buy token for sells, sell token for buys. */
@@ -51,45 +72,32 @@ export function surplusToken(order: Pick<SurplusOrder, 'kind' | 'sellToken' | 'b
  * executed (open, expired, cancelled without fill) or the signed amounts are
  * degenerate (zero, which would divide by zero when scaling).
  *
- * Scaled-limit division floors, which can overstate sell-order surplus and
- * understate buy-order surplus by at most 1 wei on partial fills.
+ * Fractional base units are rounded down, so raw surplus never overstates
+ * the result. BPS uses the exact fraction, not this rounded token amount.
  */
 export function calcSurplusRaw(order: SurplusOrder): bigint | null {
-  const sell = toBigInt(order.sellAmount);
-  const buy = toBigInt(order.buyAmount);
-  const execSell = toBigInt(order.executedSellAmount);
-  const execBuy = toBigInt(order.executedBuyAmount);
-
-  if (order.kind === 'sell') {
-    if (execSell === BIGINT_ZERO || sell === BIGINT_ZERO) return null;
-    const scaledLimitBuy = (buy * execSell) / sell;
-    return execBuy - scaledLimitBuy;
-  }
-
-  if (execBuy === BIGINT_ZERO || buy === BIGINT_ZERO) return null;
-  const scaledLimitSell = (sell * execBuy) / buy;
-  return scaledLimitSell - execSell;
+  const fraction = surplusFraction(order);
+  if (!fraction) return null;
+  const { numerator, scale } = fraction;
+  return numerator >= BIGINT_ZERO ? numerator / scale : -((-numerator + scale - BigInt(1)) / scale);
 }
 
 /**
- * Surplus relative to the signed limit amount, in basis points with two
- * decimals of precision. For partial fills the limit is scaled to the filled
- * fraction (identical to the signed limit on a full fill). Null when
- * calcSurplusRaw is null or the limit is zero.
+ * Fractional surplus vs the signed limit, excluding the separately signed
+ * fee on both sides of the comparison. Embedded execution fees remain in the
+ * executed amounts. This is NOT improvement against a market quote or profit.
+ * Shares the same basis as the BPS display and receipt.
  */
+export function surplusRatio(order: SurplusOrder): number | null {
+  const bps = surplusBps(order);
+  return bps === null ? null : bps / 10_000;
+}
+
+/** One basis point is 1/10,000. Retain 12 BPS decimals until UI rounding. */
 export function surplusBps(order: SurplusOrder): number | null {
-  const raw = calcSurplusRaw(order);
-  if (raw === null) return null;
-
-  const sell = toBigInt(order.sellAmount);
-  const buy = toBigInt(order.buyAmount);
-  const execSell = toBigInt(order.executedSellAmount);
-  const execBuy = toBigInt(order.executedBuyAmount);
-
-  const limit = order.kind === 'sell' ? (buy * execSell) / sell : (sell * execBuy) / buy;
-  if (limit <= BIGINT_ZERO) return null;
-
-  return Number((raw * BIGINT_MILLION) / limit) / 100;
+  const fraction = surplusFraction(order);
+  if (!fraction) return null;
+  return Number(fraction.numerator * BigInt('10000000000000000') / fraction.limit) / 1e12;
 }
 
 export interface SurplusSummary {

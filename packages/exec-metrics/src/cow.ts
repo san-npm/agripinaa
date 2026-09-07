@@ -29,6 +29,8 @@ export interface CowOrder {
   sellTokenBalance: string;
   buyTokenBalance: string;
   executedSellAmount: string;
+  /** Executed sell amount excluding the signed fee (not all protocol fees). */
+  executedSellAmountBeforeFees?: string;
   executedBuyAmount: string;
   executedFeeAmount?: string;
   /** Unix seconds. */

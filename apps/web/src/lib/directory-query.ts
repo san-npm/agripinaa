@@ -107,7 +107,8 @@ export function hasActiveFilters(query: DirectoryQuery): boolean {
 export function matchesDirectorySearch(agent: AgentSummary, query: string): boolean {
   const term = normalizeQuery(query);
   const record = agentByTokenId(agent.tokenId);
-  const summary = record ? agentExperience(record.slug).summary : '';
+  const experience = record ? agentExperience(record.slug) : undefined;
+  const summary = experience ? `${experience.summary}\n${experience.directoryLabel}\n${experience.protocols.join(' ')}` : '';
   return !term || `${agent.name}\n${summary}\n${agent.description ?? ''}`.toLowerCase().includes(term);
 }
 

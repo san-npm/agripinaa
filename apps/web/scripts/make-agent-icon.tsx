@@ -1,92 +1,54 @@
-/**
- * Regenerates `public/agent-icon.png`.
- *
- * Every ERC-8004 manifest this site serves points its `image` field at
- * https://agripinaa.vercel.app/agent-icon.png, and that URL is baked into
- * on-chain registrations, so the file has to exist and has to stay at that
- * path. It is generated rather than hand-authored so the mark stays in step
- * with the globals.css tokens; re-run after a palette change:
- *
- *   pnpm --filter @agripinaa/web gen:icon
- *
- * Satori resolves no CSS custom properties, so the tokens are written out as
- * literals here (deep void #0b0f1a, amber-gold #f59e0b / #fbbf24).
- */
-import { writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+/** Regenerate the supplied Bloub mark at stable public URLs and bake the static share card. */
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ImageResponse } from 'next/og';
+import React, { createElement } from 'react';
 
-import { ImageResponse } from "next/og";
+const root = fileURLToPath(new URL('..', import.meta.url));
 
-const SIZE = 512;
-const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "agent-icon.png");
-
-const icon = (
-  <div
-    style={{
-      width: "100%",
-      height: "100%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "#0b0f1a",
-      position: "relative",
-    }}
-  >
-    <div
-      style={{
-        position: "absolute",
-        top: 56,
-        left: 56,
-        width: 400,
-        height: 400,
-        borderRadius: 400,
-        background:
-          "radial-gradient(circle at 50% 45%, rgba(245,158,11,0.34), rgba(11,15,26,0) 70%)",
-      }}
-    />
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 288,
-        height: 288,
-        borderRadius: 72,
-        background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 152,
-          height: 152,
-          borderRadius: 40,
-          background: "#0b0f1a",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            width: 56,
-            height: 56,
-            borderRadius: 16,
-            background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)",
-          }}
-        />
+async function shareImage() {
+  const size = { width: 1200, height: 630 };
+  const logo = await readFile(join(root, 'public/agent-icon.png'));
+  return new ImageResponse(
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: '#faf9f6', color: '#1d1d1f', padding: '56px 72px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, fontSize: 36, fontWeight: 700 }}>
+        {/* ImageResponse uses its own image renderer. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`data:image/png;base64,${logo.toString('base64')}`} alt="" width={80} height={80} />
+        Agripinaa
       </div>
-    </div>
-  </div>
-);
-
-async function main(): Promise<void> {
-  const png = Buffer.from(
-    await new ImageResponse(icon, { width: SIZE, height: SIZE }).arrayBuffer(),
+      <div style={{ display: 'flex', flexDirection: 'column', fontSize: 88, letterSpacing: '-.05em', lineHeight: 1.02 }}>
+        <span>Different minds.</span><span style={{ color: '#8a5100' }}>Your rules.</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #dcdce0', paddingTop: 24, fontSize: 24, color: '#55555b' }}>
+        <span>Traders. Guardians. Yield seekers.</span><span>Built on BNB Chain</span>
+      </div>
+    </div>, size,
   );
-  await writeFile(OUT, png);
-  console.log(`wrote ${OUT} (${SIZE}x${SIZE}, ${png.byteLength} bytes)`);
 }
 
+async function main() {
+  const svg = await readFile(join(root, 'public/brand/bloub/bloub-hexagone-neutre-orange.svg'));
+  const src = `data:image/svg+xml;base64,${svg.toString('base64')}`;
+  async function render(size: number) {
+    return Buffer.from(await new ImageResponse(createElement('img', { src, alt: '', width: size, height: size }), { width: size, height: size }).arrayBuffer());
+  }
+  await writeFile(join(root, 'public/agent-icon.png'), await render(512));
+  await writeFile(join(root, 'src/app/apple-icon.png'), await render(180));
+  const png = await render(32);
+  // ICO header + one PNG-backed 32px directory entry.
+  const header = Buffer.alloc(22);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(1, 4);
+  header[6] = header[7] = 32;
+  header.writeUInt16LE(1, 10);
+  header.writeUInt16LE(32, 12);
+  header.writeUInt32LE(png.length, 14);
+  header.writeUInt32LE(22, 18);
+  await writeFile(join(root, 'src/app/favicon.ico'), Buffer.concat([header, png]));
+  // No per-request rendering is needed for a share card that never changes with request data.
+  await writeFile(join(root, 'src/app/opengraph-image.png'), Buffer.from(await (await shareImage()).arrayBuffer()));
+  console.log('Generated Bloub registry icon, favicon, Apple touch icon, and static share card.');
+}
 void main();

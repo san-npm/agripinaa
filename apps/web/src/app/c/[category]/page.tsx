@@ -53,7 +53,7 @@ async function CategoryAgents({ category }: { category: Category }) {
     );
   }
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="agent-grid">
       {items.map((agent) => (
         <AgentCard key={agent.id} agent={agent} />
       ))}

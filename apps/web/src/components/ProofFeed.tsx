@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useEffect, useState, type CSSProperties } from 'react';
 
 import { ArrowIcon, CATEGORY_ICON } from './icons';
+import { signedBps } from '@/lib/format';
+import { ProofSummary } from './ProofSummary';
 
 const KIND_LABEL: Record<ProofKind, string> = {
   trade: 'surplus',
@@ -57,8 +59,8 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
           >
             {event.agentName}
           </Link>
-          <span className={`rounded-full border px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${KIND_CLASS[event.kind]}`}>
-            {bps !== undefined ? `${bps >= 0 ? '+' : ''}${bps.toFixed(1)} bps` : KIND_LABEL[event.kind]}
+          <span title={bps !== undefined ? 'Surplus vs signed limit; 100 bps = 1%. Not investment return.' : undefined} className={`rounded-full border px-1.5 py-0.5 text-xs font-semibold tracking-wider ${bps !== undefined && bps < 0 ? 'border-danger/25 bg-danger/10 text-danger' : KIND_CLASS[event.kind]}`}>
+            {bps !== undefined ? `${signedBps(bps)} bps` : KIND_LABEL[event.kind]}
           </span>
           <time
             dateTime={event.at}
@@ -73,7 +75,7 @@ function ProofRow({ event, index }: { event: ProofEvent; index: number }) {
             {relativeTime(event.at)}
           </time>
         </div>
-        <p className="mt-1 text-sm leading-relaxed text-muted">{event.summary}</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted"><ProofSummary text={event.summary} /></p>
         {(event.txHash || event.orderUid) && (
           <div className="mt-1.5 flex items-center gap-3 font-mono text-xs">
             {event.txHash && (
@@ -203,7 +205,7 @@ export function ProofFeed({
       {!compact && payload && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2/50 px-5 py-3 text-xs text-muted-2">
           <span>{events.length} actions · refreshes every 15 seconds</span>
-          <span>Runner log + Ophis settlement backfill</span>
+          <span>Surplus vs signed limit · 100 bps = 1% · Not investment return</span>
         </div>
       )}
     </section>

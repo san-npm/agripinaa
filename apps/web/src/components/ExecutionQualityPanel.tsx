@@ -3,6 +3,8 @@ import { TOKENS_BSC } from '@agripinaa/shared';
 import { getExecutionSummary } from '@/lib/exec';
 import { FreshnessStamp } from './FreshnessStamp';
 import { MevReceiptButton } from './MevReceiptButton';
+import { signedBps } from '@/lib/format';
+import { ProofSummary } from './ProofSummary';
 
 const SYMBOL_BY_ADDRESS = new Map(
   Object.values(TOKENS_BSC).map((t) => [t.address.toLowerCase(), t.symbol]),
@@ -57,9 +59,9 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
         {summary.avgSurplusBps != null && (
           <Metric
             label="Avg surplus"
-            value={`+${summary.avgSurplusBps.toFixed(1)}`}
+            value={signedBps(summary.avgSurplusBps)}
             hint="bps vs limit"
-            positive
+            positive={summary.avgSurplusBps > 0}
           />
         )}
         {Object.entries(summary.totalSurplusRaw)
@@ -68,8 +70,8 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
             <Metric
               key={token}
               label={`Surplus ${tokenLabel(token)}`}
-              value={`+${formatAmount(raw, token)}`}
-              positive
+              value={`${BigInt(raw) > BigInt(0) ? '+' : ''}${formatAmount(raw, token)}`}
+              positive={BigInt(raw) > BigInt(0)}
             />
           ))}
       </dl>
@@ -80,12 +82,12 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
             className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 p-2.5 text-xs"
           >
             <span className="font-mono text-muted">
-              {row.kind} {tokenLabel(row.sellToken)} → {tokenLabel(row.buyToken)}
+              <ProofSummary text={`${row.kind} ${tokenLabel(row.sellToken)} → ${tokenLabel(row.buyToken)}`} />
             </span>
             <span className="text-muted-2">{row.status}</span>
             {row.surplusBps != null && (
-              <span className="tabular font-mono text-success">
-                +{row.surplusBps.toFixed(1)} bps
+              <span className={`tabular font-mono ${row.surplusBps < 0 ? 'text-danger' : 'text-success'}`}>
+                {signedBps(row.surplusBps)} bps
               </span>
             )}
             <MevReceiptButton uid={row.uid} />
@@ -94,7 +96,7 @@ export async function ExecutionQualityPanel({ wallet }: { wallet: string }) {
       </ul>
       <p className="mt-3 text-xs leading-relaxed text-muted-2">
         Ophis settlement on BSC, attributed via appData appCode. Surplus =
-        executed vs signed amounts.
+        executed vs signed limit, not the market quote or investment return. 100 bps = 1%.
       </p>
       <FreshnessStamp asOf={exec.asOf} source="ophis · BSC" />
     </section>
