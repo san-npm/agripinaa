@@ -2,6 +2,7 @@ import { bscScanAddress, bscScanTx } from "@agripinaa/shared";
 
 import type { VerifiedAgent } from "@/lib/verified";
 import { VerifiedIcon } from "./icons";
+import { ProofSummary } from './ProofSummary';
 
 const NPM = "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364";
 
@@ -19,8 +20,8 @@ function ProofRow({
   return (
     <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-2 p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-sm text-foreground">{label}</p>
-        {note && <p className="mt-0.5 text-xs text-muted-2">{note}</p>}
+        <p className="text-sm text-foreground"><ProofSummary text={label} /></p>
+        {note && <p className="mt-0.5 text-xs text-muted-2"><ProofSummary text={note} /></p>}
       </div>
       <a
         href={href}

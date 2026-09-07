@@ -1,26 +1,41 @@
 import type { Category } from "@agripinaa/agent-index";
 import Image from "next/image";
+import { useId } from "react";
 
 import { tokenLogoAsset } from "@/lib/token-logo-assets";
 
 type IconProps = { className?: string };
 
-// Phosphor duotone icons (as aggregated on svgrepo): a low-opacity depth
-// layer plus a solid path, both currentColor. Richer than flat strokes.
+// Existing Phosphor geometry, with a beveled face and extruded edge.
+// Controls keep their recognizable silhouette at small sizes.
 function make(inner: React.ReactNode) {
   return function Icon({ className }: IconProps) {
+    const id = useId();
     return (
-      <svg viewBox="0 0 256 256" fill="currentColor" className={className ?? "h-full w-full"} aria-hidden>
-        {inner}
+      <svg viewBox="-12 -12 288 288" className={className ?? "h-full w-full"} aria-hidden>
+        <defs><linearGradient id={id} x1="0" y1="0" x2=".8" y2="1">
+          <stop stopColor="currentColor" /><stop offset=".35" stopColor="currentColor" />
+          <stop offset="1" stopColor="color-mix(in srgb, currentColor 65%, black)" />
+        </linearGradient></defs>
+        <g fill="currentColor" opacity=".35" transform="translate(9 13)">{inner}</g>
+        <g fill={`url(#${id})`} stroke="currentColor" strokeWidth="2">{inner}</g>
       </svg>
     );
   };
 }
 
-export const GridIcon = make(<><path d="M208,56V200a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H200A8,8,0,0,1,208,56Z" opacity={0.2} /><path d="M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,80H136V56h64ZM120,56v64H56V56ZM56,136h64v64H56Zm144,64H136V136h64v64Z" /></>);
-export const ShieldIcon = make(<><path d="M216,56v56c0,96-88,120-88,120S40,208,40,112V56a8,8,0,0,1,8-8H208A8,8,0,0,1,216,56Z" opacity={0.2} /><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z" /></>);
-export const YieldIcon = make(<><path d="M232,56v64L168,56Z" opacity={0.2} /><path d="M232,48H168a8,8,0,0,0-5.66,13.66L188.69,88,136,140.69l-34.34-34.35a8,8,0,0,0-11.32,0l-72,72a8,8,0,0,0,11.32,11.32L96,123.31l34.34,34.35a8,8,0,0,0,11.32,0L200,99.31l26.34,26.35A8,8,0,0,0,240,120V56A8,8,0,0,0,232,48Zm-8,52.69L187.31,64H224Z" /></>);
-export const RangeIcon = make(<><path d="M160,128a32,32,0,1,1-32-32A32,32,0,0,1,160,128Z" opacity={0.2} /><path d="M232,120h-8.34A96.14,96.14,0,0,0,136,32.34V24a8,8,0,0,0-16,0v8.34A96.14,96.14,0,0,0,32.34,120H24a8,8,0,0,0,0,16h8.34A96.14,96.14,0,0,0,120,223.66V232a8,8,0,0,0,16,0v-8.34A96.14,96.14,0,0,0,223.66,136H232a8,8,0,0,0,0-16Zm-96,87.6V200a8,8,0,0,0-16,0v7.6A80.15,80.15,0,0,1,48.4,136H56a8,8,0,0,0,0-16H48.4A80.15,80.15,0,0,1,120,48.4V56a8,8,0,0,0,16,0V48.4A80.15,80.15,0,0,1,207.6,120H200a8,8,0,0,0,0,16h7.6A80.15,80.15,0,0,1,136,207.6ZM128,88a40,40,0,1,0,40,40A40,40,0,0,0,128,88Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,152Z" /></>);
+export function GridIcon({ className }: IconProps) {
+  return <Image src="/agents/grid.png" alt="" aria-hidden width={64} height={64} sizes="64px" className={className ?? 'h-full w-full'} />;
+}
+export function ShieldIcon({ className }: IconProps) {
+  return <Image src="/agents/health-factor.png" alt="" aria-hidden width={64} height={64} sizes="64px" className={className ?? 'h-full w-full'} />;
+}
+export function YieldIcon({ className }: IconProps) {
+  return <Image src="/agents/yield.png" alt="" aria-hidden width={64} height={64} sizes="64px" className={className ?? 'h-full w-full'} />;
+}
+export function RangeIcon({ className }: IconProps) {
+  return <Image src="/agents/lp-range.png" alt="" aria-hidden width={64} height={64} sizes="64px" className={className ?? 'h-full w-full'} />;
+}
 export const VerifiedIcon = make(<><path d="M232,128c0,12.51-17.82,21.95-22.68,33.69-4.68,11.32,1.42,30.65-7.78,39.85s-28.53,3.1-39.85,7.78C150,214.18,140.5,232,128,232s-22-17.82-33.69-22.68c-11.32-4.68-30.65,1.42-39.85-7.78s-3.1-28.53-7.78-39.85C41.82,150,24,140.5,24,128s17.82-22,22.68-33.69C51.36,83,45.26,63.66,54.46,54.46S83,51.36,94.31,46.68C106.05,41.82,115.5,24,128,24S150,41.82,161.69,46.68c11.32,4.68,30.65-1.42,39.85,7.78s3.1,28.53,7.78,39.85C214.18,106.05,232,115.5,232,128Z" opacity={0.2} /><path d="M225.86,102.82c-3.77-3.94-7.67-8-9.14-11.57-1.36-3.27-1.44-8.69-1.52-13.94-.15-9.76-.31-20.82-8-28.51s-18.75-7.85-28.51-8c-5.25-.08-10.67-.16-13.94-1.52-3.56-1.47-7.63-5.37-11.57-9.14C146.28,23.51,138.44,16,128,16s-18.27,7.51-25.18,14.14c-3.94,3.77-8,7.67-11.57,9.14C88,40.64,82.56,40.72,77.31,40.8c-9.76.15-20.82.31-28.51,8S41,67.55,40.8,77.31c-.08,5.25-.16,10.67-1.52,13.94-1.47,3.56-5.37,7.63-9.14,11.57C23.51,109.72,16,117.56,16,128s7.51,18.27,14.14,25.18c3.77,3.94,7.67,8,9.14,11.57,1.36,3.27,1.44,8.69,1.52,13.94.15,9.76.31,20.82,8,28.51s18.75,7.85,28.51,8c5.25.08,10.67.16,13.94,1.52,3.56,1.47,7.63,5.37,11.57,9.14C109.72,232.49,117.56,240,128,240s18.27-7.51,25.18-14.14c3.94-3.77,8-7.67,11.57-9.14,3.27-1.36,8.69-1.44,13.94-1.52,9.76-.15,20.82-.31,28.51-8s7.85-18.75,8-28.51c.08-5.25.16-10.67,1.52-13.94,1.47-3.56,5.37-7.63,9.14-11.57C232.49,146.28,240,138.44,240,128S232.49,109.73,225.86,102.82Zm-11.55,39.29c-4.79,5-9.75,10.17-12.38,16.52-2.52,6.1-2.63,13.07-2.73,19.82-.1,7-.21,14.33-3.32,17.43s-10.39,3.22-17.43,3.32c-6.75.1-13.72.21-19.82,2.73-6.35,2.63-11.52,7.59-16.52,12.38S132,224,128,224s-9.15-4.92-14.11-9.69-10.17-9.75-16.52-12.38c-6.1-2.52-13.07-2.63-19.82-2.73-7-.1-14.33-.21-17.43-3.32s-3.22-10.39-3.32-17.43c-.1-6.75-.21-13.72-2.73-19.82-2.63-6.35-7.59-11.52-12.38-16.52S32,132,32,128s4.92-9.15,9.69-14.11,9.75-10.17,12.38-16.52c2.52-6.1,2.63-13.07,2.73-19.82.1-7,.21-14.33,3.32-17.43S70.51,56.9,77.55,56.8c6.75-.1,13.72-.21,19.82-2.73,6.35-2.63,11.52-7.59,16.52-12.38S124,32,128,32s9.15,4.92,14.11,9.69,10.17,9.75,16.52,12.38c6.1,2.52,13.07,2.63,19.82,2.73,7,.1,14.33.21,17.43,3.32s3.22,10.39,3.32,17.43c.1,6.75.21,13.72,2.73,19.82,2.63,6.35,7.59,11.52,12.38,16.52S224,124,224,128,219.08,137.15,214.31,142.11ZM173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34Z" /></>);
 export const ReceiptIcon = make(<><path d="M224,56V208l-32-16-32,16-32-16L96,208,64,192,32,208V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z" opacity={0.2} /><path d="M72,104a8,8,0,0,1,8-8h96a8,8,0,0,1,0,16H80A8,8,0,0,1,72,104Zm8,40h96a8,8,0,0,0,0-16H80a8,8,0,0,0,0,16ZM232,56V208a8,8,0,0,1-11.58,7.15L192,200.94l-28.42,14.21a8,8,0,0,1-7.16,0L128,200.94,99.58,215.15a8,8,0,0,1-7.16,0L64,200.94,35.58,215.15A8,8,0,0,1,24,208V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56Zm-16,0H40V195.06l20.42-10.22a8,8,0,0,1,7.16,0L96,199.06l28.42-14.22a8,8,0,0,1,7.16,0L160,199.06l28.42-14.22a8,8,0,0,1,7.16,0L216,195.06Z" /></>);
 export const ArrowIcon = make(<><path d="M216,128l-72,72V56Z" opacity={0.2} /><path d="M221.66,122.34l-72-72A8,8,0,0,0,136,56v64H40a8,8,0,0,0,0,16h96v64a8,8,0,0,0,13.66,5.66l72-72A8,8,0,0,0,221.66,122.34ZM152,180.69V75.31L204.69,128Z" /></>);
@@ -36,7 +51,7 @@ export const CATEGORY_ICON: Record<Category, (p: IconProps) => React.ReactNode> 
 };
 
 // --- Token logos (official full-colour assets) -------------------------------
-// CryptoLogos source filenames are deliberately preserved in /public/tokens.
+// Sourced from official brand kits; provenance lives in public/brand/SOURCES.md.
 // BTCB is Binance-Peg BTC, so it uses Bitcoin's mark; WBNB uses BNB's mark.
 
 /** Pick the logo for a token symbol. */
@@ -44,14 +59,14 @@ export function TokenLogo({ symbol, className }: { symbol: string; className?: s
   const asset = tokenLogoAsset(symbol);
   if (!asset) return <CoinsIcon className={className} />;
   return (
-    <Image
+    <span className={`token-icon ${className ?? 'h-full w-full'}`}><Image
       src={asset}
       alt=""
       aria-hidden
       width={32}
       height={32}
       unoptimized
-      className={className ?? "h-full w-full"}
-    />
+      className="h-full w-full object-contain"
+    /></span>
   );
 }

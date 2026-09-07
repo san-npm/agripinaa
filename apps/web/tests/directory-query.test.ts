@@ -109,6 +109,8 @@ test('first-party search includes the displayed summaries for every registered s
     if (!agent.tokenId) continue;
     const card = { ...base, tokenId: agent.tokenId, name: agent.name, description: 'Legacy registry wording' };
     assert.equal(matchesDirectorySearch(card, agentExperience(agent.slug).summary.slice(0, 60)), true, agent.slug);
+    assert.equal(matchesDirectorySearch(card, agentExperience(agent.slug).directoryLabel), true, agent.slug);
+    for (const protocol of agentExperience(agent.slug).protocols) assert.equal(matchesDirectorySearch(card, protocol), true, agent.slug);
     assert.equal(matchesDirectorySearch(card, 'legacy registry wording'), true, agent.slug);
     assert.equal(matchesDirectorySearch(card, 'definitely not a strategy'), false, agent.slug);
     if (agent.slug === 'grid') assert.equal(matchesDirectorySearch(card, ' PRESET PRICE LEVELS '), true);

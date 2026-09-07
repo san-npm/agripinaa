@@ -1,6 +1,22 @@
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 
+test('Proof token logos keep accessible tickers, unknown symbols and escaped prose', () => {
+  execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import React from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server';
+    import { ProofSummary } from './src/components/ProofSummary.tsx';
+    globalThis.React = React;
+    const html = renderToStaticMarkup(React.createElement(ProofSummary, { text: 'Filled BTCB → USDT / WBNB / USDC; UNKNOWN <script>x</script>' }));
+    for (const symbol of ['BTCB', 'USDT', 'WBNB', 'USDC']) assert.ok(html.includes('aria-label="' + symbol + '"'));
+    assert.equal((html.match(/role="img"/g) || []).length, 4);
+    assert.match(html, /UNKNOWN/);
+    assert.match(html, /&lt;script&gt;/);
+    assert.doesNotMatch(html, /<script>/);
+  `], { cwd: new URL('..', import.meta.url), stdio: 'pipe' });
+});
+
 test('registry cards escape owner text and do not grant first-party verification from a name or claim', () => {
   execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
     import assert from 'node:assert/strict';
@@ -15,6 +31,7 @@ test('registry cards escape owner text and do not grant first-party verification
       trust: { isVerified: false, totalScore: null, totalFeedbacks: 0 },
     } }));
     assert.doesNotMatch(html, /<script|<img|Verified by Agripinaa/);
+    assert.doesNotMatch(html, /card-visual|data-agent=/, 'owner text cannot acquire a first-party visual identity');
     assert.match(html, /&lt;img/);
     assert.match(html, /&lt;script/);
     assert.match(html, /owner-provided: description/);

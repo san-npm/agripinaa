@@ -16,6 +16,6 @@ export function tokenLogoAsset(symbol: string): string | null {
   if (kind === 'usdt') return '/tokens/tether-usdt-logo.svg';
   if (kind === 'usdc') return '/tokens/usd-coin-usdc-logo.svg';
   if (kind === 'bnb') return '/tokens/bnb-bnb-logo.svg';
-  if (kind === 'btcb') return '/tokens/bitcoin-btc-logo.svg';
+  if (kind === 'btcb') return '/tokens/bitcoin.png';
   return null;
 }
