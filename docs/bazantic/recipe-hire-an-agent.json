@@ -1,6 +1,6 @@
 {
   "name": "Hire an ERC-8004 agent on BSC by provable execution",
-  "description": "Pick the agent in a strategy category (grid, yield, health-factor, rebalancing) with the best on-chain track record, and return its most recent settled fill with the transaction that proves it. Uses the Agripinaa Agent Index: listing with per-field provenance, the public proof feed, and Ophis settlement receipts.",
+  "description": "Pick the agent in a strategy category (grid, yield, health-factor, rebalancing) whose Ophis fills show the best measured execution quality, and return its most recent settled fill with the transaction that proves it. Uses the Agripinaa Agent Index: listing with per-field provenance, per-wallet execution summaries computed from settlement, the public proof feed, and Ophis settlement receipts.",
   "input_schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -12,13 +12,15 @@
   "input_example": { "category": "grid" },
   "output_example": {
     "agent": { "tokenId": "269703", "name": "Agripinaa Grid", "profile": "https://agripinaa.vercel.app/agent/56/269703", "source": "the-graph" },
+    "executionQuality": { "fills": 18, "avgSurplusBps": 7.4, "rankedAgainst": 4 },
     "latestFill": { "summary": "Filled 0.0027 WBNB -> USDT through Ophis", "at": "2026-09-12T15:00:00Z", "orderUid": "0x...", "settlementTx": "0x..." },
     "howToActivate": "https://agripinaa.vercel.app/agent/56/269703/activate"
   },
-  "prompt_template": "You are choosing an AI agent to hire on BNB Smart Chain for the user. Inputs: {{inputs}}\n\nDo this in order and do not skip a step:\n1. Call listAgents with the requested category and limit 50. Prefer agents whose trust.isVerified is true, then the highest trust.totalScore. Keep the page's `source` field: it says which index lane answered (the-graph, 8004scan, snapshot) and you must report it as provenance.\n2. Call getProofFeed. Events whose `agent` equals a listed agent's `tokenId` are that agent's actions. Take the newest event of kind trade, rotate, repair, mint or rebalance for your chosen agent.\n3. If that event has an `orderUid`, call getReceipt with it and report the settlement transaction and surplus from the receipt. If it only has a `txHash`, report that.\n4. Answer with: the agent (tokenId, name, profile URL https://agripinaa.vercel.app/agent/56/<tokenId>), the index source, the latest fill (summary, time, orderUid, settlement tx), and the activation URL https://agripinaa.vercel.app/agent/56/<tokenId>/activate. Never invent a transaction hash; if no proof event exists for the agent say so and pick the next one.",
+  "prompt_template": "You are choosing an AI agent to hire on BNB Smart Chain for the user. Inputs: {{inputs}}\n\nDo this in order and do not skip a step:\n1. Call listAgents with the requested category and limit 50. Keep the page's `source` field: it says which index lane answered (the-graph, 8004scan, snapshot) and you must report it as provenance. Candidates are the items that have an `agentWallet`.\n2. For up to 6 candidates, call getExecutionSummary with the candidate's agentWallet. Rank by average surplus in bps against the signed limit (higher is better), breaking ties by fill count; a candidate with zero fills has no provable execution and ranks last. Do not rank on trust.totalScore or trust.isVerified: those are reputation fields and can be empty on the-graph lane.\n3. Call getProofFeed. Events whose `agent` equals the winner's `tokenId` are its actions. Take the newest event of kind trade, rotate, repair, mint or rebalance.\n4. If that event has an `orderUid`, call getReceipt with it and report the settlement transaction and surplus from the receipt. If it only has a `txHash`, report that.\n5. Answer with: the agent (tokenId, name, profile URL https://agripinaa.vercel.app/agent/56/<tokenId>), the index source, its execution quality (fills, average surplus, how many candidates it was ranked against), the latest fill (summary, time, orderUid, settlement tx), and the activation URL https://agripinaa.vercel.app/agent/56/<tokenId>/activate. Never invent a transaction hash or a surplus; if no candidate has fills, say so and stop.",
   "model": "claude-sonnet-5",
   "tool_bindings": [
     { "gateway_slug": "agripinaa-agent-index", "tool_name": "listAgents" },
+    { "gateway_slug": "agripinaa-agent-index", "tool_name": "getExecutionSummary" },
     { "gateway_slug": "agripinaa-agent-index", "tool_name": "getProofFeed" },
     { "gateway_slug": "agripinaa-agent-index", "tool_name": "getReceipt" }
   ]

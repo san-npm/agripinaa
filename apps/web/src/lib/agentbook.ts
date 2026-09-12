@@ -34,6 +34,7 @@ const clients = AGENT_BOOKS.map((book) =>
 );
 
 export interface HumanBacking {
+  status: 'registered';
   /** Anonymous human identifier from AgentBook, hex. Not a person, a nullifier. */
   humanId: string;
   registry: (typeof AGENT_BOOKS)[number]['registry'];
@@ -41,16 +42,26 @@ export interface HumanBacking {
 }
 
 /**
- * Whether a wallet is registered in AgentBook, and where. Null means no
- * registration was found on either deployment or neither could be read: the
- * badge is a positive claim only, and its absence says nothing. The lookup
- * says something about the address it was given, nothing about who controls
- * it; the caller decides whether the address is one it can vouch for.
+ * Three answers, kept apart: registered somewhere; absent from every registry
+ * that answered; or no registry answered at all. The last one must never be
+ * shown as an absence, and it is what a transient RPC outage produces.
  */
-export async function getHumanBacking(address: string | null): Promise<HumanBacking | null> {
+export type HumanBackingResult =
+  | HumanBacking
+  | { status: 'absent'; asOf: string }
+  | { status: 'unavailable'; asOf: string };
+
+/**
+ * Whether a wallet is registered in AgentBook, and where. The lookup says
+ * something about the address it was given, nothing about who controls it;
+ * the caller decides whether the address is one it can vouch for. Cached for
+ * minutes rather than hours so an outage answer does not outlive the outage.
+ */
+export async function getHumanBacking(address: string | null): Promise<HumanBackingResult | null> {
   'use cache';
-  cacheLife('hours');
+  cacheLife('minutes');
   if (!address) return null;
+  const asOf = new Date().toISOString();
   const answers = await Promise.all(
     AGENT_BOOKS.map(async (book, i) => {
       try {
@@ -60,13 +71,15 @@ export async function getHumanBacking(address: string | null): Promise<HumanBack
           functionName: 'lookupHuman',
           args: [address as `0x${string}`],
         });
-        return humanId === 0n ? null : { humanId: toHex(humanId), registry: book.registry };
+        return humanId === 0n
+          ? ({ status: 'absent' } as const)
+          : ({ status: 'registered', humanId: toHex(humanId), registry: book.registry } as const);
       } catch {
-        // An unreadable registry is not a negative answer.
-        return null;
+        return { status: 'unavailable' } as const;
       }
     }),
   );
-  const hit = answers.find((a) => a !== null);
-  return hit ? { ...hit, asOf: new Date().toISOString() } : null;
+  const hit = answers.find((a) => a.status === 'registered');
+  if (hit) return { ...hit, asOf };
+  return answers.some((a) => a.status === 'absent') ? { status: 'absent', asOf } : { status: 'unavailable', asOf };
 }

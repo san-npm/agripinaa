@@ -66,4 +66,11 @@ export interface ProofFeedPayload {
   events: ProofEvent[];
   asOf: string;
   source: 'runner' | 'runner+chain' | 'chain' | 'none';
+  /**
+   * True when the runner's log tail was read in full and its order
+   * verification finished. False means partial evidence: the runner was
+   * unreachable, answered without the flag, or scanned incompletely. The
+   * chain backfill is not affected by it.
+   */
+  complete: boolean;
 }
