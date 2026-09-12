@@ -379,7 +379,8 @@ async function listAgentWindow(
   return { ...raw, nextCursor: page.nextCursor, items: await withLiveness(page.items) };
 }
 
-const REGISTRY_WINDOW_CURSOR = /^w:(0|\d{1,9}):(\d{1,3}):([a-f0-9]{16})$/;
+/** The embedded upstream cursor is an 8004scan offset or page, or a Graph `g<agentId>`. */
+const REGISTRY_WINDOW_CURSOR = /^w:(0|g?\d{1,9}):(\d{1,3}):([a-f0-9]{16})$/;
 
 /** A local cursor no longer describes the upstream window it was issued for. */
 export class RegistryCursorExpiredError extends Error {
@@ -407,7 +408,7 @@ const MAX_REGISTRY_WINDOW_ITEMS =
 
 /** Whether a public listing cursor is one this module can decode safely. */
 export function validRegistryCursor(cursor: string): boolean {
-  if (/^\d{1,9}$/.test(cursor)) return true;
+  if (/^g?\d{1,9}$/.test(cursor)) return true;
   const match = REGISTRY_WINDOW_CURSOR.exec(cursor);
   if (!match) return false;
   const offset = Number(match[2]);

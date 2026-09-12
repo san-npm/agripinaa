@@ -1103,7 +1103,7 @@ export function startX402Server(opts: {
       // 402 everyone else gets carries the challenge that says so.
       const resourceUri = resourceUriFor(req, pathname);
       const agentkitHeader = req.headers[AGENTKIT] as string | undefined;
-      const admission = await agentkit.admit(agentkitHeader, resourceUri, pathname);
+      const admission = await agentkit.admit(agentkitHeader, resourceUri, pathname, req.socket.remoteAddress);
       if (admission.granted) {
         let status: Record<string, unknown> | null = null;
         try {
@@ -1139,7 +1139,11 @@ export function startX402Server(opts: {
         res.end(
           JSON.stringify({
             ...body,
-            extensions: { ...(body['extensions'] as object | undefined), ...agentkit.challenge(resourceUri) },
+            // No challenge for a Host we are not published at: a signature
+            // bound to it would be worthless, so do not invite one.
+            ...(resourceUri
+              ? { extensions: { ...(body['extensions'] as object | undefined), ...agentkit.challenge(resourceUri) } }
+              : {}),
             ...(agentkitHeader ? { agentkit: { declined: admission.reason } } : {}),
           }),
         );

@@ -72,6 +72,21 @@ const QUERY = `query Supply($token: String!) {
   }
 }`;
 
+/**
+ * Messari's compound-forks subgraph (which Venus is) annualizes the per-block
+ * rate with a fixed BSC_BLOCKS_PER_YEAR = SECONDS_PER_YEAR / 3
+ * (subgraphs/compound-forks/src/constants.ts, read 2026-09-12). BSC has not
+ * produced 3-second blocks since the Lorentz/Maxwell upgrades; the runner
+ * measures the real cadence in readRates. The subgraph's Venus figure is
+ * therefore rescaled by measured / assumed before it is compared to anything.
+ * Aave quotes a per-second rate, so its number needs no such correction.
+ */
+export const MESSARI_BSC_BLOCKS_PER_YEAR = (365 * 24 * 3600) / 3;
+
+export function rescaleVenusBps(subgraphBps: number, measuredBlocksPerYear: number): number {
+  return (subgraphBps * measuredBlocksPerYear) / MESSARI_BSC_BLOCKS_PER_YEAR;
+}
+
 /** Lender-side variable rate of the deepest market for the token, in bps. */
 export function supplyBpsFromMarkets(markets: MarketRow[]): number | null {
   const deepest = [...markets].sort(
@@ -118,11 +133,19 @@ async function readVenue(
 
 /**
  * Both venues' supply rates for one token, or why they could not be read.
- * Without a gateway key the lane is simply not configured, which the caller
- * logs the same way as any other reason.
+ * `measuredBlocksPerYear` is the chain cadence readRates derived, needed to
+ * put the subgraph's Venus figure on the same footing as the chain's. Without
+ * a gateway key the lane is simply not configured, which the caller logs the
+ * same way as any other reason.
  */
-export async function readGraphRates(token: `0x${string}`): Promise<GraphRatesRead> {
+export async function readGraphRates(
+  token: `0x${string}`,
+  measuredBlocksPerYear: number,
+): Promise<GraphRatesRead> {
   if (!API_KEY) return { source: 'the-graph', unavailable: 'GRAPH_API_KEY not set' };
+  if (!Number.isFinite(measuredBlocksPerYear) || measuredBlocksPerYear <= 0) {
+    return { source: 'the-graph', unavailable: `no block cadence to rescale Venus with (${measuredBlocksPerYear})` };
+  }
   const nowS = Math.floor(Date.now() / 1000);
   try {
     const [venus, aave] = await Promise.all([
@@ -131,7 +154,7 @@ export async function readGraphRates(token: `0x${string}`): Promise<GraphRatesRe
     ]);
     return {
       source: 'the-graph',
-      venusBps: venus.bps,
+      venusBps: rescaleVenusBps(venus.bps, measuredBlocksPerYear),
       aaveBps: aave.bps,
       indexedAt: { venus: venus.indexedAt, aave: aave.indexedAt },
       asOf: new Date(nowS * 1000).toISOString(),

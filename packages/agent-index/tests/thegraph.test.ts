@@ -93,8 +93,15 @@ test('a page is asked from the chain-pinned subgraph with the bearer key, newest
     assert.equal(page.items[0]!.registeredAt, '2025-09-04T15:33:20.000Z');
     assert.equal(page.items[0]!.trust.source, 'the-graph');
     assert.equal(page.items[0]!.trust.totalFeedbacks, 2);
-    // Three asked, three answered: the page may continue after the last one.
-    assert.equal(page.nextCursor, '100');
+    // Three asked, three answered: the page may continue after the last one,
+    // and the cursor is tagged as this lane's.
+    assert.equal(page.nextCursor, 'g100');
+  });
+});
+
+test('a cursor another lane issued is refused rather than read as an agentId', async () => {
+  await withFetch(gateway({ agents: [] }, []), async () => {
+    await assert.rejects(() => new TheGraphSource().listAgents({ chainId: BSC, cursor: '48' }), /another index lane/);
   });
 });
 
@@ -102,7 +109,7 @@ test('a category page over-fetches, filters locally, and advances past what it s
   const log: Captured[] = [];
   const agents = [gqlAgent(300, 'Grid trading bot'), gqlAgent(200, 'Nothing in particular')];
   await withFetch(gateway({ agents }, log), async () => {
-    const page = await new TheGraphSource().listAgents({ chainId: BSC, category: 'grid', limit: 24, cursor: '301' });
+    const page = await new TheGraphSource().listAgents({ chainId: BSC, category: 'grid', limit: 24, cursor: 'g301' });
     assert.equal(log[0]!.variables['first'], 100);
     assert.deepEqual(log[0]!.variables['where'], { agentId_lt: '301' });
     assert.deepEqual(page.items.map((a) => a.tokenId), ['300']);
@@ -200,5 +207,14 @@ test('the merged source asks The Graph first and falls through to 8004scan when 
     assert.ok(asked[0]!.startsWith('https://gateway.test/'), 'The Graph lane goes first');
     assert.ok(asked.some((u) => u.includes('8004scan')), '8004scan is the next lane');
     assert.equal(page.source, '8004scan');
+    // A Graph continuation cannot be served by anyone else: no 8004scan
+    // offset, no snapshot page, an explicit error the API maps to 409.
+    asked.length = 0;
+    const { IndexCursorLaneError } = await import('../src/sources/merged');
+    await assert.rejects(
+      () => new MergedSource().listAgents({ chainId: BSC, limit: 5, cursor: 'g299999' }),
+      (err: unknown) => err instanceof IndexCursorLaneError,
+    );
+    assert.ok(asked.every((u) => u.startsWith('https://gateway.test/')), 'only the Graph lane was asked');
   });
 });
