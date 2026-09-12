@@ -2,6 +2,7 @@ import { CATEGORIES, IndexCursorLaneError, type Category } from "@agripinaa/agen
 
 import {
   listAgents,
+  listFirstParty,
   RegistryCursorExpiredError,
   RegistryCursorInvalidError,
   validRegistryCursor,
@@ -42,7 +43,17 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const page = await listAgents(category, limit, cursor);
-    return Response.json(page);
+    if (cursor !== undefined) return Response.json(page);
+    // The first page leads with our own agents in the category, as the hub
+    // pages do. The registry window is a sample of the newest registrations,
+    // and a client reading this API rather than the page would otherwise
+    // never see the agents that actually have a track record here.
+    const firstParty = await listFirstParty(category);
+    const pinned = new Set(firstParty.map((a) => a.tokenId));
+    return Response.json({
+      ...page,
+      items: [...firstParty, ...page.items.filter((a) => !pinned.has(a.tokenId))],
+    });
   } catch (error) {
     if (error instanceof RegistryCursorInvalidError) {
       return Response.json({ error: error.message }, { status: 400 });
