@@ -23,6 +23,7 @@ import {
 } from "@/lib/activatable";
 import { agentExperience } from "@/lib/agent-experience";
 import { registeredAgentParams, resolveAgentRoute } from "@/lib/agent-route";
+import { getHumanBacking } from "@/lib/agentbook";
 import { mergeAttestation, trustProvenanceLabel } from "@/lib/attestation-merge";
 import { CATEGORY_INFO } from "@/lib/categories";
 import { claimProvenanceLabel } from "@/lib/claim-merge";
@@ -160,6 +161,11 @@ async function AgentContent({
   const registryRecord = agentByTokenId(agent.tokenId);
   const experience = registryRecord ? agentExperience(registryRecord.slug) : null;
   const registryWallet = registryRecord?.wallet ?? null;
+  // World AgentBook: did a verified human vouch for the wallet this agent acts
+  // from? The committed registry wallet for a first-party agent, else the
+  // indexed one; the badge names which address was looked up.
+  const backedWallet = registryWallet ?? agent.agentWallet;
+  const humanBacking = await getHumanBacking(backedWallet);
   // Only a third-party listing can be claimed. Whether one already has been is
   // read off the merged record: `getAgent` applies the claim for every surface
   // at once, and drops a claim signed by an owner who has since transferred it.
@@ -217,6 +223,14 @@ async function AgentContent({
             {!registryRecord && (
               <span className="rounded-full border border-border-strong bg-surface px-2.5 py-0.5 text-xs text-muted-2">
                 Registry · unverified
+              </span>
+            )}
+            {humanBacking && (
+              <span
+                className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                title={`Wallet ${backedWallet} is registered in World's AgentBook on ${humanBacking.registry} by human ${humanBacking.humanId.slice(0, 10)}…`}
+              >
+                Human-backed · World ID
               </span>
             )}
             {category && (
@@ -289,6 +303,16 @@ async function AgentContent({
                 <dd><Addr chainId={agent.chainId} address={agent.agentWallet} /></dd>
               </div>
             )}
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-muted-2">Human backing</dt>
+              <dd className="truncate font-mono text-xs text-muted">
+                {humanBacking
+                  ? `AgentBook (${humanBacking.registry}) · human ${humanBacking.humanId.slice(0, 10)}…`
+                  : backedWallet
+                    ? "not in World AgentBook"
+                    : "no wallet to look up"}
+              </dd>
+            </div>
             {agent.website && (
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-muted-2">Website</dt>
