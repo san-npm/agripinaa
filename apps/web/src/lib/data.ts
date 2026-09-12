@@ -11,6 +11,7 @@ import {
   type Feedback,
   type IndexStats,
   type Page,
+  IndexCursorLaneError,
 } from '@agripinaa/agent-index';
 import { AGENT_LIST } from '@agripinaa/shared/agents';
 import { cacheLife } from 'next/cache';
@@ -318,18 +319,33 @@ export async function listDirectory(category?: Category): Promise<Directory> {
  * part of this cache key: every slice of the window must see the same records
  * and ranking even if registrations arrive while a caller pages through it.
  */
+/**
+ * The page a cached read answers with when the lane that issued the cursor
+ * cannot continue it. A thrown error would cross the cache boundary as a
+ * plain Error and lose its class, so the condition travels as data and
+ * listAgentWindow turns it back into the cursor error the API maps to 409.
+ */
+const CURSOR_LANE_UNAVAILABLE = 'cursor-lane-unavailable';
+
 async function readRegistryWindow(
   category?: Category,
   upstreamCursor?: string,
 ): Promise<Page<AgentSummary>> {
   'use cache';
   cacheLife('minutes');
-  return source.listAgents({
-    chainId: CHAIN_ID,
-    category,
-    limit: INDEX_WINDOW_SIZE,
-    cursor: upstreamCursor,
-  });
+  try {
+    return await source.listAgents({
+      chainId: CHAIN_ID,
+      category,
+      limit: INDEX_WINDOW_SIZE,
+      cursor: upstreamCursor,
+    });
+  } catch (error) {
+    if (error instanceof IndexCursorLaneError) {
+      return { items: [], nextCursor: null, total: null, asOf: new Date().toISOString(), source: CURSOR_LANE_UNAVAILABLE };
+    }
+    throw error;
+  }
 }
 
 export async function listAgents(
@@ -358,6 +374,7 @@ async function listAgentWindow(
   // into our cursor. Advancing raw.nextCursor before the ranked tail is served
   // would permanently skip that tail for callers asking for fewer than 100.
   const raw = await readRegistryWindow(category, position.upstreamCursor);
+  if (raw.source === CURSOR_LANE_UNAVAILABLE) throw new RegistryCursorExpiredError();
   const claims = claimsByTokenId(await storedClaims());
   const ranked = rankAndDedupe(raw.items).map((a) => withClaim(a, claims));
   // Resolve the fixed first-window injection on every continuation. It is

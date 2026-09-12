@@ -15,7 +15,9 @@
  * challenge is bound to must be one this runner is actually published at.
  */
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
+import { join } from 'node:path';
 
 import {
   AGENTKIT,
@@ -52,30 +54,54 @@ const NONCE_TTL_MS = CHALLENGE_TTL_MS + 5 * 60_000;
 const NONCE_CAP = 10_000;
 
 /**
- * Hosts a challenge may be bound to. The runner is published through a
- * Cloudflare quick tunnel; anything else reaching the listener directly can
- * set any Host it likes, and a signature for that Host must not count.
- * `AGENTKIT_PUBLIC_HOSTS` (comma separated) adds hosts for other setups.
+ * Hosts a challenge may be bound to: this runner's own published hostname and
+ * nothing else. Anything reaching the listener directly can set any Host it
+ * likes, and a signature bound to a foreign host (another quick tunnel
+ * included) must not count here. The runner learns its hostname the way the
+ * operators do: `ops/tunnel-url.txt`, written by start-agents.sh and
+ * report-runner-url.sh on every tunnel start, re-read every 30 seconds.
+ * `AGENTKIT_PUBLIC_HOSTS` (comma separated) adds fixed hosts for other setups.
  */
 const EXTRA_PUBLIC_HOSTS = new Set(
   (process.env.AGENTKIT_PUBLIC_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
 );
+const TUNNEL_URL_FILE = process.env.AGENTKIT_TUNNEL_URL_FILE ?? join(process.cwd(), 'ops', 'tunnel-url.txt');
+let tunnelHost: { value: string | null; readAt: number } = { value: null, readAt: 0 };
+function publishedTunnelHost(now = Date.now()): string | null {
+  if (now - tunnelHost.readAt < 30_000) return tunnelHost.value;
+  let value: string | null = null;
+  try {
+    const url = new URL(readFileSync(TUNNEL_URL_FILE, 'utf8').trim());
+    if (url.protocol === 'https:') value = url.host.toLowerCase();
+  } catch {
+    value = null;
+  }
+  tunnelHost = { value, readAt: now };
+  return value;
+}
+
 export function trustedHost(host: string | undefined): boolean {
   if (!host) return false;
   const h = host.toLowerCase();
-  return (
-    /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(h) ||
-    /^[a-z0-9-]+\.trycloudflare\.com$/.test(h) ||
-    EXTRA_PUBLIC_HOSTS.has(h)
-  );
+  if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(h)) return true;
+  return EXTRA_PUBLIC_HOSTS.has(h) || publishedTunnelHost() === h;
 }
 
-/** The public URL of this request, or null when its Host is not one we are published at. */
+/**
+ * The public URL of this request, or null when its Host is not one we are
+ * published at or does not even form a URL (a port out of range, say).
+ */
 export function resourceUriFor(req: Pick<IncomingMessage, 'headers'>, pathname: string): string | null {
   const host = req.headers.host;
   if (!trustedHost(host)) return null;
   const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host!);
-  return `${local ? 'http' : 'https'}://${host}${pathname}`;
+  try {
+    // Normalized (host lowercased) so the challenge, the signature and the
+    // check all carry the same string; a Host that is not a URL is refused.
+    return new URL(`${local ? 'http' : 'https'}://${host}${pathname}`).href;
+  } catch {
+    return null;
+  }
 }
 
 /** The `extensions.agentkit` block of a 402: a fresh CAIP-122 challenge. */
@@ -119,23 +145,23 @@ export class BoundedAgentKitStorage {
     private readonly nonceCap = NONCE_CAP,
   ) {}
 
-  /** Consume the nonce now, in one synchronous step: the second caller with it loses. */
-  reserveNonce(nonce: string, now = Date.now()): boolean {
+  /**
+   * Consume the nonce now, in one synchronous step: the second caller with it
+   * loses. A store full of live nonces refuses rather than evicts, since an
+   * evicted nonce would make a captured header good again; the rate limit in
+   * front of this keeps the cap out of reach for anyone but an attacker.
+   */
+  reserveNonce(nonce: string, now = Date.now()): 'ok' | 'replay' | 'full' {
     const seen = this.nonces.get(nonce);
-    if (seen !== undefined && seen > now) return false;
+    if (seen !== undefined && seen > now) return 'replay';
     if (this.nonces.size >= this.nonceCap) {
       for (const [n, expiresAt] of this.nonces) {
         if (expiresAt <= now) this.nonces.delete(n);
       }
-      // Still full after sweeping expired ones: drop the oldest insertions.
-      while (this.nonces.size >= this.nonceCap) {
-        const oldest = this.nonces.keys().next().value;
-        if (oldest === undefined) break;
-        this.nonces.delete(oldest);
-      }
+      if (this.nonces.size >= this.nonceCap) return 'full';
     }
     this.nonces.set(nonce, now + this.nonceTtlMs);
-    return true;
+    return 'ok';
   }
 
   tryIncrementUsage(endpoint: string, humanId: string, limit: number): boolean {
@@ -178,7 +204,9 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
     const payload = parseAgentkitHeader(header);
     // Consumed before anything awaits: a header captured in flight cannot be
     // presented twice, however close together the two arrive.
-    if (!storage.reserveNonce(payload.nonce)) return { granted: false, reason: 'nonce already used (replay)' };
+    const reserved = storage.reserveNonce(payload.nonce);
+    if (reserved === 'replay') return { granted: false, reason: 'nonce already used (replay)' };
+    if (reserved === 'full') return { granted: false, reason: 'verification store is full; retry in a few minutes' };
     const validation = await validateAgentkitMessage(payload, resourceUri);
     if (!validation.valid) return { granted: false, reason: firstLine(validation.error, 'invalid message') };
     // The library binds the host only. This runner serves several agents'

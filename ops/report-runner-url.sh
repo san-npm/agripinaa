@@ -120,6 +120,10 @@ printf '%s' "$URL" | grep -qE '^https://[A-Za-z0-9._~/:?=&%+-]+$' || {
   exit 1
 }
 
+# The runner reads this to know which Host it is published at (the AgentKit
+# challenge is bound to it); same file start-agents.sh writes on a dev Mac.
+printf '%s\n' "$URL" > "$(dirname "$0")/tunnel-url.txt" 2>/dev/null || true
+
 # A freshly printed hostname takes a few seconds to resolve, and a stale one
 # never does again. What decides is whether the edge answers for the hostname,
 # not whether the runner is already up behind it:

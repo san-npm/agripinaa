@@ -1103,7 +1103,7 @@ export function startX402Server(opts: {
       // 402 everyone else gets carries the challenge that says so.
       const resourceUri = resourceUriFor(req, pathname);
       const agentkitHeader = req.headers[AGENTKIT] as string | undefined;
-      const admission = await agentkit.admit(agentkitHeader, resourceUri, pathname, req.socket.remoteAddress);
+      const admission = await agentkit.admit(agentkitHeader, resourceUri, pathname, requestIdentity(req));
       if (admission.granted) {
         let status: Record<string, unknown> | null = null;
         try {
@@ -1135,18 +1135,19 @@ export function startX402Server(opts: {
       );
       if (result.status === 402) {
         const body = result.body as Record<string, unknown>;
+        // Built in full before any header is written: a throw here must
+        // still be able to answer 500, not crash on headers already sent.
+        const payload = JSON.stringify({
+          ...body,
+          // No challenge for a Host we are not published at: a signature
+          // bound to it would be worthless, so do not invite one.
+          ...(resourceUri
+            ? { extensions: { ...(body['extensions'] as object | undefined), ...agentkit.challenge(resourceUri) } }
+            : {}),
+          ...(agentkitHeader ? { agentkit: { declined: admission.reason } } : {}),
+        });
         res.writeHead(402, { 'content-type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            ...body,
-            // No challenge for a Host we are not published at: a signature
-            // bound to it would be worthless, so do not invite one.
-            ...(resourceUri
-              ? { extensions: { ...(body['extensions'] as object | undefined), ...agentkit.challenge(resourceUri) } }
-              : {}),
-            ...(agentkitHeader ? { agentkit: { declined: admission.reason } } : {}),
-          }),
-        );
+        res.end(payload);
         return;
       }
       // Payment has settled on-chain. From here the buyer MUST get a 200: a
@@ -1170,6 +1171,12 @@ export function startX402Server(opts: {
       );
     } catch {
       // Pre-settlement failure (challenge/verify path): no charge occurred.
+      // Headers already out means the body is what failed; end the response
+      // rather than throw ERR_HTTP_HEADERS_SENT out of the handler.
+      if (res.headersSent) {
+        res.end();
+        return;
+      }
       res.writeHead(500, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'internal' }));
     }
