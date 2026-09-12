@@ -10,8 +10,13 @@ fetch them. Created 2026-09-13 under the Bazantic account **San Clemente**.
 | Agripinaa Agent Index | `j2xpuc3sdrak5fllhacdu3mmxy` | https://agripinaa.vercel.app | [`/openapi.json`](https://agripinaa.vercel.app/openapi.json) | `GET /api/index/agents`, `GET /api/proof`, `GET /api/exec/{owner}/orders`, `GET /api/exec/receipt/{uid}` |
 | Ophis Rebates (new to Bazantic) | `7frrldq67jdvzofqivwpd22byy` | https://rebates.ophis.fi | [`/openapi-ophis-rebates.json`](https://agripinaa.vercel.app/openapi-ophis-rebates.json) | `GET /stats`, `GET /rank/{wallet}`, `GET /xp/{wallet}`, `GET /leaderboard` |
 
-Gateway base URLs: `https://<slug>.bazgateway.com`, MCP server at `/mcp/`
-(the trailing slash is required; `/mcp` answers 404).
+Gateway base URLs: `https://<slug>.bazgateway.com`, MCP server at `/mcp`.
+To use one from Claude Code:
+
+```bash
+claude mcp add --transport http ophis-rebates https://7frrldq67jdvzofqivwpd22byy.bazgateway.com/mcp
+claude mcp add --transport http agripinaa-agent-index https://j2xpuc3sdrak5fllhacdu3mmxy.bazgateway.com/mcp
+```
 Every route costs 1000 millicents (one cent) in USDC; the upstreams are free,
 the gateway sets the price. A correct path answers 402 with the exact price
 (x402 on Base USDC, or MPP); a wrong path answers 404.
@@ -49,9 +54,10 @@ baz recipe publish vet-a-wallet-ophis-rebate-tier-plus-agripinaa-ex --json
 
 Three things the docs did not say and the CLI told us: `model` must be one
 of the CLI's listed ids (`anthropic/claude-sonnet-4.6` here); the gateway's
-MCP server answers at `/mcp/` with the trailing slash (`/mcp` without it is
-404); and `recipe publish` can fail once with "Control MCP request failed"
-and succeed unchanged on the retry.
+MCP server answers 404 to a bare `tools/list` sent before the MCP
+`initialize` handshake, so probe it with an MCP client rather than curl; and
+`recipe publish` can fail once with "Control MCP request failed" and succeed
+unchanged on the retry.
 
 ## Using them from an agent
 
