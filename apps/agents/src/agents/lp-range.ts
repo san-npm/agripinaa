@@ -3,6 +3,7 @@ import { erc20Abi, parseAbi, parseEventLogs, zeroAddress, type Log } from 'viem'
 
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
 
+import { selectLpVenue } from '../lp-venues';
 import { ChassisOphisWallet } from '../ophis-wallet';
 import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
@@ -213,22 +214,14 @@ export function formatWholeUnits(amount: number): string {
 /* ------------------------------------------------------------------ */
 
 /*
- * Probed 2026-08-18 with tsx + viem readContract on https://bsc-rpc.publicnode.com:
- *   NPM.factory() -> 0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865 (matches expected factory)
- *   NPM.WETH9()  -> 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c (WBNB, matches TOKENS_BSC)
- */
-const POSITION_MANAGER = '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364' as const;
-const EXPECTED_FACTORY = '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865';
-
-/*
- * Pool probes, same date and RPC, factory.getPool(WBNB, USDT, fee):
- *   fee 500  -> 0x36696169C63e42cd08ce11f5deeBbCeBae652050 liquidity 1.19e24 tickSpacing 10
- *   fee 100  -> 0x172fcD41E0913e95784454622d1c3724f546f849 liquidity 8.96e24 tickSpacing 1
- *   fee 2500 -> 0x1401ff943D08a7E098328C1d3a9d388923B115D2 liquidity 2.00e22 tickSpacing 50
- * All three report token0 = USDT, token1 = WBNB. The pool is still resolved at
+ * The venue (PancakeSwap V3 by default, Uniswap v3 with LP_RANGE_VENUE) and
+ * its probe records live in ../lp-venues. The pool is still resolved at
  * runtime through the verified factory rather than hardcoded.
  */
-const POOL_FEE_TIERS = [500, 100, 2500] as const;
+const VENUE = selectLpVenue();
+const POSITION_MANAGER = VENUE.positionManager;
+const EXPECTED_FACTORY = VENUE.factory;
+const POOL_FEE_TIERS = VENUE.feeTiers;
 
 const WBNB = TOKENS_BSC['WBNB']!;
 const USDT = TOKENS_BSC['USDT']!;
@@ -253,14 +246,8 @@ const FACTORY_ABI = parseAbi([
   'function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)',
 ]);
 
-/* PancakeSwap V3 slot0 layout: feeProtocol is uint32 (uint8 on Uniswap V3). */
-const POOL_ABI = parseAbi([
-  'function liquidity() view returns (uint128)',
-  'function tickSpacing() view returns (int24)',
-  'function token0() view returns (address)',
-  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint32 feeProtocol, bool unlocked)',
-  'function observe(uint32[] secondsAgos) view returns (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128)',
-]);
+/* slot0 differs per venue (feeProtocol uint32 on PancakeSwap, uint8 on Uniswap). */
+const POOL_ABI = VENUE.poolAbi;
 
 /** Coarse min-out floor on mint/exit (concentrated-liquidity consumed
  * amounts vary with the tick, so this is a backstop; a legitimate revert
@@ -482,7 +469,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
     ctx.log({ event: 'pool-selected', ...best.info, liquidity: best.liquidity.toString() });
     return best.info;
   }
-  throw new Error('no WBNB/USDT PancakeSwap V3 pool with liquidity found');
+  throw new Error(`no WBNB/USDT ${VENUE.label} pool with liquidity found`);
 }
 
 type PendingStatus = 'none' | 'pending' | 'filled' | 'expired';
