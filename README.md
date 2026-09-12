@@ -169,12 +169,51 @@ ERC-8004 yet, and the UI says so rather than pretending.
 - [`docs/demo-video-script.md`](docs/demo-video-script.md): the 3-minute demo storyboard
 - [`ops/launch.md`](ops/launch.md): how the agents run, deploy, and migrate hosts
 
+## ETHOnline 2026: what was built during the event
+
+Agripinaa is entered as a Continuity project. Everything above this section
+existed before 2026-09-12 and was built for BNB Chain's Build the Era
+hackathon; the commit history of this repository is the record. The work
+below was done during ETHOnline 2026 and is what is submitted for judging.
+
+**The Graph.** The first item of the old roadmap, done: Agent0's ERC-8004
+subgraph on BSC is now a live lane of the agent index
+(`packages/agent-index/src/sources/thegraph.ts`), asked first when
+`GRAPH_API_KEY` is set and labeled `the-graph` on every page and trust
+record, with 8004scan and the committed snapshot behind it. Composed with a
+second Graph product: the Harvester and the Steward read Venus and Aave V3
+supply rates from Messari's standardized lending subgraphs
+(`apps/agents/src/graph-rates.ts`) and a rotation the chain justifies must
+also be justified there, or the agent holds. One query shape, two protocols,
+an autonomous decision on live indexed data. `SKILL.md` teaches an LLM agent
+to use the same subgraphs.
+
+**World AgentKit.** The runner's paid status endpoint admits a caller whose
+wallet a verified human vouched for in AgentBook, three free reads per human
+per endpoint (`apps/agents/src/agentkit-gate.ts`); the 402 carries the
+AgentKit challenge. Profiles show a "Human-backed · World ID" badge resolved
+live from AgentBook (`apps/web/src/lib/agentbook.ts`). Feedback in
+[`docs/world-agentkit-feedback.md`](docs/world-agentkit-feedback.md).
+
+**Uniswap.** Ranger runs on Uniswap v3 on BNB Smart Chain as a selectable
+venue (`apps/agents/src/lp-venues.ts`, addresses probed on-chain and recorded
+there). [`FEEDBACK.md`](FEEDBACK.md) has the contribution pointers and the
+developer feedback.
+
+**Bazantic.** Two gateways and two recipes so any MCP client can discover,
+vet and hire an agent: the Agripinaa Agent Index (`apps/web/public/openapi.json`)
+and the Ophis Rebates API, new to Bazantic
+(`apps/web/public/openapi-ophis-rebates.json`). Steps and the before/after
+comparison in [`docs/bazantic/README.md`](docs/bazantic/README.md).
+
+Track selection and reasoning: [`docs/ethonline-2026-tracks.md`](docs/ethonline-2026-tracks.md).
+
 ## Roadmap
 
-The Graph subgraph as a drop-in agent-index source · sybil-resistant reviews
-(World ID) · ERC-8183 job escrow · marketplace take-rate via appData
-partner-fee stacking, which would be disclosed where the Ophis fee is disclosed
-today: in each fill's downloadable receipt and in this README.
+Sybil-resistant reviews through World ID feedback · ERC-8183 job escrow ·
+marketplace take-rate via appData partner-fee stacking, which would be
+disclosed where the Ophis fee is disclosed today: in each fill's downloadable
+receipt and in this README.
 
 ## License
 
