@@ -4,11 +4,26 @@ import { test } from 'node:test';
 process.env.GRAPH_API_KEY = 'not-a-real-key';
 process.env.GRAPH_GATEWAY_BASE = 'https://gateway.test/api/subgraphs/id';
 
-const { graphConfirms, readGraphRates, supplyBpsFromMarkets, MESSARI_LENDING_SUBGRAPHS } = await import(
-  '../src/graph-rates'
-);
+const {
+  graphConfirms,
+  readGraphRates,
+  rescaleVenusBps,
+  supplyBpsFromMarkets,
+  MESSARI_BSC_BLOCKS_PER_YEAR,
+  MESSARI_LENDING_SUBGRAPHS,
+} = await import('../src/graph-rates');
 
 const USDT = '0x55d398326f99059fF775485246999027B3197955' as const;
+/** The cadence Messari assumes; passing it back leaves the subgraph figure untouched. */
+const ASSUMED = MESSARI_BSC_BLOCKS_PER_YEAR;
+
+test("Messari's Venus figure is rescaled from its 3-second-block assumption to the measured cadence", () => {
+  assert.equal(MESSARI_BSC_BLOCKS_PER_YEAR, 10_512_000);
+  // 0.45 s blocks: the chain produces 6.67x the blocks Messari annualizes with.
+  const measured = Math.round((365 * 24 * 3600) / 0.45);
+  assert.ok(Math.abs(rescaleVenusBps(60, measured) - 400) < 0.5);
+  assert.equal(rescaleVenusBps(202, ASSUMED), 202);
+});
 
 function market(deposit: string, rates: { rate: string; side: string; type: string }[]) {
   return { id: 'm', name: null, totalDepositBalanceUSD: deposit, rates };
@@ -57,12 +72,18 @@ test('both venues are read from their pinned Messari deployments', async () => {
     [MESSARI_LENDING_SUBGRAPHS.aave]: [market('1', [{ rate: '2.07', side: 'LENDER', type: 'VARIABLE' }])],
   };
   await withFetch(gateway(answers), async () => {
-    const read = await readGraphRates(USDT);
+    const read = await readGraphRates(USDT, ASSUMED);
     assert.ok(!('unavailable' in read), JSON.stringify(read));
     assert.equal(read.venusBps, 202);
     assert.equal(read.aaveBps, 207);
     assert.equal(read.source, 'the-graph');
+    // At the real cadence the same subgraph answer is worth more; Aave is untouched.
+    const faster = await readGraphRates(USDT, ASSUMED * 2);
+    assert.ok(!('unavailable' in faster));
+    assert.equal(faster.venusBps, 404);
+    assert.equal(faster.aaveBps, 207);
   });
+  assert.ok('unavailable' in (await readGraphRates(USDT, 0)));
 });
 
 test('a subgraph whose head is hours behind the chain is reported unavailable, not used', async () => {
@@ -71,7 +92,7 @@ test('a subgraph whose head is hours behind the chain is reported unavailable, n
     [MESSARI_LENDING_SUBGRAPHS.aave]: [market('1', [{ rate: '2', side: 'LENDER', type: 'VARIABLE' }])],
   };
   await withFetch(gateway(answers, 7 * 3600), async () => {
-    const read = await readGraphRates(USDT);
+    const read = await readGraphRates(USDT, ASSUMED);
     assert.ok('unavailable' in read);
     assert.match(read.unavailable, /indexed head is 7h old/);
   });
@@ -79,7 +100,7 @@ test('a subgraph whose head is hours behind the chain is reported unavailable, n
 
 test('a gateway failure on either venue makes the whole read unavailable', async () => {
   await withFetch((async () => new Response('down', { status: 503 })) as typeof fetch, async () => {
-    const read = await readGraphRates(USDT);
+    const read = await readGraphRates(USDT, ASSUMED);
     assert.ok('unavailable' in read);
     assert.match(read.unavailable, /gateway responded 503/);
   });

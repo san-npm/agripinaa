@@ -11,7 +11,19 @@ import type {
 } from '../types';
 import { readAgentFromRegistry } from './registry-viem';
 import { Scan8004Source } from './scan8004';
-import { TheGraphSource } from './thegraph';
+import { TheGraphSource, isGraphCursor } from './thegraph';
+
+/**
+ * A continuation cursor belongs to the lane that issued it, and that lane
+ * could not answer. There is no page to serve: another lane would read the
+ * cursor as its own offset and silently end or skip the listing.
+ */
+export class IndexCursorLaneError extends Error {
+  constructor(cursor: string) {
+    super(`the index lane that issued cursor ${cursor} is unavailable; start again without a cursor`);
+    this.name = 'IndexCursorLaneError';
+  }
+}
 
 // Bundle the fallback: webpack turns import.meta.url into a build-machine path,
 // which is not the path where Vercel runs the deployed function.
@@ -84,6 +96,19 @@ export class MergedSource implements AgentIndexSource {
 
   async listAgents(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
     const key = `list:${q.chainId}:${q.category ?? 'all'}:${q.cursor ?? '1'}:${q.limit ?? 24}`;
+    // A Graph cursor is an agentId, not an offset: only the lane that issued
+    // it may continue it, and no snapshot page corresponds to it.
+    if (q.cursor !== undefined && isGraphCursor(q.cursor)) {
+      const graph = this.live.find((lane) => lane instanceof TheGraphSource);
+      try {
+        if (!graph) throw new IndexCursorLaneError(q.cursor);
+        return this.remember(key, await graph.listAgents(q));
+      } catch {
+        const stale = this.stale<Page<AgentSummary>>(key);
+        if (stale) return { ...stale, source: `${stale.source} (stale)` };
+        throw new IndexCursorLaneError(q.cursor);
+      }
+    }
     try {
       return this.remember(key, await this.firstLive((lane) => lane.listAgents(q)));
     } catch {

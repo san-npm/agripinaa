@@ -162,10 +162,13 @@ async function AgentContent({
   const experience = registryRecord ? agentExperience(registryRecord.slug) : null;
   const registryWallet = registryRecord?.wallet ?? null;
   // World AgentBook: did a verified human vouch for the wallet this agent acts
-  // from? The committed registry wallet for a first-party agent, else the
-  // indexed one; the badge names which address was looked up.
+  // from? Only the committed registry wallet of a first-party agent earns the
+  // badge: an indexed `agentWallet` is metadata its own owner sets, so a fresh
+  // registration could name someone else's vouched-for wallet. Third-party
+  // listings get the lookup result as a labeled row, not as a badge.
   const backedWallet = registryWallet ?? agent.agentWallet;
   const humanBacking = await getHumanBacking(backedWallet);
+  const humanBadge = registryWallet ? humanBacking : null;
   // Only a third-party listing can be claimed. Whether one already has been is
   // read off the merged record: `getAgent` applies the claim for every surface
   // at once, and drops a claim signed by an owner who has since transferred it.
@@ -225,10 +228,10 @@ async function AgentContent({
                 Registry · unverified
               </span>
             )}
-            {humanBacking && (
+            {humanBadge && (
               <span
                 className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
-                title={`Wallet ${backedWallet} is registered in World's AgentBook on ${humanBacking.registry} by human ${humanBacking.humanId.slice(0, 10)}…`}
+                title={`Wallet ${backedWallet} is registered in World's AgentBook on ${humanBadge.registry} by human ${humanBadge.humanId.slice(0, 10)}…`}
               >
                 Human-backed · World ID
               </span>
@@ -307,7 +310,7 @@ async function AgentContent({
               <dt className="text-muted-2">Human backing</dt>
               <dd className="truncate font-mono text-xs text-muted">
                 {humanBacking
-                  ? `AgentBook (${humanBacking.registry}) · human ${humanBacking.humanId.slice(0, 10)}…`
+                  ? `${registryWallet ? "" : "owner-declared wallet · "}AgentBook (${humanBacking.registry}) · human ${humanBacking.humanId.slice(0, 10)}…`
                   : backedWallet
                     ? "not in World AgentBook"
                     : "no wallet to look up"}

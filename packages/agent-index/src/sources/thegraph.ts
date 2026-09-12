@@ -36,6 +36,11 @@ const REQUEST_TIMEOUT_MS = (() => {
   return Number.isFinite(configured) && configured > 0 ? configured : 15_000;
 })();
 
+/** A list cursor this lane issued: `g` and the agentId to continue below. */
+export function isGraphCursor(cursor: string): boolean {
+  return /^g\d{1,18}$/.test(cursor);
+}
+
 export class TheGraphError extends Error {
   constructor(
     message: string,
@@ -220,13 +225,17 @@ export class TheGraphSource implements AgentIndexSource {
    * Newest first, keyed on the numeric agentId rather than `skip`: the
    * gateway caps `skip` at 5000 and the BSC registry is far past that. The
    * cursor is the last agentId scanned, so a category page that found fewer
-   * matches than it wanted still advances.
+   * matches than it wanted still advances. It is tagged `g<agentId>` so the
+   * merged source never hands it to a lane that would read it as an offset.
    */
   async listAgents(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
     const limit = q.limit ?? 24;
     const first = q.category ? 100 : limit;
     const asOf = new Date().toISOString();
-    const where = q.cursor ? { agentId_lt: q.cursor } : {};
+    if (q.cursor !== undefined && !isGraphCursor(q.cursor)) {
+      throw new TheGraphError(`cursor ${q.cursor} was issued by another index lane`);
+    }
+    const where = q.cursor ? { agentId_lt: q.cursor.slice(1) } : {};
     const { agents } = await gql<{ agents: GqlAgent[] }>(
       q.chainId,
       `query List($first: Int!, $where: Agent_filter) {
@@ -238,13 +247,13 @@ export class TheGraphSource implements AgentIndexSource {
     const matching = q.category ? scanned.filter((a) => a.category === q.category) : scanned;
     const items = matching.slice(0, limit);
     const exhausted = agents.length < first;
-    const nextCursor =
+    const last =
       items.length === limit
         ? items[limit - 1]!.tokenId
         : exhausted
           ? null
           : scanned[scanned.length - 1]!.tokenId;
-    return { items, nextCursor, total: null, asOf, source: this.name };
+    return { items, nextCursor: last === null ? null : `g${last}`, total: null, asOf, source: this.name };
   }
 
   async getAgent(chainId: number, tokenId: string): Promise<AgentDetail | null> {

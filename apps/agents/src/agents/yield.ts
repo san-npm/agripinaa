@@ -217,7 +217,7 @@ export async function readRates(client: Reader, venues: Venues = USDT_VENUES): P
       functionName: 'getReserveData',
       args: [venues.token],
     }),
-    readGraphRates(venues.token),
+    readGraphRates(venues.token, blocksPerYear),
   ]);
 
   return {

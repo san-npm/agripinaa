@@ -993,12 +993,42 @@ async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void
 /* Agent module                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The context the strategy runs against for the selected venue, or null when
+ * it must not run at all.
+ *
+ * Managed contexts arrive from tickManagedStrategy with the strategy account
+ * as a json-rpc account; the agent's own capital is a local signer. A managed
+ * mandate's session policy authorizes PancakeSwap only, so while another
+ * venue is selected it is left alone rather than driven at a manager it
+ * cannot sign for. Own-capital state is kept per venue: a switch starts
+ * fresh on the new venue instead of reading PancakeSwap position ids against
+ * another manager's NFTs.
+ */
+function venueContext(ctx: AgentContext): AgentContext | null {
+  if (VENUE.name === 'pancakeswap-v3') return ctx;
+  if (ctx.account.type !== 'local') {
+    ctx.log({ event: 'managed-skip', reason: 'venue-policy-mismatch', venue: VENUE.name, policyVenue: 'pancakeswap-v3' });
+    return null;
+  }
+  const prefix = `venue:${VENUE.name}:`;
+  return {
+    ...ctx,
+    state: {
+      get: (key, fallback) => ctx.state.get(prefix + key, fallback),
+      set: (key, value) => ctx.state.set(prefix + key, value),
+    },
+  };
+}
+
 export const lpRangeAgent: AgentModule = {
   name: 'lp-range',
   category: 'rebalancing',
   tickIntervalMs: 600_000,
 
-  async recoverConfirmedWrite(ctx, write) {
+  async recoverConfirmedWrite(rawCtx, write) {
+    const ctx = venueContext(rawCtx);
+    if (!ctx) return false;
     if (
       write.functionName !== 'mint'
       || write.to.toLowerCase() !== POSITION_MANAGER.toLowerCase()
@@ -1031,7 +1061,9 @@ export const lpRangeAgent: AgentModule = {
     return true;
   },
 
-  async tick(ctx) {
+  async tick(rawCtx) {
+    const ctx = venueContext(rawCtx);
+    if (!ctx) return;
     if (ctx.breakers.isHalted().halted) {
       ctx.log({ event: 'tick-skipped', reason: 'halted' });
       return;
@@ -1132,7 +1164,9 @@ export const lpRangeAgent: AgentModule = {
     await tryMint(ctx, info);
   },
 
-  async status(ctx) {
+  async status(rawCtx) {
+    const ctx = venueContext(rawCtx);
+    if (!ctx) return { venue: VENUE.name, skipped: 'venue-policy-mismatch', policyVenue: 'pancakeswap-v3' };
     const now = Date.now();
     const pos = ctx.state.get<PositionState | null>('position', null);
     const budget = weeklyBudget(

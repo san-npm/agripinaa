@@ -24,6 +24,15 @@ const AGENT_BOOKS = [
 
 const ABI = parseAbi(['function lookupHuman(address agent) view returns (uint256)']);
 
+/**
+ * Enrichment only, so it gets one short attempt per registry and no retries:
+ * a profile must render, and prerender, inside its cache-fill deadline even
+ * when both public RPCs are stalled.
+ */
+const clients = AGENT_BOOKS.map((book) =>
+  createPublicClient({ chain: book.chain, transport: http(undefined, { timeout: 3_000, retryCount: 0 }) }),
+);
+
 export interface HumanBacking {
   /** Anonymous human identifier from AgentBook, hex. Not a person, a nullifier. */
   humanId: string;
@@ -34,27 +43,30 @@ export interface HumanBacking {
 /**
  * Whether a wallet is registered in AgentBook, and where. Null means no
  * registration was found on either deployment or neither could be read: the
- * badge is a positive claim only, and its absence says nothing.
+ * badge is a positive claim only, and its absence says nothing. The lookup
+ * says something about the address it was given, nothing about who controls
+ * it; the caller decides whether the address is one it can vouch for.
  */
 export async function getHumanBacking(address: string | null): Promise<HumanBacking | null> {
   'use cache';
   cacheLife('hours');
   if (!address) return null;
-  for (const book of AGENT_BOOKS) {
-    try {
-      const client = createPublicClient({ chain: book.chain, transport: http() });
-      const humanId = await client.readContract({
-        address: book.address,
-        abi: ABI,
-        functionName: 'lookupHuman',
-        args: [address as `0x${string}`],
-      });
-      if (humanId !== 0n) {
-        return { humanId: toHex(humanId), registry: book.registry, asOf: new Date().toISOString() };
+  const answers = await Promise.all(
+    AGENT_BOOKS.map(async (book, i) => {
+      try {
+        const humanId = await clients[i]!.readContract({
+          address: book.address,
+          abi: ABI,
+          functionName: 'lookupHuman',
+          args: [address as `0x${string}`],
+        });
+        return humanId === 0n ? null : { humanId: toHex(humanId), registry: book.registry };
+      } catch {
+        // An unreadable registry is not a negative answer.
+        return null;
       }
-    } catch {
-      // An unreadable registry is not a negative answer; try the next one.
-    }
-  }
-  return null;
+    }),
+  );
+  const hit = answers.find((a) => a !== null);
+  return hit ? { ...hit, asOf: new Date().toISOString() } : null;
 }
