@@ -120,10 +120,6 @@ printf '%s' "$URL" | grep -qE '^https://[A-Za-z0-9._~/:?=&%+-]+$' || {
   exit 1
 }
 
-# The runner reads this to know which Host it is published at (the AgentKit
-# challenge is bound to it); same file start-agents.sh writes on a dev Mac.
-printf '%s\n' "$URL" > "$(dirname "$0")/tunnel-url.txt" 2>/dev/null || true
-
 # A freshly printed hostname takes a few seconds to resolve, and a stale one
 # never does again. What decides is whether the edge answers for the hostname,
 # not whether the runner is already up behind it:
@@ -168,6 +164,12 @@ printf '%s' "$OPS_TOKEN" | grep -qE '^[A-Za-z0-9._~+/=-]+$' || {
   echo "OPS_TOKEN has characters this script will not quote; use hex or base64url" >&2
   exit 1
 }
+
+# Only a hostname that answered at the edge, on a real run: the runner reads
+# this file to know which Host it is published at (the AgentKit challenge is
+# bound to it), so a dry run or a refused candidate must not replace it. Same
+# file start-agents.sh writes on a dev Mac.
+printf '%s\n' "$URL" > "$(dirname "$0")/tunnel-url.txt" 2>/dev/null || true
 
 echo "reporting $URL to $SITE"
 # Options come in on stdin rather than argv, so the token is not visible in the
