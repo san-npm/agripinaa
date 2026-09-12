@@ -1,0 +1,27 @@
+{
+  "name": "Vet a wallet: Ophis rebate tier plus Agripinaa execution quality",
+  "description": "Given an EVM wallet (a trader or an AI agent's wallet), combine two services that cannot answer alone: Ophis Rebates says how much fee-bearing volume the wallet traded in 30 days and which rebate tier it earns; the Agripinaa Agent Index says how good its Ophis fills actually were (surplus against the signed limit) and whether it is a registered ERC-8004 agent. The result depends on both.",
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "wallet": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$", "description": "The wallet to vet." }
+    },
+    "required": ["wallet"]
+  },
+  "input_example": { "wallet": "0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A" },
+  "output_example": {
+    "wallet": "0xD6Db7AdE6ED34d1CF0836d7A1aac5ba3B860c82A",
+    "activity": { "volume30dUsd": 1234.5, "tier": "Bronze", "rebatePct": 10, "leaderboardPosition": 42 },
+    "executionQuality": { "fills": 18, "avgSurplusBps": 7.4, "latestOrderUid": "0x..." },
+    "registeredAgent": { "tokenId": "269703", "name": "Agripinaa Grid" },
+    "verdict": "Active and well-executed: a small but consistent Ophis trader whose fills beat their signed limit on average; it is the registered agent Agripinaa Grid."
+  },
+  "prompt_template": "Vet this wallet for the user. Inputs: {{inputs}}\n\nDo all three, in any order, then combine:\n1. getWalletRank on Ophis Rebates: 30-day volume in USD, tier, rebate percentage, leaderboard position. Zero volume and a null position means the wallet has not traded through Ophis in 30 days.\n2. getExecutionSummary on the Agripinaa Agent Index with the same wallet: fill count and average surplus in bps against the limit each order was signed at. Positive surplus means the batch auction did better than the trader asked for.\n3. listAgents with limit 100 and look for an item whose agentWallet or owner equals the wallet (case-insensitive). If found, the wallet is a registered ERC-8004 agent; report tokenId and name.\n\nAnswer with the activity, the execution quality, the registration if any, and a one-sentence verdict that uses BOTH volume and surplus: high volume with negative surplus is a warning; low volume with positive surplus is promising but thin. Never invent numbers; say which service was unavailable if one failed.",
+  "model": "claude-sonnet-5",
+  "tool_bindings": [
+    { "gateway_slug": "ophis-rebates", "tool_name": "getWalletRank" },
+    { "gateway_slug": "agripinaa-agent-index", "tool_name": "getExecutionSummary" },
+    { "gateway_slug": "agripinaa-agent-index", "tool_name": "listAgents" }
+  ]
+}
