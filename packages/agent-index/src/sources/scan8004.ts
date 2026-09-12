@@ -153,6 +153,7 @@ function toSummary(a: ScanAgent, asOf: string): AgentSummary {
     category: classify({ metadata: a.metadata, name, description }),
     supportedProtocols: a.supported_protocols ?? [],
     x402Supported: a.x402_supported,
+    agentWallet: a.agent_wallet ?? null,
     registeredAt: a.created_at,
     trust: toTrust(a, asOf),
   };

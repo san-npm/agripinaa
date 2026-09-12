@@ -161,6 +161,7 @@ function toSummary(a: GqlAgent, chainId: number, asOf: string): AgentSummary {
     }),
     supportedProtocols: protocols(f),
     x402Supported: f?.x402Support === true,
+    agentWallet: a.agentWallet,
     registeredAt: isoFromSeconds(a.createdAt),
     trust: {
       totalScore: null,
@@ -296,6 +297,10 @@ export class TheGraphSource implements AgentIndexSource {
       { agent: `${chainId}:${tokenId}` },
     );
     return feedbacks.map((f) => {
+      // `value` is already rawValue / 10^valueDecimals: the subgraph's
+      // reputation-registry mapping applies the decimals before storing the
+      // BigDecimal (agent0lab/subgraph src/reputation-registry.ts,
+      // computeFeedbackValue), so this is the score as the client meant it.
       const score = Number(f.value);
       return {
         agentRef: `${chainId}-${tokenId}`,
@@ -315,7 +320,9 @@ export class TheGraphSource implements AgentIndexSource {
 
   /**
    * Cumulative daily rollups: the newest bucket carries the running total.
-   * Aggregations answer newest-first by default, so `first: 1` is the total.
+   * Ordered by bucket timestamp explicitly rather than relying on the
+   * collection's default order (verified live 2026-09-13 that the gateway
+   * accepts orderBy on aggregations and that the default agrees).
    */
   async stats(chainId: number): Promise<IndexStats> {
     const asOf = new Date().toISOString();
@@ -325,8 +332,8 @@ export class TheGraphSource implements AgentIndexSource {
     }>(
       chainId,
       `{
-        protocolAgentStats_collection(interval: day, first: 1) { agentRegistrations }
-        protocolFeedbackStats_collection(interval: day, first: 1) { feedbackCreated }
+        protocolAgentStats_collection(interval: day, first: 1, orderBy: timestamp, orderDirection: desc) { agentRegistrations }
+        protocolFeedbackStats_collection(interval: day, first: 1, orderBy: timestamp, orderDirection: desc) { feedbackCreated }
       }`,
       {},
     );

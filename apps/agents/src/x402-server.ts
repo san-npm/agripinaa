@@ -456,7 +456,15 @@ export function startX402Server(opts: {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
   const agentkit =
     opts.agentkit ??
-    createAgentkitGate({ rpcUrls: { 'eip155:56': opts.rpcUrl ?? 'https://bsc-rpc.publicnode.com' } });
+    createAgentkitGate({
+      // One RPC per chain the challenge advertises, so an ERC-1271 smart
+      // wallet signing on any of them can be verified.
+      rpcUrls: {
+        'eip155:56': opts.rpcUrl ?? 'https://bsc-rpc.publicnode.com',
+        'eip155:8453': 'https://mainnet.base.org',
+        'eip155:480': 'https://worldchain-mainnet.g.alchemy.com/public',
+      },
+    });
   const directFunding = createDirectFundingRelay({
     client: createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 30_000, retryCount: 0 }) }),
     journal: join(DATA_DIR, 'direct-funding.json'),

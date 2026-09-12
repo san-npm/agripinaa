@@ -104,6 +104,7 @@
           "name": { "type": "string" },
           "description": { "type": "string" },
           "owner": { "type": "string" },
+          "agentWallet": { "type": ["string", "null"], "description": "The wallet the agent acts from, as declared by its owner. Use it with getExecutionSummary. Absent on snapshot rows." },
           "category": { "type": ["string", "null"], "enum": ["grid", "yield", "health-factor", "rebalancing", null] },
           "x402Supported": { "type": "boolean" },
           "registeredAt": { "type": ["string", "null"], "format": "date-time" },

@@ -57,6 +57,12 @@ export interface AgentSummary {
   category: Category | null;
   supportedProtocols: string[];
   x402Supported: boolean;
+  /**
+   * The wallet the agent acts from, when the lane reports it on list rows
+   * (the subgraph and 8004scan do; the snapshot does not). Owner-set
+   * metadata, so it names an address, not proof of who controls it.
+   */
+  agentWallet?: string | null;
   registeredAt: string | null;
   trust: TrustData;
   /**

@@ -167,7 +167,8 @@ async function AgentContent({
   // registration could name someone else's vouched-for wallet. Third-party
   // listings get the lookup result as a labeled row, not as a badge.
   const backedWallet = registryWallet ?? agent.agentWallet;
-  const humanBacking = await getHumanBacking(backedWallet);
+  const humanLookup = await getHumanBacking(backedWallet);
+  const humanBacking = humanLookup?.status === "registered" ? humanLookup : null;
   const humanBadge = registryWallet ? humanBacking : null;
   // Only a third-party listing can be claimed. Whether one already has been is
   // read off the merged record: `getAgent` applies the claim for every surface
@@ -311,9 +312,11 @@ async function AgentContent({
               <dd className="truncate font-mono text-xs text-muted">
                 {humanBacking
                   ? `${registryWallet ? "" : "owner-declared wallet · "}AgentBook (${humanBacking.registry}) · human ${humanBacking.humanId.slice(0, 10)}…`
-                  : backedWallet
-                    ? "not in World AgentBook"
-                    : "no wallet to look up"}
+                  : !backedWallet
+                    ? "no wallet to look up"
+                    : humanLookup?.status === "absent"
+                      ? "not in World AgentBook"
+                      : "World AgentBook not reachable right now"}
               </dd>
             </div>
             {agent.website && (

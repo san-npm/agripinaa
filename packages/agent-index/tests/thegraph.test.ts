@@ -90,6 +90,7 @@ test('a page is asked from the chain-pinned subgraph with the bearer key, newest
       ],
     );
     assert.equal(page.items[0]!.agentId, '56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:300');
+    assert.equal(page.items[0]!.agentWallet, null, 'list rows carry the wallet field the subgraph reports');
     assert.equal(page.items[0]!.registeredAt, '2025-09-04T15:33:20.000Z');
     assert.equal(page.items[0]!.trust.source, 'the-graph');
     assert.equal(page.items[0]!.trust.totalFeedbacks, 2);
@@ -172,8 +173,10 @@ test('stats read the cumulative rollups and are chain-scoped by construction', a
     protocolAgentStats_collection: [{ agentRegistrations: '257873' }],
     protocolFeedbackStats_collection: [{ feedbackCreated: '412' }],
   };
-  await withFetch(gateway(data, []), async () => {
+  const log: Captured[] = [];
+  await withFetch(gateway(data, log), async () => {
     const stats = await new TheGraphSource().stats(BSC);
+    assert.match(log[0]!.query, /protocolAgentStats_collection\(interval: day, first: 1, orderBy: timestamp, orderDirection: desc\)/);
     assert.equal(stats.totalAgents, 257873);
     assert.equal(stats.totalFeedbacks, 412);
     assert.equal(stats.chainScoped, true);

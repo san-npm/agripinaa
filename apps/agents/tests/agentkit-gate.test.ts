@@ -106,6 +106,19 @@ test('a wallet nobody vouched for, a replayed header, and a header for another h
   assert.equal((await gate.admit('not base64 json', RESOURCE, '/grid/status')).granted, false);
 });
 
+test('a registry that cannot be read is skipped, not fatal: the next one still admits', async () => {
+  const broken = { name: 'down', verifier: { lookupHuman: async () => { throw new Error('RPC unreachable'); } } };
+  const gate = createAgentkitGate({ agentBooks: [broken, book] });
+  const admitted = await gate.admit(await headerFor(human), RESOURCE, '/grid/status');
+  assert.equal(admitted.granted, true);
+  assert.equal((admitted as { registry: string }).registry, 'test-book');
+  // Every registry down: declined, so the caller falls through to payment.
+  const allDown = createAgentkitGate({ agentBooks: [broken] });
+  const declined = await allDown.admit(await headerFor(human), RESOURCE, '/grid/status');
+  assert.equal(declined.granted, false);
+  assert.match(reason(declined), /not registered in AgentBook/);
+});
+
 test('a signature for another path on the same host does not open this one', async () => {
   const gate = createAgentkitGate({ agentBooks: [book] });
   const login = 'https://abc-def.trycloudflare.com/login';

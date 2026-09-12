@@ -183,7 +183,12 @@ export type Admission =
 export interface AgentkitGateOptions {
   /** Registries to consult, in order. Defaults to World Chain then Base. */
   agentBooks?: { name: string; verifier: AgentBookVerifier }[];
-  /** RPCs for ERC-1271 signature checks, keyed by CAIP-2 chain. EOAs need none. */
+  /**
+   * RPCs for ERC-1271 signature checks, keyed by CAIP-2 chain. EOAs need none
+   * (viem recovers them offline). Every chain in SIGNING_CHAINS must be
+   * reachable: the library ships public defaults for Base and World Chain
+   * but none for BSC, so the server passes all three explicitly.
+   */
   rpcUrls?: Record<string, string>;
   uses?: number;
   storage?: BoundedAgentKitStorage;
@@ -220,7 +225,15 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
       return { granted: false, reason: firstLine(verification.error, 'invalid signature') };
     }
     for (const book of books) {
-      const humanId = await book.verifier.lookupHuman(verification.address);
+      // The library's verifier answers null on an RPC failure; a custom one
+      // may throw. Either way an unreadable registry is "not found here" and
+      // the next registry is asked, so payment stays usable during an outage.
+      let humanId: string | null;
+      try {
+        humanId = await book.verifier.lookupHuman(verification.address);
+      } catch {
+        humanId = null;
+      }
       if (!humanId) continue;
       if (storage.tryIncrementUsage(path, humanId, uses)) {
         return { granted: true, humanId, address: verification.address, registry: book.name };
