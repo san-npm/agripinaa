@@ -11,6 +11,7 @@ import type {
 } from '../types';
 import { readAgentFromRegistry } from './registry-viem';
 import { Scan8004Source } from './scan8004';
+import { TheGraphSource } from './thegraph';
 
 // Bundle the fallback: webpack turns import.meta.url into a build-machine path,
 // which is not the path where Vercel runs the deployed function.
@@ -40,14 +41,31 @@ export interface SearchOutcome {
 }
 
 /**
- * Priority: live 8004scan → committed snapshot (lists) or direct registry
- * read (details) → last-known-good stale cache. Every response is labeled
- * with its source so the UI can show provenance instead of pretending.
+ * Priority: live lanes in order (The Graph when a gateway key is configured,
+ * then 8004scan) → committed snapshot (lists) or direct registry read
+ * (details) → last-known-good stale cache. Every response is labeled with its
+ * source so the UI can show provenance instead of pretending.
  */
 export class MergedSource implements AgentIndexSource {
   readonly name = 'merged';
-  private readonly scan = new Scan8004Source();
+  private readonly live: AgentIndexSource[] = [
+    ...(TheGraphSource.configured() ? [new TheGraphSource()] : []),
+    new Scan8004Source(),
+  ];
   private readonly staleCache = new Map<string, CacheEntry<unknown>>();
+
+  /** First live lane that answers; the last lane's error when none does. */
+  private async firstLive<T>(read: (lane: AgentIndexSource) => Promise<T>): Promise<T> {
+    let failure: unknown;
+    for (const lane of this.live) {
+      try {
+        return await read(lane);
+      } catch (err) {
+        failure = err;
+      }
+    }
+    throw failure;
+  }
 
   private remember<T>(key: string, value: T): T {
     this.staleCache.set(key, { value, at: Date.now() });
@@ -67,7 +85,7 @@ export class MergedSource implements AgentIndexSource {
   async listAgents(q: ListAgentsQuery): Promise<Page<AgentSummary>> {
     const key = `list:${q.chainId}:${q.category ?? 'all'}:${q.cursor ?? '1'}:${q.limit ?? 24}`;
     try {
-      return this.remember(key, await this.scan.listAgents(q));
+      return this.remember(key, await this.firstLive((lane) => lane.listAgents(q)));
     } catch {
       const snapshot = await this.loadSnapshot(q.chainId);
       if (snapshot) {
@@ -89,7 +107,7 @@ export class MergedSource implements AgentIndexSource {
       const stale = this.stale<Page<AgentSummary>>(key);
       if (stale) return { ...stale, source: `${stale.source} (stale)` };
       throw new Error(
-        `agent-index: 8004scan unavailable and no snapshot for chain ${q.chainId}`,
+        `agent-index: no live index answered and no snapshot for chain ${q.chainId}`,
       );
     }
   }
@@ -97,7 +115,7 @@ export class MergedSource implements AgentIndexSource {
   async getAgent(chainId: number, tokenId: string): Promise<AgentDetail | null> {
     const key = `agent:${chainId}:${tokenId}`;
     try {
-      const fromScan = await this.scan.getAgent(chainId, tokenId);
+      const fromScan = await this.firstLive((lane) => lane.getAgent(chainId, tokenId));
       // A null from the indexer is not proof of nonexistence: fresh
       // registrations lag it (BSC lane is rpc_only). The registry is the
       // source of truth for existence; only a null THERE is final.
@@ -140,7 +158,10 @@ export class MergedSource implements AgentIndexSource {
     query: string,
   ): Promise<SearchOutcome> {
     try {
-      return { items: await this.scan.searchAgents(chainId, query), source: 'index' };
+      return {
+        items: await this.firstLive((lane) => lane.searchAgents(chainId, query)),
+        source: 'index',
+      };
     } catch {
       const snapshot = await this.loadSnapshot(chainId);
       if (!snapshot) return { items: [], source: 'fallback' };
@@ -163,7 +184,7 @@ export class MergedSource implements AgentIndexSource {
   async getFeedback(chainId: number, tokenId: string): Promise<Feedback[]> {
     const key = `feedback:${chainId}:${tokenId}`;
     try {
-      return this.remember(key, await this.scan.getFeedback(chainId, tokenId));
+      return this.remember(key, await this.firstLive((lane) => lane.getFeedback(chainId, tokenId)));
     } catch {
       return this.stale<Feedback[]>(key) ?? [];
     }
@@ -172,7 +193,7 @@ export class MergedSource implements AgentIndexSource {
   async stats(chainId: number): Promise<IndexStats> {
     const key = `stats:${chainId}`;
     try {
-      return this.remember(key, await this.scan.stats(chainId));
+      return this.remember(key, await this.firstLive((lane) => lane.stats(chainId)));
     } catch {
       const stale = this.stale<IndexStats>(key);
       if (stale) return { ...stale, source: `${stale.source} (stale)` };
