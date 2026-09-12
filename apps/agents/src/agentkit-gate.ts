@@ -17,7 +17,8 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   AGENTKIT,
@@ -65,7 +66,9 @@ const NONCE_CAP = 10_000;
 const EXTRA_PUBLIC_HOSTS = new Set(
   (process.env.AGENTKIT_PUBLIC_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
 );
-const TUNNEL_URL_FILE = process.env.AGENTKIT_TUNNEL_URL_FILE ?? join(process.cwd(), 'ops', 'tunnel-url.txt');
+/** Resolved from this file, not the cwd: pnpm starts the runner inside apps/agents. */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const TUNNEL_URL_FILE = process.env.AGENTKIT_TUNNEL_URL_FILE ?? join(REPO_ROOT, 'ops', 'tunnel-url.txt');
 let tunnelHost: { value: string | null; readAt: number } = { value: null, readAt: 0 };
 function publishedTunnelHost(now = Date.now()): string | null {
   if (now - tunnelHost.readAt < 30_000) return tunnelHost.value;
