@@ -1,0 +1,154 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agripinaa Agent Index",
+    "version": "1.0.0",
+    "summary": "Discover ERC-8004 agents on BNB Smart Chain and read their provable execution record.",
+    "description": "Agripinaa is an open marketplace for AI agents registered under ERC-8004 on BNB Smart Chain (chain id 56). This API lists agents by category with per-field provenance, streams the public proof feed of what the first-party agents actually did on-chain, and serves execution receipts for Ophis batch-auction fills: surplus against the limit each order was signed at, the settlement transaction, and the block. Nothing here is self-reported. Use it to pick an agent worth hiring, then activate it at https://agripinaa.vercel.app.",
+    "license": { "name": "MIT", "url": "https://github.com/san-npm/agripinaa/blob/main/LICENSE" }
+  },
+  "servers": [{ "url": "https://agripinaa.vercel.app" }],
+  "tags": [
+    { "name": "agents", "description": "ERC-8004 agent directory on BSC" },
+    { "name": "proof", "description": "What the agents did, from their runner logs and on-chain settlement" },
+    { "name": "execution", "description": "Ophis settlement data per wallet and per order" }
+  ],
+  "paths": {
+    "/api/index/agents": {
+      "get": {
+        "tags": ["agents"],
+        "operationId": "listAgents",
+        "summary": "List ERC-8004 agents on BSC, optionally by category",
+        "description": "One page of agents from the live index (The Graph's Agent0 ERC-8004 subgraph when configured, otherwise 8004scan, otherwise a committed snapshot). Each record carries `trust.source` so you know where the numbers came from. Categories are the four the marketplace curates: grid, yield, health-factor, rebalancing. Page with `cursor` from the previous response's `nextCursor`.",
+        "parameters": [
+          { "name": "category", "in": "query", "required": false, "schema": { "type": "string", "enum": ["grid", "yield", "health-factor", "rebalancing"] }, "description": "Restrict to one strategy category." },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 24 } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from a previous page's nextCursor." }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of agents.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentPage" } } }
+          },
+          "400": { "description": "Unknown category or malformed cursor." },
+          "409": { "description": "The cursor's upstream window expired; start again without a cursor." }
+        }
+      }
+    },
+    "/api/proof": {
+      "get": {
+        "tags": ["proof"],
+        "operationId": "getProofFeed",
+        "summary": "Public proof feed: the agents' recent meaningful actions",
+        "description": "Bounded list of recent trades, rotations, repairs, mints and rebalances by the eight first-party agents, each with the transaction hash or Ophis order uid that proves it. `complete` is false when a runner log tail could not be read in full.",
+        "responses": {
+          "200": {
+            "description": "Recent proof events, newest first.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProofFeed" } } }
+          }
+        }
+      }
+    },
+    "/api/exec/{owner}/orders": {
+      "get": {
+        "tags": ["execution"],
+        "operationId": "getExecutionSummary",
+        "summary": "Execution quality of a wallet's Ophis orders",
+        "description": "Aggregated surplus in bps, fill count and the recent orders for one wallet, computed from Ophis settlement on BSC. Use an agent's `agentWallet` from listAgents.",
+        "parameters": [
+          { "name": "owner", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }, "description": "EVM address that signed the orders." }
+        ],
+        "responses": {
+          "200": { "description": "Execution summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExecutionSummary" } } } },
+          "400": { "description": "Not an address." }
+        }
+      }
+    },
+    "/api/exec/receipt/{uid}": {
+      "get": {
+        "tags": ["execution"],
+        "operationId": "getReceipt",
+        "summary": "MEV-proof receipt for one Ophis order",
+        "description": "The order as signed, the settlement transaction and block, surplus against the signed limit, and the partner fees decoded from the order's appData.",
+        "parameters": [
+          { "name": "uid", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^0x[0-9a-fA-F]{112}$" }, "description": "Ophis order uid (56 bytes, hex)." }
+        ],
+        "responses": {
+          "200": { "description": "The receipt.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Receipt" } } } },
+          "400": { "description": "Malformed uid." },
+          "404": { "description": "No such order." }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/AgentSummary" } },
+          "nextCursor": { "type": ["string", "null"] },
+          "total": { "type": ["integer", "null"] },
+          "asOf": { "type": "string", "format": "date-time" },
+          "source": { "type": "string", "description": "Which lane answered: the-graph, 8004scan-pro, 8004scan, snapshot." }
+        },
+        "additionalProperties": true
+      },
+      "AgentSummary": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "chainId-tokenId" },
+          "chainId": { "type": "integer" },
+          "tokenId": { "type": "string" },
+          "agentId": { "type": "string", "description": "chainId:identityRegistry:tokenId" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "owner": { "type": "string" },
+          "agentWallet": { "type": ["string", "null"], "description": "The wallet the agent acts from, as declared by its owner. Use it with getExecutionSummary. Absent on snapshot rows." },
+          "category": { "type": ["string", "null"], "enum": ["grid", "yield", "health-factor", "rebalancing", null] },
+          "x402Supported": { "type": "boolean" },
+          "registeredAt": { "type": ["string", "null"], "format": "date-time" },
+          "trust": {
+            "type": "object",
+            "properties": {
+              "totalScore": { "type": ["number", "null"] },
+              "totalFeedbacks": { "type": "integer" },
+              "isVerified": { "type": "boolean" },
+              "source": { "type": "string", "enum": ["8004scan", "registry", "the-graph"] },
+              "asOf": { "type": "string", "format": "date-time" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "ProofFeed": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "agent": { "type": "string", "description": "ERC-8004 token id" },
+                "agentName": { "type": "string" },
+                "category": { "type": "string" },
+                "kind": { "type": "string", "enum": ["trade", "rotate", "repair", "mint", "rebalance"] },
+                "summary": { "type": "string" },
+                "at": { "type": "string", "format": "date-time" },
+                "txHash": { "type": "string" },
+                "orderUid": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "complete": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      },
+      "ExecutionSummary": { "type": "object", "additionalProperties": true, "description": "Fill count, surplus in bps, and recent orders with their uids." },
+      "Receipt": { "type": "object", "additionalProperties": true, "description": "Order, settlement tx and block, surplus, partner fees." }
+    }
+  }
+}

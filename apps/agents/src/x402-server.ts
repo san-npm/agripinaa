@@ -23,10 +23,12 @@ import {
   type ExpectedAccountSessionPermissions,
 } from '@agripinaa/session-kit/verify';
 import { createX402Merchant } from '@altananetwork/x402-server';
+import { AGENTKIT } from '@worldcoin/agentkit';
 import { createPublicClient, http, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { bsc } from 'viem/chains';
 
+import { createAgentkitGate, resourceUriFor, type AgentkitGate } from './agentkit-gate';
 import { collectProofEvents } from './proof';
 import { DATA_DIR } from './chassis';
 import { createDirectFundingRelay } from './direct-funding-relay';
@@ -448,8 +450,21 @@ export function startX402Server(opts: {
   opsToken?: string;
   rpcUrl?: string;
   directFunding?: { account: Address; privateKey: Hex };
+  /** World AgentKit door for /:agent/status. Injectable so tests need no registry. */
+  agentkit?: AgentkitGate;
 }): Server {
   const facilitator = privateKeyToAccount(opts.facilitatorKey);
+  const agentkit =
+    opts.agentkit ??
+    createAgentkitGate({
+      // One RPC per chain the challenge advertises, so an ERC-1271 smart
+      // wallet signing on any of them can be verified.
+      rpcUrls: {
+        'eip155:56': opts.rpcUrl ?? 'https://bsc-rpc.publicnode.com',
+        'eip155:8453': 'https://mainnet.base.org',
+        'eip155:480': 'https://worldchain-mainnet.g.alchemy.com/public',
+      },
+    });
   const directFunding = createDirectFundingRelay({
     client: createPublicClient({ chain: bsc, transport: http('https://bsc-dataseed.bnbchain.org', { timeout: 30_000, retryCount: 0 }) }),
     journal: join(DATA_DIR, 'direct-funding.json'),
@@ -1092,12 +1107,55 @@ export function startX402Server(opts: {
     }
 
     try {
+      // A human-backed agent (World AgentBook) reads free a few times; the
+      // 402 everyone else gets carries the challenge that says so.
+      const resourceUri = resourceUriFor(req, pathname);
+      const agentkitHeader = req.headers[AGENTKIT] as string | undefined;
+      const admission = await agentkit.admit(agentkitHeader, resourceUri, pathname, requestIdentity(req));
+      if (admission.granted) {
+        let status: Record<string, unknown> | null = null;
+        try {
+          status = await entry.module.status(entry.ctx);
+        } catch {
+          status = null;
+        }
+        entry.ctx.log({
+          event: 'status-free-trial',
+          caller: admission.address,
+          humanId: admission.humanId,
+          registry: admission.registry,
+        });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            agent: entry.module.name,
+            category: entry.module.category,
+            paidBy: null,
+            settlementTx: null,
+            agentkit: { humanBacked: true, humanId: admission.humanId, registry: admission.registry, freeTrial: true },
+            status,
+          }),
+        );
+        return;
+      }
       const result = await merchant.requirePayment(
         (req.headers['x-payment'] as string | undefined) ?? null,
       );
       if (result.status === 402) {
+        const body = result.body as Record<string, unknown>;
+        // Built in full before any header is written: a throw here must
+        // still be able to answer 500, not crash on headers already sent.
+        const payload = JSON.stringify({
+          ...body,
+          // No challenge for a Host we are not published at: a signature
+          // bound to it would be worthless, so do not invite one.
+          ...(resourceUri
+            ? { extensions: { ...(body['extensions'] as object | undefined), ...agentkit.challenge(resourceUri) } }
+            : {}),
+          ...(agentkitHeader ? { agentkit: { declined: admission.reason } } : {}),
+        });
         res.writeHead(402, { 'content-type': 'application/json' });
-        res.end(JSON.stringify(result.body));
+        res.end(payload);
         return;
       }
       // Payment has settled on-chain. From here the buyer MUST get a 200: a
@@ -1121,6 +1179,12 @@ export function startX402Server(opts: {
       );
     } catch {
       // Pre-settlement failure (challenge/verify path): no charge occurred.
+      // Headers already out means the body is what failed; end the response
+      // rather than throw ERR_HTTP_HEADERS_SENT out of the handler.
+      if (res.headersSent) {
+        res.end();
+        return;
+      }
       res.writeHead(500, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'internal' }));
     }

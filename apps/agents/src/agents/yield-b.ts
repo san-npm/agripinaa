@@ -25,6 +25,7 @@
  */
 import { fromBaseUnits } from '@agripinaa/shared';
 
+import { graphConfirms } from '../graph-rates';
 import type { AgentContext, AgentModule } from '../types';
 import {
   DUST_WEI,
@@ -76,6 +77,7 @@ export const yieldBAgent: AgentModule = {
       venusApyBps: rates.venusBps,
       aaveApyBps: rates.aaveBps,
       blocksPerYear: rates.blocksPerYear,
+      theGraph: rates.graph,
       thresholdBps: YIELD_B_PARAMS.thresholdBps,
       requiredWins: YIELD_B_PARAMS.requiredWins,
       walletUsdt: fromBaseUnits(position.walletUsdtWei, USDT_DECIMALS),
@@ -118,12 +120,13 @@ export const yieldBAgent: AgentModule = {
       return;
     }
 
-    const decision = conservativeRotation({
+    const input = {
       venue,
       venusBps: rates.venusBps,
       aaveBps: rates.aaveBps,
       betterStreak: ctx.state.get<number>('betterStreak', 0),
-    });
+    };
+    const decision = graphConfirms(conservativeRotation(input), input, rates.graph);
     ctx.state.set('betterStreak', decision.nextStreak);
 
     if (decision.action === 'hold') {
@@ -133,6 +136,7 @@ export const yieldBAgent: AgentModule = {
         decision: 'hold',
         edgeBps: decision.edgeBps,
         betterStreak: decision.nextStreak,
+        graphVeto: decision.graphVeto,
       });
       return;
     }
@@ -217,6 +221,7 @@ export const yieldBAgent: AgentModule = {
       positionUsdt: fromBaseUnits(positionWei, USDT_DECIMALS),
       venusApyBps: rates.venusBps,
       aaveApyBps: rates.aaveBps,
+      theGraph: rates.graph,
       edgeBps,
       thresholdBps: YIELD_B_PARAMS.thresholdBps,
       requiredWins: YIELD_B_PARAMS.requiredWins,

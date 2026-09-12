@@ -1,4 +1,4 @@
-import { CATEGORIES, type Category } from "@agripinaa/agent-index";
+import { CATEGORIES, IndexCursorLaneError, type Category } from "@agripinaa/agent-index";
 
 import {
   listAgents,
@@ -47,7 +47,7 @@ export async function GET(request: Request): Promise<Response> {
     if (error instanceof RegistryCursorInvalidError) {
       return Response.json({ error: error.message }, { status: 400 });
     }
-    if (error instanceof RegistryCursorExpiredError) {
+    if (error instanceof RegistryCursorExpiredError || error instanceof IndexCursorLaneError) {
       return Response.json({ error: error.message }, { status: 409 });
     }
     throw error;

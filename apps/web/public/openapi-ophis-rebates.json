@@ -1,0 +1,139 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ophis Rebates",
+    "version": "1.0.0",
+    "summary": "Trading volume, rebate tier, XP and leaderboard position for any wallet that trades through Ophis.",
+    "description": "Ophis is an intent-based, MEV-protected batch-auction DEX aggregator on nine EVM chains. The rebate indexer publishes, per wallet, the 30-day fee-bearing volume, the rebate tier it earns (0 to 50 percent of the protocol fee back), lifetime XP, and the public leaderboard, plus lifetime protocol statistics. Wallets are EVM addresses. Numbers are USD. Use it to size how active a trader or an AI agent is before trusting or hiring it, or to check what rebate a wallet is earning.",
+    "license": { "name": "MIT" }
+  },
+  "servers": [{ "url": "https://rebates.ophis.fi" }],
+  "paths": {
+    "/stats": {
+      "get": {
+        "operationId": "getProtocolStats",
+        "summary": "Lifetime Ophis protocol statistics",
+        "description": "Total volume in USD, trade count, distinct traders, active chains and a per-chain breakdown. Lifetime cumulative figures only.",
+        "responses": {
+          "200": {
+            "description": "Protocol statistics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalVolumeUsd": { "type": "number" },
+                    "totalTrades": { "type": "integer" },
+                    "distinctTraders": { "type": "integer" },
+                    "chainsActive": { "type": "integer" },
+                    "byChain": { "type": "array", "items": { "type": "object", "properties": { "chainId": { "type": "integer" }, "volumeUsd": { "type": "number" }, "trades": { "type": "integer" } } } },
+                    "avgTradeUsd": { "type": ["number", "null"] },
+                    "generatedAt": { "type": "string", "format": "date-time" }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rank/{wallet}": {
+      "get": {
+        "operationId": "getWalletRank",
+        "summary": "A wallet's rebate tier, 30-day volume and leaderboard position",
+        "description": "The tier the wallet currently earns, its 30-day USD volume, the rebate percentage, what the next tier needs, and its position on the leaderboard (null without indexed volume).",
+        "parameters": [{ "name": "wallet", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" } }],
+        "responses": {
+          "200": {
+            "description": "Rank status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "wallet": { "type": "string" },
+                    "tier": { "type": "string" },
+                    "volume30dUsd": { "type": "number" },
+                    "rebatePct": { "type": "number" },
+                    "nextTier": { "type": ["string", "null"] },
+                    "nextThresholdUsd": { "type": ["number", "null"] },
+                    "toNextUsd": { "type": ["number", "null"] },
+                    "position": { "type": ["integer", "null"] }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/xp/{wallet}": {
+      "get": {
+        "operationId": "getWalletXp",
+        "summary": "A wallet's lifetime XP (1 XP per USD of fee-bearing volume)",
+        "parameters": [{ "name": "wallet", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" } }],
+        "responses": {
+          "200": {
+            "description": "XP.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "wallet": { "type": "string" },
+                    "xp": { "type": "number" },
+                    "lifetimeVolumeUsd": { "type": "number" },
+                    "generatedAt": { "type": "string", "format": "date-time" }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "operationId": "getLeaderboard",
+        "summary": "The public 30-day volume leaderboard",
+        "description": "Ranked wallets with tier, 30-day and lifetime volume, affiliate count and referred volume. Wallet addresses are truncated for display.",
+        "responses": {
+          "200": {
+            "description": "Leaderboard.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "updatedAt": { "type": "string", "format": "date-time" },
+                    "total": { "type": "integer" },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rank": { "type": "integer" },
+                          "wallet": { "type": "string" },
+                          "tier": { "type": "string" },
+                          "volume30dUsd": { "type": "number" },
+                          "volumeTotalUsd": { "type": "number" },
+                          "affiliateCount": { "type": "integer" },
+                          "referredVolumeUsd": { "type": "number" }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -165,6 +165,12 @@ printf '%s' "$OPS_TOKEN" | grep -qE '^[A-Za-z0-9._~+/=-]+$' || {
   exit 1
 }
 
+# Only a hostname that answered at the edge, on a real run: the runner reads
+# this file to know which Host it is published at (the AgentKit challenge is
+# bound to it), so a dry run or a refused candidate must not replace it. Same
+# file start-agents.sh writes on a dev Mac.
+printf '%s\n' "$URL" > "$(dirname "$0")/tunnel-url.txt" 2>/dev/null || true
+
 echo "reporting $URL to $SITE"
 # Options come in on stdin rather than argv, so the token is not visible in the
 # process list to anything else sharing the host.
