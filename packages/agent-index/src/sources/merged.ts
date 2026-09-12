@@ -137,10 +137,33 @@ export class MergedSource implements AgentIndexSource {
     }
   }
 
+  /**
+   * The first live lane's record, unless it is placeholder-thin and a later
+   * lane has the document. Agent0's subgraph only fetches IPFS registration
+   * files, so an agent whose agentURI is https (ours) comes back from it as
+   * "Agent #<id>" with no description; 8004scan fetches https manifests and
+   * has the name. Trust fields ride with whichever record is kept.
+   */
+  private async richestLive(chainId: number, tokenId: string): Promise<AgentDetail | null> {
+    let first: AgentDetail | null | undefined;
+    let failure: unknown;
+    for (const lane of this.live) {
+      try {
+        const record = await lane.getAgent(chainId, tokenId);
+        if (record && !isMetadataPoor(record)) return record;
+        if (first === undefined) first = record;
+      } catch (err) {
+        failure = err;
+      }
+    }
+    if (first === undefined) throw failure;
+    return first;
+  }
+
   async getAgent(chainId: number, tokenId: string): Promise<AgentDetail | null> {
     const key = `agent:${chainId}:${tokenId}`;
     try {
-      const fromScan = await this.firstLive((lane) => lane.getAgent(chainId, tokenId));
+      const fromScan = await this.richestLive(chainId, tokenId);
       // A null from the indexer is not proof of nonexistence: fresh
       // registrations lag it (BSC lane is rpc_only). The registry is the
       // source of truth for existence; only a null THERE is final.
@@ -183,10 +206,22 @@ export class MergedSource implements AgentIndexSource {
     query: string,
   ): Promise<SearchOutcome> {
     try {
-      return {
-        items: await this.firstLive((lane) => lane.searchAgents(chainId, query)),
-        source: 'index',
-      };
+      // A lane that finds nothing has still searched, so an empty answer from
+      // the last lane stands. An earlier lane's empty answer does not end the
+      // search: the subgraph cannot see https registration files, so a name
+      // it has never read is asked of 8004scan before "no agents match".
+      let answer: AgentSummary[] | undefined;
+      let failure: unknown;
+      for (const lane of this.live) {
+        try {
+          answer = await lane.searchAgents(chainId, query);
+          if (answer.length > 0) break;
+        } catch (err) {
+          failure = err;
+        }
+      }
+      if (answer === undefined) throw failure;
+      return { items: answer, source: 'index' };
     } catch {
       const snapshot = await this.loadSnapshot(chainId);
       if (!snapshot) return { items: [], source: 'fallback' };
