@@ -183,7 +183,8 @@ export async function getProofFeed(): Promise<ProofFeedPayload> {
   'use cache';
   cacheLife({ stale: 15, revalidate: 15, expire: 60 });
 
-  const [runner, chain] = await Promise.all([getRunnerEvents(), getOnchainTradeBackfill()]);
+  const [evidence, chain] = await Promise.all([getRunnerEvidence(), getOnchainTradeBackfill()]);
+  const runner = evidence.events;
   const events = mergeEvents(runner, chain);
   return {
     events,
@@ -191,5 +192,8 @@ export async function getProofFeed(): Promise<ProofFeedPayload> {
     source: runner.length > 0
       ? chain.length > 0 ? 'runner+chain' : 'runner'
       : chain.length > 0 ? 'chain' : 'none',
+    // The flag the runner's own /proof carries, passed through: the published
+    // API contract names it, so a client can tell a full scan from a partial one.
+    complete: evidence.available,
   };
 }

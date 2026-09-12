@@ -51,6 +51,9 @@ importers:
       '@ophis/sdk':
         specifier: 0.3.0
         version: 0.3.0(viem@2.55.11(typescript@5.9.3)(zod@4.4.3))
+      '@worldcoin/agentkit':
+        specifier: 0.2.1
+        version: 0.2.1(typescript@5.9.3)
       multiformats:
         specifier: 9.9.0
         version: 9.9.0
@@ -1332,6 +1335,15 @@ packages:
         optional: true
       typescript:
         optional: true
+
+  '@worldcoin/agentkit-core@0.2.1':
+    resolution: {integrity: sha512-gfZf/GOP7DB8DVpXJZlYE58ZovrQrUezQ970NVd/oKu+XkwjY3CuLU3o304D4lrv5tdY4mqlhVroi6bELa3Meg==}
+
+  '@worldcoin/agentkit@0.2.1':
+    resolution: {integrity: sha512-UTq4BBBTP1bt2wfrxuIAMAJaqByR5neBb7TESJfSXDfFGETItm5kp+2MMqYFS32xG4xuRVk4BZw06cToemKgGw==}
+
+  '@x402/core@2.25.0':
+    resolution: {integrity: sha512-5Ys0XYz3FKutxVKoXC46R/XPT/oaAbuj7ahzrlVHwQxZJPH9u6u91IOh0ztz+7G/zYGsaXR8l3ety205QtEnUw==}
 
   abitype@1.2.3:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
@@ -2956,6 +2968,9 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -4046,6 +4061,35 @@ snapshots:
       - immer
       - react
       - use-sync-external-store
+
+  '@worldcoin/agentkit-core@0.2.1(typescript@5.9.3)':
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@scure/base': 1.2.6
+      viem: 2.55.11(typescript@5.9.3)(zod@3.25.76)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+
+  '@worldcoin/agentkit@0.2.1(typescript@5.9.3)':
+    dependencies:
+      '@worldcoin/agentkit-core': 0.2.1(typescript@5.9.3)
+      '@x402/core': 2.25.0
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+
+  '@x402/core@2.25.0':
+    dependencies:
+      zod: 3.25.76
+
+  abitype@1.2.3(typescript@5.9.3)(zod@3.25.76):
+    optionalDependencies:
+      typescript: 5.9.3
+      zod: 3.25.76
 
   abitype@1.2.3(typescript@5.9.3)(zod@4.4.3):
     optionalDependencies:
@@ -5349,6 +5393,21 @@ snapshots:
       object-keys: 1.1.1
       safe-push-apply: 1.0.0
 
+  ox@0.14.33(typescript@5.9.3)(zod@3.25.76):
+    dependencies:
+      '@adraffy/ens-normalize': 1.11.1
+      '@noble/ciphers': 1.3.0
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
+      eventemitter3: 5.0.1
+    optionalDependencies:
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - zod
+
   ox@0.14.33(typescript@5.9.3)(zod@4.4.3):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
@@ -5910,6 +5969,23 @@ snapshots:
   uuid@11.1.1:
     optional: true
 
+  viem@2.55.11(typescript@5.9.3)(zod@3.25.76):
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
+      isows: 1.0.7(ws@8.21.0)
+      ox: 0.14.33(typescript@5.9.3)(zod@3.25.76)
+      ws: 8.21.0
+    optionalDependencies:
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+      - zod
+
   viem@2.55.11(typescript@5.9.3)(zod@4.4.3):
     dependencies:
       '@noble/curves': 1.9.1
@@ -6017,6 +6093,8 @@ snapshots:
   zod-validation-error@4.0.2(zod@4.4.3):
     dependencies:
       zod: 4.4.3
+
+  zod@3.25.76: {}
 
   zod@4.4.3: {}
 
