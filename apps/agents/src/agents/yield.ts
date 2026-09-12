@@ -2,6 +2,7 @@ import { TOKENS_BSC, fromBaseUnits, toBaseUnits, type TokenInfo } from '@agripin
 import { erc20Abi, maxUint256, padHex, parseAbi, toEventSelector, type Hex, type PublicClient } from 'viem';
 
 import type { ManagedExecutor } from '../executor';
+import { graphConfirms, readGraphRates, type GraphRatesRead } from '../graph-rates';
 import { isGlobalHalt, type AgentContext, type AgentModule } from '../types';
 
 export type Venue = 'none' | 'venus' | 'aave';
@@ -145,6 +146,8 @@ export interface RotationDecision {
   target: 'venus' | 'aave';
   edgeBps: number;
   nextStreak: number;
+  /** Set when the chain said rotate and The Graph's rates did not agree. */
+  graphVeto?: true;
 }
 
 /**
@@ -180,6 +183,8 @@ export interface Rates {
   blocksPerYear: number;
   venusRatePerBlock: string;
   aaveLiquidityRate: string;
+  /** The same two rates as The Graph indexes them, or why it could not say. */
+  graph: GraphRatesRead;
 }
 
 export type Reader = Pick<PublicClient, 'getBlock' | 'readContract'>;
@@ -200,7 +205,7 @@ export async function readRates(client: Reader, venues: Venues = USDT_VENUES): P
   });
   const blocksPerYear = deriveBlocksPerYear(latest.timestamp, older.timestamp, span);
 
-  const [venusRate, reserve] = await Promise.all([
+  const [venusRate, reserve, graph] = await Promise.all([
     client.readContract({
       address: venues.vToken,
       abi: vTokenAbi,
@@ -212,6 +217,7 @@ export async function readRates(client: Reader, venues: Venues = USDT_VENUES): P
       functionName: 'getReserveData',
       args: [venues.token],
     }),
+    readGraphRates(venues.token),
   ]);
 
   return {
@@ -220,6 +226,7 @@ export async function readRates(client: Reader, venues: Venues = USDT_VENUES): P
     blocksPerYear,
     venusRatePerBlock: venusRate.toString(),
     aaveLiquidityRate: reserve.currentLiquidityRate.toString(),
+    graph,
   };
 }
 
@@ -432,6 +439,7 @@ export const yieldAgent: AgentModule = {
       blocksPerYear: rates.blocksPerYear,
       venusRatePerBlock: rates.venusRatePerBlock,
       aaveLiquidityRate: rates.aaveLiquidityRate,
+      theGraph: rates.graph,
       walletUsdt: fromBaseUnits(position.walletUsdtWei, USDT.decimals),
       venusUsdt: fromBaseUnits(position.venusUnderlyingWei, USDT.decimals),
       aaveUsdt: fromBaseUnits(position.aaveATokenWei, USDT.decimals),
@@ -459,16 +467,17 @@ export const yieldAgent: AgentModule = {
       return;
     }
 
-    const decision = decideRotation({
+    const input = {
       venue,
       venusBps: rates.venusBps,
       aaveBps: rates.aaveBps,
       betterStreak: ctx.state.get<number>('betterStreak', 0),
-    });
+    };
+    const decision = graphConfirms(decideRotation(input), input, rates.graph);
     ctx.state.set('betterStreak', decision.nextStreak);
 
     if (decision.action === 'hold') {
-      ctx.log({ ...base, event: 'tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak });
+      ctx.log({ ...base, event: 'tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak, graphVeto: decision.graphVeto });
       return;
     }
 
@@ -517,6 +526,7 @@ export const yieldAgent: AgentModule = {
       positionUsdt: fromBaseUnits(positionWei, USDT.decimals),
       venusApyBps: rates.venusBps,
       aaveApyBps: rates.aaveBps,
+      theGraph: rates.graph,
       edgeBps,
       betterStreak: ctx.state.get<number>('betterStreak', 0),
       movesToday: movesToday(ctx),
@@ -642,6 +652,7 @@ export async function managedYieldTick(
     venue,
     venusApyBps: rates.venusBps,
     aaveApyBps: rates.aaveBps,
+    theGraph: rates.graph,
     walletUsdt: fromBaseUnits(position.walletUsdtWei, USDT.decimals),
     venusUsdt: fromBaseUnits(position.venusUnderlyingWei, USDT.decimals),
     aaveUsdt: fromBaseUnits(position.aaveATokenWei, USDT.decimals),
@@ -850,16 +861,17 @@ export async function managedYieldTick(
   ctx.state.set(ns('lastCheckAt'), checkedAt);
 
   const previousStreak = ctx.state.get<number>(ns('betterStreak'), 0);
-  const decision = policy.decide({
+  const input = {
     venue,
     venusBps: rates.venusBps,
     aaveBps: rates.aaveBps,
     betterStreak: previousStreak,
-  });
+  };
+  const decision = graphConfirms(policy.decide(input), input, rates.graph);
   ctx.state.set(ns('betterStreak'), decision.nextStreak);
 
   if (decision.action === 'hold') {
-    ctx.log({ ...base, event: 'managed-tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak });
+    ctx.log({ ...base, event: 'managed-tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak, graphVeto: decision.graphVeto });
     return;
   }
   // The floor is checked BEFORE the daily counter so a refused rotation costs
