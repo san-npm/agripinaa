@@ -190,6 +190,40 @@ test('a gateway error or an unpinned chain is thrown, not swallowed', async () =
   await assert.rejects(() => new TheGraphSource().stats(999999), /no Agent0 subgraph/);
 });
 
+test('a bare Graph record or an empty Graph search is asked of 8004scan before it stands', async () => {
+  const asked: string[] = [];
+  const scanAgent = {
+    agent_id: '56:0x8004a169:269703', token_id: '269703', chain_id: BSC, contract_address: '0x8004a169',
+    owner_address: '0x1111111111111111111111111111111111111111', name: 'Agripinaa Grid',
+    description: 'WBNB/USDT mean-reversion grid', image_url: null, is_verified: true, star_count: null,
+    supported_protocols: ['Web'], x402_supported: true, total_score: 100, average_score: 100, rank: null,
+    health_score: null, total_feedbacks: 1, created_at: null,
+  };
+  const stub: typeof fetch = (async (input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    asked.push(url);
+    const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (url.startsWith('https://gateway.test/')) {
+      const body = JSON.parse(String(init?.body)) as { query: string };
+      // The subgraph knows the registration but not its https manifest.
+      if (body.query.includes('agent(id')) return json({ data: { agent: gqlAgent(269703, null) } });
+      return json({ data: { agents: [] } });
+    }
+    if (url.includes('/agents/search')) return json({ success: true, data: [scanAgent] });
+    return json({ success: true, data: scanAgent });
+  }) as typeof fetch;
+  await withFetch(stub, async () => {
+    const detail = await new MergedSource().getAgent(BSC, '269703');
+    assert.equal(detail?.name, 'Agripinaa Grid');
+    assert.equal(detail?.x402Supported, true);
+    assert.equal(detail?.trust.source, '8004scan');
+    const found = await new MergedSource().searchAgentsWithSource(BSC, 'Agripinaa');
+    assert.equal(found.source, 'index');
+    assert.deepEqual(found.items.map((a) => a.name), ['Agripinaa Grid']);
+    assert.ok(asked.some((u) => u.startsWith('https://gateway.test/')), 'The Graph was asked first');
+  });
+});
+
 test('the merged source asks The Graph first and falls through to 8004scan when it fails', async () => {
   const asked: string[] = [];
   const stub: typeof fetch = (async (input: unknown, init?: RequestInit) => {
