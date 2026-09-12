@@ -1,20 +1,25 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { createAgentkitClient } from '@worldcoin/agentkit';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import {
-  BoundedAgentKitStorage,
-  agentkitChallenge,
-  createAgentkitGate,
-  resourceUriFor,
-  trustedHost,
-} from '../src/agentkit-gate';
-import { RequestGate } from '../src/request-gate';
-import { startX402Server } from '../src/x402-server';
+/** The published hostname the runner would read from ops/tunnel-url.txt, and one fixed extra host. */
+const tunnelFile = join(mkdtempSync(join(tmpdir(), 'agentkit-')), 'tunnel-url.txt');
+writeFileSync(tunnelFile, 'https://abc-def.trycloudflare.com\n');
+process.env.AGENTKIT_TUNNEL_URL_FILE = tunnelFile;
+process.env.AGENTKIT_PUBLIC_HOSTS = 'runner.agripinaa.example';
+
+const { BoundedAgentKitStorage, agentkitChallenge, createAgentkitGate, resourceUriFor, trustedHost } = await import(
+  '../src/agentkit-gate'
+);
+const { RequestGate } = await import('../src/request-gate');
+const { startX402Server } = await import('../src/x402-server');
 
 const human = privateKeyToAccount(`0x${'11'.repeat(32)}`);
 const stranger = privateKeyToAccount(`0x${'22'.repeat(32)}`);
@@ -50,12 +55,19 @@ const reason = (a: Awaited<ReturnType<ReturnType<typeof createAgentkitGate>['adm
   a.granted ? '' : a.reason;
 
 test('only hosts this runner is published at get a resource URI, https unless local', () => {
-  assert.equal(resourceUriFor({ headers: { host: 'abc.trycloudflare.com' } }, '/grid/status'), 'https://abc.trycloudflare.com/grid/status');
+  // The tunnel hostname from the file, the fixed extra host, and local hosts.
+  assert.equal(resourceUriFor({ headers: { host: 'abc-def.trycloudflare.com' } }, '/grid/status'), 'https://abc-def.trycloudflare.com/grid/status');
+  assert.equal(resourceUriFor({ headers: { host: 'ABC-DEF.trycloudflare.com' } }, '/grid/status'), 'https://abc-def.trycloudflare.com/grid/status');
+  assert.equal(resourceUriFor({ headers: { host: 'runner.agripinaa.example' } }, '/grid/status'), 'https://runner.agripinaa.example/grid/status');
   assert.equal(resourceUriFor({ headers: { host: '127.0.0.1:4021' } }, '/grid/status'), 'http://127.0.0.1:4021/grid/status');
-  // The listener binds every interface; a Host nobody published is not a domain to sign for.
+  // The listener binds every interface; a Host nobody published is not a
+  // domain to sign for, and neither is somebody else's quick tunnel.
   assert.equal(resourceUriFor({ headers: { host: 'attacker.example' } }, '/grid/status'), null);
+  assert.equal(resourceUriFor({ headers: { host: 'other-tenant.trycloudflare.com' } }, '/grid/status'), null);
   assert.equal(resourceUriFor({ headers: {} }, '/grid/status'), null);
-  assert.equal(trustedHost('evil.trycloudflare.com.attacker.example'), false);
+  assert.equal(trustedHost('abc-def.trycloudflare.com.attacker.example'), false);
+  // Trusted but not a URL: a port out of range must not reach URL parsing later.
+  assert.equal(resourceUriFor({ headers: { host: 'localhost:65536' } }, '/grid/status'), null);
 });
 
 test('a human-backed wallet reads free for its trial, then pays like everyone else', async () => {
@@ -123,16 +135,27 @@ test('a payload the library cannot format is declined, not thrown', async () => 
   assert.ok(reason(declined).length > 0);
 });
 
-test('the nonce store forgets expired nonces and never exceeds its cap', () => {
+test('the nonce store forgets expired nonces, never exceeds its cap, and never evicts a live one', () => {
   const storage = new BoundedAgentKitStorage(1_000, 3);
-  assert.equal(storage.reserveNonce('a', 0), true);
-  assert.equal(storage.reserveNonce('a', 500), false, 'still fresh: replay');
-  assert.equal(storage.reserveNonce('a', 2_000), true, 'expired: the nonce may be issued again');
-  assert.equal(storage.reserveNonce('b', 2_000), true);
-  assert.equal(storage.reserveNonce('c', 2_000), true);
-  // Full of fresh nonces: the oldest goes, the store stays at the cap.
-  assert.equal(storage.reserveNonce('d', 2_000), true);
-  assert.equal(storage.reserveNonce('a', 2_000), true, "'a' was evicted, so it is fresh again");
+  assert.equal(storage.reserveNonce('a', 0), 'ok');
+  assert.equal(storage.reserveNonce('a', 500), 'replay', 'still fresh: replay');
+  assert.equal(storage.reserveNonce('a', 2_000), 'ok', 'expired: the nonce may be issued again');
+  assert.equal(storage.reserveNonce('b', 2_000), 'ok');
+  assert.equal(storage.reserveNonce('c', 2_000), 'ok');
+  // Full of fresh nonces: a newcomer is refused, and the live ones stay live,
+  // so a captured header does not become good again by flooding the store.
+  assert.equal(storage.reserveNonce('d', 2_000), 'full');
+  assert.equal(storage.reserveNonce('a', 2_000), 'replay');
+  // Once they expire the store is usable again.
+  assert.equal(storage.reserveNonce('d', 4_000), 'ok');
+});
+
+test('a full store declines rather than throws, and the human still pays instead', async () => {
+  const gate = createAgentkitGate({ agentBooks: [book], storage: new BoundedAgentKitStorage(60_000, 1) });
+  assert.equal((await gate.admit(await headerFor(human), RESOURCE, '/grid/status')).granted, true);
+  const refused = await gate.admit(await headerFor(human), RESOURCE, '/grid/status');
+  assert.equal(refused.granted, false);
+  assert.match(reason(refused), /verification store is full/);
 });
 
 test('verification is rate limited per client and in flight', async () => {
@@ -191,6 +214,21 @@ test('the status route offers the challenge in its 402 and serves a human-backed
   assert.equal(spoofed.status, 402);
   const spoofedBody = JSON.parse(spoofed.body) as { extensions?: unknown };
   assert.equal(spoofedBody.extensions, undefined);
+
+  // A trusted-looking Host that is not a URL answers 402 too; nothing throws
+  // past the handler after headers went out.
+  const badPort = await new Promise<number>((resolve, reject) => {
+    const req = request(
+      { host: '127.0.0.1', port: address.port, path: '/grid/status', headers: { host: 'localhost:65536' } },
+      (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(badPort, 402);
 
   // The AgentKit client retries the 402 with the signed challenge on its own.
   const served = await signer(human).fetch(url);

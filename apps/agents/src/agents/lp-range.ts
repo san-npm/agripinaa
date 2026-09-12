@@ -3,7 +3,7 @@ import { erc20Abi, parseAbi, parseEventLogs, zeroAddress, type Log } from 'viem'
 
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
 
-import { selectLpVenue } from '../lp-venues';
+import { LP_VENUES, selectLpVenue, type LpVenue } from '../lp-venues';
 import { ChassisOphisWallet } from '../ophis-wallet';
 import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
@@ -214,14 +214,20 @@ export function formatWholeUnits(amount: number): string {
 /* ------------------------------------------------------------------ */
 
 /*
- * The venue (PancakeSwap V3 by default, Uniswap v3 with LP_RANGE_VENUE) and
- * its probe records live in ../lp-venues. The pool is still resolved at
- * runtime through the verified factory rather than hardcoded.
+ * The venue records (PancakeSwap V3, Uniswap v3) and their probe records live
+ * in ../lp-venues. Which one a context runs on is decided in venueContext()
+ * below and read with venueOf(ctx) everywhere a manager, factory, fee tier or
+ * pool ABI is needed. The pool is still resolved at runtime through the
+ * verified factory rather than hardcoded.
  */
-const VENUE = selectLpVenue();
-const POSITION_MANAGER = VENUE.positionManager;
-const EXPECTED_FACTORY = VENUE.factory;
-const POOL_FEE_TIERS = VENUE.feeTiers;
+const OWN_CAPITAL_VENUE = selectLpVenue();
+const PANCAKE = LP_VENUES['pancakeswap-v3'];
+const VENUE_OF = new WeakMap<AgentContext, LpVenue>();
+
+/** The venue this context is bound to; PancakeSwap unless venueContext() said otherwise. */
+function venueOf(ctx: AgentContext): LpVenue {
+  return VENUE_OF.get(ctx) ?? PANCAKE;
+}
 
 const WBNB = TOKENS_BSC['WBNB']!;
 const USDT = TOKENS_BSC['USDT']!;
@@ -246,8 +252,7 @@ const FACTORY_ABI = parseAbi([
   'function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)',
 ]);
 
-/* slot0 differs per venue (feeProtocol uint32 on PancakeSwap, uint8 on Uniswap). */
-const POOL_ABI = VENUE.poolAbi;
+/* slot0 differs per venue (feeProtocol uint32 on PancakeSwap, uint8 on Uniswap): see venueOf(ctx).poolAbi. */
 
 /** Coarse min-out floor on mint/exit (concentrated-liquidity consumed
  * amounts vary with the tick, so this is a backstop; a legitimate revert
@@ -273,7 +278,7 @@ async function twapAligned(ctx: AgentContext, pool: `0x${string}`, spotTick: num
   try {
     const [tickCumulatives] = await ctx.publicClient.readContract({
       address: pool,
-      abi: POOL_ABI,
+      abi: venueOf(ctx).poolAbi,
       functionName: 'observe',
       args: [[TWAP_WINDOW_SECONDS, 0]],
     });
@@ -379,7 +384,7 @@ async function readSlot0(
 ): Promise<{ sqrtPriceX96: bigint; tick: number }> {
   const slot0 = await ctx.publicClient.readContract({
     address: pool,
-    abi: POOL_ABI,
+    abi: venueOf(ctx).poolAbi,
     functionName: 'slot0',
   });
   return { sqrtPriceX96: slot0[0], tick: slot0[1] };
@@ -418,11 +423,11 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
   if (cached && cached.pool) return cached;
 
   const factory = await ctx.publicClient.readContract({
-    address: POSITION_MANAGER,
+    address: venueOf(ctx).positionManager,
     abi: NPM_ABI,
     functionName: 'factory',
   });
-  if (factory.toLowerCase() !== EXPECTED_FACTORY.toLowerCase()) {
+  if (factory.toLowerCase() !== venueOf(ctx).factory.toLowerCase()) {
     /* Minting through a manager wired to an unknown factory risks the funds. */
     ctx.breakers.halt(`position manager factory mismatch: ${factory}`, { global: true });
     throw new Error(`position manager factory mismatch: ${factory}`);
@@ -432,7 +437,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
   // liquidity: a shallow reference pool makes the price cheaper to skew
   // (the mint/exit slippage protection below rides on this pool's tick).
   let best: { info: PoolInfo; liquidity: bigint } | null = null;
-  for (const fee of POOL_FEE_TIERS) {
+  for (const fee of venueOf(ctx).feeTiers) {
     const pool = await ctx.publicClient.readContract({
       address: factory,
       abi: FACTORY_ABI,
@@ -445,7 +450,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
     }
     const liquidity = await ctx.publicClient.readContract({
       address: pool,
-      abi: POOL_ABI,
+      abi: venueOf(ctx).poolAbi,
       functionName: 'liquidity',
     });
     if (liquidity <= BigInt(0)) {
@@ -453,8 +458,8 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
       continue;
     }
     const [tickSpacing, token0] = await Promise.all([
-      ctx.publicClient.readContract({ address: pool, abi: POOL_ABI, functionName: 'tickSpacing' }),
-      ctx.publicClient.readContract({ address: pool, abi: POOL_ABI, functionName: 'token0' }),
+      ctx.publicClient.readContract({ address: pool, abi: venueOf(ctx).poolAbi, functionName: 'tickSpacing' }),
+      ctx.publicClient.readContract({ address: pool, abi: venueOf(ctx).poolAbi, functionName: 'token0' }),
     ]);
     const info: PoolInfo = {
       pool,
@@ -469,7 +474,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
     ctx.log({ event: 'pool-selected', ...best.info, liquidity: best.liquidity.toString() });
     return best.info;
   }
-  throw new Error(`no WBNB/USDT ${VENUE.label} pool with liquidity found`);
+  throw new Error(`no WBNB/USDT ${venueOf(ctx).label} pool with liquidity found`);
 }
 
 type PendingStatus = 'none' | 'pending' | 'filled' | 'expired';
@@ -498,20 +503,20 @@ async function checkPendingOrder(ctx: AgentContext): Promise<PendingStatus> {
 
 async function findMintedTokenId(ctx: AgentContext, logs: Log[]): Promise<bigint> {
   const events = parseEventLogs({ abi: NPM_ABI, logs, eventName: 'IncreaseLiquidity' }).filter(
-    (l) => l.address.toLowerCase() === POSITION_MANAGER.toLowerCase(),
+    (l) => l.address.toLowerCase() === venueOf(ctx).positionManager.toLowerCase(),
   );
   const first = events[0];
   if (first) return first.args.tokenId;
   ctx.log({ event: 'mint-event-parse-miss', fallback: 'tokenOfOwnerByIndex' });
   const balance = await ctx.publicClient.readContract({
-    address: POSITION_MANAGER,
+    address: venueOf(ctx).positionManager,
     abi: NPM_ABI,
     functionName: 'balanceOf',
     args: [ctx.account.address],
   });
   if (balance <= BigInt(0)) throw new Error('mint receipt has no IncreaseLiquidity and owner holds no NPM tokens');
   return ctx.publicClient.readContract({
-    address: POSITION_MANAGER,
+    address: venueOf(ctx).positionManager,
     abi: NPM_ABI,
     functionName: 'tokenOfOwnerByIndex',
     args: [ctx.account.address, balance - BigInt(1)],
@@ -532,7 +537,7 @@ async function findMintedTokenId(ctx: AgentContext, logs: Log[]): Promise<bigint
  */
 async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<PositionState | null> {
   const balance = await ctx.publicClient.readContract({
-    address: POSITION_MANAGER,
+    address: venueOf(ctx).positionManager,
     abi: NPM_ABI,
     functionName: 'balanceOf',
     args: [ctx.account.address],
@@ -541,7 +546,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
   const minted = knownMintedTokenIds(ctx);
   for (let i = balance - BigInt(1); i >= BigInt(0); i -= BigInt(1)) {
     const tokenId = await ctx.publicClient.readContract({
-      address: POSITION_MANAGER,
+      address: venueOf(ctx).positionManager,
       abi: NPM_ABI,
       functionName: 'tokenOfOwnerByIndex',
       args: [ctx.account.address, i],
@@ -552,7 +557,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
       continue;
     }
     const p = await ctx.publicClient.readContract({
-      address: POSITION_MANAGER,
+      address: venueOf(ctx).positionManager,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
@@ -568,14 +573,14 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
     if (holdsCapital && pair.has(token0.toLowerCase()) && pair.has(token1.toLowerCase())) {
       if (fee !== info.fee) {
         const pool = await ctx.publicClient.readContract({
-          address: EXPECTED_FACTORY,
+          address: venueOf(ctx).factory,
           abi: FACTORY_ABI,
           functionName: 'getPool',
           args: [token0, token1, fee],
         });
         const tickSpacing = await ctx.publicClient.readContract({
           address: pool,
-          abi: POOL_ABI,
+          abi: venueOf(ctx).poolAbi,
           functionName: 'tickSpacing',
         });
         ctx.state.set('poolInfo', {
@@ -627,8 +632,8 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
   const { tickLower, tickUpper } = snapRange(tick, pctToTickDelta(RANGE_PCT), info.tickSpacing);
   const wallet = new ChassisOphisWallet(ctx.account, ctx.publicClient, ctx.walletClient);
   try {
-    await wallet.ensureErc20Allowance(USDT.address, POSITION_MANAGER, availUsdt);
-    await wallet.ensureErc20Allowance(WBNB.address, POSITION_MANAGER, availWbnb);
+    await wallet.ensureErc20Allowance(USDT.address, venueOf(ctx).positionManager, availUsdt);
+    await wallet.ensureErc20Allowance(WBNB.address, venueOf(ctx).positionManager, availWbnb);
 
     const amount0Desired = info.wbnbIsToken0 ? availWbnb : availUsdt;
     const amount1Desired = info.wbnbIsToken0 ? availUsdt : availWbnb;
@@ -636,7 +641,7 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
     const token1 = info.wbnbIsToken0 ? USDT.address : WBNB.address;
 
     const hash = await ctx.walletClient.writeContract({
-      address: POSITION_MANAGER,
+      address: venueOf(ctx).positionManager,
       abi: NPM_ABI,
       functionName: 'mint',
       args: [
@@ -700,7 +705,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       return false;
     }
     const position = await ctx.publicClient.readContract({
-      address: POSITION_MANAGER,
+      address: venueOf(ctx).positionManager,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
@@ -713,7 +718,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       // alone can be sandwiched after the RPC read; these minima make that
       // manipulation revert on-chain instead of changing the token mix.
       const { result: quotedExit } = await ctx.publicClient.simulateContract({
-        address: POSITION_MANAGER,
+        address: venueOf(ctx).positionManager,
         abi: NPM_ABI,
         functionName: 'decreaseLiquidity',
         args: [
@@ -729,7 +734,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       });
       const [amount0Min, amount1Min] = exitMinimums(quotedExit);
       const decreaseHash = await ctx.walletClient.writeContract({
-        address: POSITION_MANAGER,
+        address: venueOf(ctx).positionManager,
         abi: NPM_ABI,
         functionName: 'decreaseLiquidity',
         args: [
@@ -752,7 +757,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       ctx.log({ event: 'decrease-liquidity', txHash: decreaseHash, tokenId: pos.tokenId });
     }
     const collectHash = await ctx.walletClient.writeContract({
-      address: POSITION_MANAGER,
+      address: venueOf(ctx).positionManager,
       abi: NPM_ABI,
       functionName: 'collect',
       args: [
@@ -798,7 +803,7 @@ async function settlePosition(
   info: PoolInfo,
 ): Promise<Settlement> {
   const onChain = await ctx.publicClient.readContract({
-    address: POSITION_MANAGER,
+    address: venueOf(ctx).positionManager,
     abi: NPM_ABI,
     functionName: 'positions',
     args: [BigInt(pos.tokenId)],
@@ -994,32 +999,41 @@ async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void
 /* ------------------------------------------------------------------ */
 
 /**
- * The context the strategy runs against for the selected venue, or null when
- * it must not run at all.
+ * State that belongs to one venue's position: the pool, the NFT, and which
+ * NFTs this agent minted. Everything else (a pending Ophis order, the
+ * rebalance and inventory-prep windows) is about the wallet and stays shared,
+ * so a venue switch cannot hide an order that is still executable.
+ */
+const VENUE_SCOPED_KEYS = new Set(['poolInfo', 'position', 'mintedTokenIds']);
+
+/**
+ * Bind a context to the venue it runs on.
  *
  * Managed contexts arrive from tickManagedStrategy with the strategy account
- * as a json-rpc account; the agent's own capital is a local signer. A managed
- * mandate's session policy authorizes PancakeSwap only, so while another
- * venue is selected it is left alone rather than driven at a manager it
- * cannot sign for. Own-capital state is kept per venue: a switch starts
- * fresh on the new venue instead of reading PancakeSwap position ids against
- * another manager's NFTs.
+ * as a json-rpc account; their session policy authorizes PancakeSwap only, so
+ * they are bound to PancakeSwap whatever LP_RANGE_VENUE says, and are never
+ * skipped: a confirmed relay mint still gets recovered. The agent's own
+ * capital (a local signer) runs on the selected venue; on a non-default venue
+ * its position state is kept apart so PancakeSwap position ids are never read
+ * against another manager's NFTs.
  */
-function venueContext(ctx: AgentContext): AgentContext | null {
-  if (VENUE.name === 'pancakeswap-v3') return ctx;
-  if (ctx.account.type !== 'local') {
-    ctx.log({ event: 'managed-skip', reason: 'venue-policy-mismatch', venue: VENUE.name, policyVenue: 'pancakeswap-v3' });
-    return null;
-  }
-  const prefix = `venue:${VENUE.name}:`;
-  return {
+export function venueContext(ctx: AgentContext): AgentContext {
+  const venue = ctx.account.type !== 'local' ? PANCAKE : OWN_CAPITAL_VENUE;
+  if (venue.name === 'pancakeswap-v3') return ctx;
+  const prefix = `venue:${venue.name}:`;
+  const scoped = (key: string) => (VENUE_SCOPED_KEYS.has(key) ? prefix + key : key);
+  const bound: AgentContext = {
     ...ctx,
     state: {
-      get: (key, fallback) => ctx.state.get(prefix + key, fallback),
-      set: (key, value) => ctx.state.set(prefix + key, value),
+      get: (key, fallback) => ctx.state.get(scoped(key), fallback),
+      set: (key, value) => ctx.state.set(scoped(key), value),
     },
   };
+  VENUE_OF.set(bound, venue);
+  return bound;
 }
+
+export { venueOf };
 
 export const lpRangeAgent: AgentModule = {
   name: 'lp-range',
@@ -1028,10 +1042,9 @@ export const lpRangeAgent: AgentModule = {
 
   async recoverConfirmedWrite(rawCtx, write) {
     const ctx = venueContext(rawCtx);
-    if (!ctx) return false;
     if (
       write.functionName !== 'mint'
-      || write.to.toLowerCase() !== POSITION_MANAGER.toLowerCase()
+      || write.to.toLowerCase() !== venueOf(ctx).positionManager.toLowerCase()
     ) return false;
     const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash: write.transactionHash });
     if (receipt.status !== 'success') throw new Error('confirmed relay mint receipt reverted');
@@ -1040,7 +1053,7 @@ export const lpRangeAgent: AgentModule = {
     // the normal recovery scan may safely adopt this NFT on the next sweep.
     recordMintedTokenId(ctx, tokenId.toString());
     const position = await ctx.publicClient.readContract({
-      address: POSITION_MANAGER,
+      address: venueOf(ctx).positionManager,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
@@ -1063,7 +1076,6 @@ export const lpRangeAgent: AgentModule = {
 
   async tick(rawCtx) {
     const ctx = venueContext(rawCtx);
-    if (!ctx) return;
     if (ctx.breakers.isHalted().halted) {
       ctx.log({ event: 'tick-skipped', reason: 'halted' });
       return;
@@ -1166,7 +1178,6 @@ export const lpRangeAgent: AgentModule = {
 
   async status(rawCtx) {
     const ctx = venueContext(rawCtx);
-    if (!ctx) return { venue: VENUE.name, skipped: 'venue-policy-mismatch', policyVenue: 'pancakeswap-v3' };
     const now = Date.now();
     const pos = ctx.state.get<PositionState | null>('position', null);
     const budget = weeklyBudget(
