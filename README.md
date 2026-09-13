@@ -192,7 +192,12 @@ to use the same subgraphs.
 wallet a verified human vouched for in AgentBook, three free reads per human
 per endpoint (`apps/agents/src/agentkit-gate.ts`); the 402 carries the
 AgentKit challenge. Profiles show a "Human-backed · World ID" badge resolved
-live from AgentBook (`apps/web/src/lib/agentbook.ts`). Feedback in
+live from AgentBook (`apps/web/src/lib/agentbook.ts`). The agent wallets are
+not registered in AgentBook: registration needs an Orb-verified World ID and
+the operator declined biometric verification, and the released CLI offers no
+sandbox path. The human-backed flow is therefore proven by
+`apps/agents/tests/agentkit-gate.test.ts` against a stub registry and by the
+live 402 challenge on the tunnel, and the reasons are in
 [`docs/world-agentkit-feedback.md`](docs/world-agentkit-feedback.md).
 
 **Uniswap.** Ranger runs on Uniswap v3 on BNB Smart Chain as a selectable
