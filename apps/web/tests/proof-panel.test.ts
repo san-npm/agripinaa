@@ -8,7 +8,7 @@ test('proof rows link each position through the manager that minted it and txs t
     import assert from 'node:assert/strict';
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
-    import { bscScanAddress, bscScanTx } from '@agripinaa/shared';
+    import { bscScanNft, bscScanTx } from '@agripinaa/shared';
     import { ProofPanel } from './src/components/ProofPanel.tsx';
     import { VERIFIED_AGENTS } from './src/lib/verified.ts';
     globalThis.React = React;
@@ -20,11 +20,12 @@ test('proof rows link each position through the manager that minted it and txs t
       ...ranger,
       proofs: [...ranger.proofs, { label: 'Synthetic fill', ref: tx, kind: 'tx', note: 'tx rows are unchanged' }],
     } }));
-    assert.ok(html.includes('href="' + bscScanAddress(56, UNISWAP_NPM) + '?a=2745250"'), 'the Uniswap row links through the Uniswap position manager');
+    assert.ok(html.includes('href="' + bscScanNft(56, UNISWAP_NPM, '2745250') + '"'), 'the Uniswap row links the NFT instance under the Uniswap position manager');
+    assert.ok(html.includes('href="https://bscscan.com/nft/' + UNISWAP_NPM + '/2745250"'), 'the NFT-instance route, not the contract address page');
     assert.ok(html.includes('position #2745250'));
-    assert.ok(html.includes('href="' + bscScanAddress(56, PANCAKE_NPM) + '?a=7173629"'), 'rows without positionManager keep the PancakeSwap default');
+    assert.ok(html.includes('href="' + bscScanNft(56, PANCAKE_NPM, '7173629') + '"'), 'rows without positionManager keep the PancakeSwap default');
     assert.ok(html.includes('href="' + bscScanTx(56, tx) + '"'), 'tx rows link the transaction');
     assert.ok(html.includes('execution tx'));
-    assert.ok(!html.includes(PANCAKE_NPM + '?a=2745250'), 'the Uniswap position must not be looked up on PancakeSwap');
+    assert.ok(!html.includes(PANCAKE_NPM + '/2745250') && !html.includes('?a='), 'the Uniswap position must not be looked up on PancakeSwap, and no row uses the address filter');
   `], { cwd: new URL('..', import.meta.url), stdio: 'pipe' });
 });
