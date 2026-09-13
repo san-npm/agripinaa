@@ -74,11 +74,12 @@ test('a prototype key is not an agent', () => {
  * The bodies below are the exact responses `/manifests/<slug>.json` returns
  * after each registered identity has transitioned to live, captured with the
  * runner base pinned to the fixture origin. Those URLs are the tokenURI of an
- * already-minted, immutable ERC-8004 identity, so the bytes may not drift: not
- * a value, not a key, not the order of the keys. The composition below mirrors
- * buildManifest (endpoint first inside x402, everything else in declaration
- * order), so this fails the moment a registry edit would change what an x402
- * client reads back.
+ * already-minted, immutable ERC-8004 identity: the URLs never change, and the
+ * bodies change only on purpose. The composition below mirrors buildManifest
+ * (endpoint first inside x402, everything else in declaration order), so this
+ * fails the moment a registry edit would change what an x402 client reads
+ * back; a deliberate policy update (a venue move, say) updates the fixture in
+ * the same commit.
  *
  * All first-party agents are registered, so every served body is captured.
  */

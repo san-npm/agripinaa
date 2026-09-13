@@ -340,9 +340,16 @@ interface PendingOrder {
  */
 const LEGACY_MINTED_TOKEN_IDS: readonly string[] = ['7248592'];
 
-function knownMintedTokenIds(ctx: VenueCtx): Set<string> {
+/**
+ * The seed is a PancakeSwap id minted by the agent's own wallet, so it is
+ * trusted only there: on any other venue, or for a managed account, the same
+ * number would name a stranger's NFT and adopting it would repoint the
+ * reference pool exactly the way the seed exists to prevent.
+ */
+export function knownMintedTokenIds(ctx: VenueCtx): Set<string> {
+  const seed = !ctx.managedAccount && ctx.venue.name === 'pancakeswap-v3' ? LEGACY_MINTED_TOKEN_IDS : [];
   return new Set([
-    ...LEGACY_MINTED_TOKEN_IDS,
+    ...seed,
     ...ctx.state.get<string[]>('mintedTokenIds', []),
   ]);
 }
