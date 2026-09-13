@@ -8,10 +8,12 @@
  * independent measurement of the same thing, indexed from the venues' events,
  * that a rotation must also agree with before it moves a depositor's funds.
  *
- * Deliberately one-directional: The Graph can veto a rotation the chain
- * justified, never trigger one. A stale, unreachable, or implausible subgraph
- * is reported as unavailable and the chain's decision stands, so the worst
- * this lane can do is hold a position one tick longer.
+ * Deliberately one-directional and bounded: The Graph can veto a rotation
+ * the chain justified, never trigger one, and it can say no at most
+ * MAX_GRAPH_VETOES ticks in a row before the chain decides alone. A stale,
+ * unreachable, or implausible subgraph is reported as unavailable and the
+ * chain's decision stands, so the worst this lane can do is delay a rotation
+ * by a few ticks.
  */
 import { graphQuery } from '@agripinaa/shared';
 
@@ -41,6 +43,12 @@ const MAX_INDEX_AGE_S = 6 * 3600;
  * rotation forever.
  */
 export const MAX_CHAIN_DISAGREEMENT = 0.5;
+/**
+ * Consecutive vetoes the lane may cast before it is overruled. A subgraph
+ * that sits inside the plausibility bound but keeps disagreeing on direction
+ * (a biased market, a lagging rate) would otherwise hold a rotation forever.
+ */
+export const MAX_GRAPH_VETOES = 3;
 
 /**
  * Messari's compound-forks subgraph (which Venus is) annualizes the per-block
@@ -187,19 +195,23 @@ export function plausibleAgainstChain(
  * agreement is all that is asked, since the chain's gate already applied the
  * hysteresis and the confirmation streak; a disagreement holds and freezes
  * the streak where it was, so the next agreeing tick can still rotate.
+ * `graphVetoes` is how many ticks in a row the lane has already said no; at
+ * MAX_GRAPH_VETOES it is overruled and the chain's decision goes ahead. The
+ * caller keeps that count: up on a veto, back to zero on anything else.
  * A hold, or an unavailable lane, passes through untouched.
  */
 export function graphConfirms<
   D extends { action: 'hold' | 'rotate'; target: 'venus' | 'aave'; edgeBps: number; nextStreak: number },
 >(
   decision: D,
-  input: { venue: 'venus' | 'aave'; betterStreak: number },
+  input: { venue: 'venus' | 'aave'; betterStreak: number; graphVetoes?: number },
   graph: GraphRatesRead | null | undefined,
-): D & { graphVeto?: true } {
+): D & { graphVeto?: true; graphOverruled?: true } {
   if (decision.action !== 'rotate' || !graph || 'unavailable' in graph) return decision;
   const targetBps = decision.target === 'venus' ? graph.venusBps : graph.aaveBps;
   const currentBps = input.venue === 'venus' ? graph.venusBps : graph.aaveBps;
   if (targetBps > currentBps) return decision;
+  if ((input.graphVetoes ?? 0) >= MAX_GRAPH_VETOES) return { ...decision, graphOverruled: true };
   return {
     ...decision,
     action: 'hold',

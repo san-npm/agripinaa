@@ -11,6 +11,7 @@ const {
   rescaleVenusBps,
   supplyBpsFromMarkets,
   MESSARI_BSC_BLOCKS_PER_YEAR,
+  MAX_GRAPH_VETOES,
   MESSARI_LENDING_SUBGRAPHS,
 } = await import('../src/graph-rates');
 
@@ -148,4 +149,16 @@ test('a subgraph number far from the chain\'s is not a second opinion, it is a b
   assert.ok('unavailable' in off && /venus: subgraph says 60.00 bps, chain says 242.00 bps/.test(off.unavailable));
   // An unavailable read passes through untouched.
   assert.deepEqual(plausibleAgainstChain({ unavailable: 'x' }, chain), { unavailable: 'x' });
+});
+
+test('a lane that keeps saying no is overruled after MAX_GRAPH_VETOES ticks, so a bias can only delay', () => {
+  assert.equal(MAX_GRAPH_VETOES, 3);
+  for (let vetoes = 0; vetoes < MAX_GRAPH_VETOES; vetoes++) {
+    assert.equal(graphConfirms(rotate, { ...input, graphVetoes: vetoes }, disagrees).action, 'hold', `veto ${vetoes + 1}`);
+  }
+  const overruled = graphConfirms(rotate, { ...input, graphVetoes: MAX_GRAPH_VETOES }, disagrees);
+  assert.equal(overruled.action, 'rotate');
+  assert.equal(overruled.graphOverruled, true);
+  // Agreement does not need the count at all.
+  assert.deepEqual(graphConfirms(rotate, { ...input, graphVetoes: 9 }, agrees), rotate);
 });
