@@ -45,7 +45,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const page = await listAgents(category, limit, cursor);
     if (cursor !== undefined) return Response.json(page);
-    return Response.json(leadWithFirstParty(page, await listFirstParty(category), limit));
+    return Response.json(leadWithFirstParty(page, await listFirstParty(category)));
   } catch (error) {
     if (error instanceof RegistryCursorInvalidError) {
       return Response.json({ error: error.message }, { status: 400 });

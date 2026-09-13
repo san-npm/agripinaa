@@ -125,9 +125,11 @@ export const yieldBAgent: AgentModule = {
       venusBps: rates.venusBps,
       aaveBps: rates.aaveBps,
       betterStreak: ctx.state.get<number>('betterStreak', 0),
+      graphVetoes: ctx.state.get<number>('graphVetoes', 0),
     };
     const decision = graphConfirms(conservativeRotation(input), input, rates.graph);
     ctx.state.set('betterStreak', decision.nextStreak);
+    ctx.state.set('graphVetoes', decision.graphVeto ? input.graphVetoes + 1 : 0);
 
     if (decision.action === 'hold') {
       ctx.log({

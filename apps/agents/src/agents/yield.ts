@@ -148,6 +148,8 @@ export interface RotationDecision {
   nextStreak: number;
   /** Set when the chain said rotate and The Graph's rates did not agree. */
   graphVeto?: true;
+  /** Set when The Graph disagreed again but had already vetoed MAX_GRAPH_VETOES ticks in a row. */
+  graphOverruled?: true;
 }
 
 /**
@@ -475,9 +477,11 @@ export const yieldAgent: AgentModule = {
       venusBps: rates.venusBps,
       aaveBps: rates.aaveBps,
       betterStreak: ctx.state.get<number>('betterStreak', 0),
+      graphVetoes: ctx.state.get<number>('graphVetoes', 0),
     };
     const decision = graphConfirms(decideRotation(input), input, rates.graph);
     ctx.state.set('betterStreak', decision.nextStreak);
+    ctx.state.set('graphVetoes', decision.graphVeto ? input.graphVetoes + 1 : 0);
 
     if (decision.action === 'hold') {
       ctx.log({ ...base, event: 'tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak, graphVeto: decision.graphVeto });
@@ -489,7 +493,7 @@ export const yieldAgent: AgentModule = {
       return;
     }
 
-    ctx.log({ ...base, event: 'tick', decision: 'rotate', from: venue, to: decision.target, edgeBps: decision.edgeBps });
+    ctx.log({ ...base, event: 'tick', decision: 'rotate', from: venue, to: decision.target, edgeBps: decision.edgeBps, graphOverruled: decision.graphOverruled });
     if (venue === 'venus') await withdrawVenus(ctx);
     else await withdrawAave(ctx);
     ctx.state.set('venue', 'none');
@@ -869,9 +873,11 @@ export async function managedYieldTick(
     venusBps: rates.venusBps,
     aaveBps: rates.aaveBps,
     betterStreak: previousStreak,
+    graphVetoes: ctx.state.get<number>(ns('graphVetoes'), 0),
   };
   const decision = graphConfirms(policy.decide(input), input, rates.graph);
   ctx.state.set(ns('betterStreak'), decision.nextStreak);
+  ctx.state.set(ns('graphVetoes'), decision.graphVeto ? input.graphVetoes + 1 : 0);
 
   if (decision.action === 'hold') {
     ctx.log({ ...base, event: 'managed-tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak, graphVeto: decision.graphVeto });

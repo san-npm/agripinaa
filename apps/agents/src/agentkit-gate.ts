@@ -207,7 +207,12 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
   ];
   const firstLine = (s: string | undefined, fallback: string) => (s ?? fallback).split('\n')[0]!;
 
-  async function admitInner(header: string, resourceUri: string, path: string): Promise<Admission> {
+  async function admitInner(
+    header: string,
+    resourceUri: string,
+    path: string,
+    expired: () => boolean,
+  ): Promise<Admission> {
     const payload = parseAgentkitHeader(header);
     // Consumed before anything awaits: a header captured in flight cannot be
     // presented twice, however close together the two arrive.
@@ -239,6 +244,9 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
         humanId = null;
       }
       if (!humanId) continue;
+      // The caller already got "took too long": the registry read that
+      // finished late must not spend one of this human's free reads.
+      if (expired()) return { granted: false, reason: 'verification took too long' };
       if (storage.tryIncrementUsage(path, humanId, uses)) {
         return { granted: true, humanId, address: verification.address, registry: book.name };
       }
@@ -268,11 +276,15 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
       // A stalled registry or signature RPC must not hold one of the few
       // in-flight slots: past the deadline the caller pays like everyone else.
       let deadline: ReturnType<typeof setTimeout> | undefined;
+      let expired = false;
       const timeout = new Promise<Admission>((resolve) => {
-        deadline = setTimeout(() => resolve({ granted: false, reason: 'verification took too long' }), ADMIT_DEADLINE_MS);
+        deadline = setTimeout(() => {
+          expired = true;
+          resolve({ granted: false, reason: 'verification took too long' });
+        }, ADMIT_DEADLINE_MS);
       });
       try {
-        return await Promise.race([admitInner(header, resourceUri, path), timeout]);
+        return await Promise.race([admitInner(header, resourceUri, path, () => expired), timeout]);
       } catch (err) {
         return { granted: false, reason: firstLine(err instanceof Error ? err.message : undefined, 'bad header') };
       } finally {

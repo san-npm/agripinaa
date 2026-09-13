@@ -14,12 +14,14 @@ function agent(tokenId: string): AgentSummary {
   };
 }
 
-test('first-party agents lead the page, duplicates from the window are dropped, and the limit holds', () => {
+test('first-party agents lead the page, duplicates are dropped, and no window item is lost to the cursor', () => {
   const page: Page<AgentSummary> = { items: [agent('9'), agent('269703'), agent('8')], nextCursor: 'g8', total: null, asOf: '', source: 'the-graph' };
-  const led = leadWithFirstParty(page, [agent('269703'), agent('307485')], 3);
-  assert.deepEqual(led.items.map((a) => a.tokenId), ['269703', '307485', '9']);
+  const led = leadWithFirstParty(page, [agent('269703'), agent('307485')]);
+  // Every window item survives: the cursor 'g8' was cut for exactly these, so
+  // trimming the page would skip '8' forever on the next page.
+  assert.deepEqual(led.items.map((a) => a.tokenId), ['269703', '307485', '9', '8']);
   assert.equal(led.nextCursor, 'g8', 'the window cursor is untouched');
   // A token id the window spells differently is still the same agent.
   const spelled = { ...page, items: [{ ...agent('269703'), tokenId: '0269703' }] };
-  assert.deepEqual(leadWithFirstParty(spelled, [agent('269703')], 5).items.map((a) => a.tokenId), ['269703']);
+  assert.deepEqual(leadWithFirstParty(spelled, [agent('269703')]).items.map((a) => a.tokenId), ['269703']);
 });

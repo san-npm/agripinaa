@@ -23,7 +23,7 @@ BSC agents. It does not require a video or a separate manual dress rehearsal.
 - [x] TermiX Agent Advantage Report has three Pashov-reviewed same-boundary
       tasks, corrected user-cost accounting and raw Harvester/Ranger outputs
 - [x] Form-ready sponsor copy assembled in
-      [`sponsor-evidence.md`](sponsor-evidence.md)
+      [`sponsor-evidence.md`](../sponsor-evidence.md)
 
 ## Owner action required
 
@@ -31,7 +31,7 @@ BSC agents. It does not require a video or a separate manual dress rehearsal.
       second entry, because the rules allow one entry per team. If the edit
       link is unavailable, ask the organizer how to update the Aug 7 response.
 - [ ] Copy the project fields and Additional Notes from
-      [`sponsor-evidence.md`](sponsor-evidence.md).
+      [`sponsor-evidence.md`](../sponsor-evidence.md).
 - [ ] Select PancakeSwap, AltLayer and TermiX. The current form omits Altana, so
       Additional Notes explicitly enters Best Built with Altana and links the
       Altana explorer account.
