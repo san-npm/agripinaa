@@ -22,3 +22,4 @@ packages/spikes/contracts/cache/
 contracts/.echidna-corpus/
 contracts/.medusa-corpus/
 contracts/crytic-export/
+.serena/

@@ -119,6 +119,19 @@ test('a registry that cannot be read is skipped, not fatal: the next one still a
   assert.match(reason(declined), /not registered in AgentBook/);
 });
 
+test('a signature on a chain the challenge did not offer is refused before any RPC is chosen', async () => {
+  const gate = createAgentkitGate({ agentBooks: [book] });
+  const challenge = agentkitChallenge(RESOURCE).agentkit;
+  // Advertise the foreign chain to the client so it signs for it.
+  const foreign = { ...challenge, supportedChains: [{ chainId: 'eip155:1', type: 'eip191' as const }] };
+  const header = await createAgentkitClient({
+    signer: { address: human.address, chainId: 'eip155:1', type: 'eip191', signMessage: (m) => human.signMessage({ message: m }) },
+  }).createHeader(foreign);
+  const refused = await gate.admit(header, RESOURCE, '/grid/status');
+  assert.equal(refused.granted, false);
+  assert.match(reason(refused), /chain eip155:1 is not one the challenge offered/);
+});
+
 test('a signature for another path on the same host does not open this one', async () => {
   const gate = createAgentkitGate({ agentBooks: [book] });
   const login = 'https://abc-def.trycloudflare.com/login';
