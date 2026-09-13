@@ -28,7 +28,7 @@ test('every configured strategy has a distinct real PNG, assets, and local proto
   assert.deepEqual(agentExperience('health-factor').protocols, ['aave']);
   assert.deepEqual(agentExperience('venus-guardian').protocols, ['venus']);
   assert.deepEqual(agentExperience('yield-b').protocols, ['aave', 'venus']);
-  assert.deepEqual(agentExperience('lp-range').protocols, ['uniswap', 'pancakeswap', 'ophis']);
+  assert.deepEqual(agentExperience('lp-range').protocols, ['uniswap', 'ophis']);
 });
 
 test('bundled brand SVGs contain no executable content or external resources', async () => {

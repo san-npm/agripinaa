@@ -7,7 +7,7 @@ import {
 } from '@agripinaa/shared/funding';
 import {
   OPHIS_VAULT_RELAYER_BSC,
-  PANCAKE_V3_POSITION_MANAGER,
+  RANGER_POSITION_MANAGER,
   type ManagedApproval,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
@@ -31,8 +31,8 @@ const EVENT = parseAbiItem('event Approval(address indexed owner,address indexed
 const APPROVALS = [
   { token: 'WBNB', spender: OPHIS_VAULT_RELAYER_BSC },
   { token: 'USDT', spender: OPHIS_VAULT_RELAYER_BSC },
-  { token: 'WBNB', spender: PANCAKE_V3_POSITION_MANAGER },
-  { token: 'USDT', spender: PANCAKE_V3_POSITION_MANAGER },
+  { token: 'WBNB', spender: RANGER_POSITION_MANAGER },
+  { token: 'USDT', spender: RANGER_POSITION_MANAGER },
 ] as const satisfies readonly ManagedApproval[];
 
 function approval(

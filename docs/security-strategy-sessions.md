@@ -14,7 +14,7 @@ the assets the account has approved to its fixed protocol venues.
 
 This isolation is a real capital boundary, not marketing copy. It is also the
 reason these six paths do **not** claim the yield routers' drain-proof property:
-CoW orders and Pancake V3 calls contain recipient and amount fields. A
+CoW orders and Uniswap v3 position-manager calls contain recipient and amount fields. A
 compromised manager key could misuse those fields within the approved strategy
 inventory even though it cannot directly call an ERC-20 transfer or approval.
 
@@ -29,7 +29,7 @@ expiry, chain, or ERC-1271 checker.
 Every strategy carries the canonical USDT and native-BNB ceilings. The native
 ceiling covers transaction gas and any native value attached to an allowlisted
 call; it is not a gas-only permission. Ranger also carries a fixed WBNB ceiling
-because Pancake V3 `mint` spends both inventory legs through the account;
+because Uniswap v3 `mint` spends both inventory legs through the account;
 omitting that permission would make its first mint fail closed at the smart
 account.
 
@@ -40,7 +40,7 @@ addresses only:
 - the CoW/Ophis vault relayer for trading inventory;
 - the Aave V3 BSC pool for the Aave repair reserve;
 - Venus vUSDT for the Venus repair reserve; and
-- PancakeSwap V3's non-fungible position manager for Ranger inventory.
+- Uniswap v3's non-fungible position manager (BNB Smart Chain) for Ranger inventory.
 
 For Ophis agents, the only account-local ERC-1271 checker is the BSC CoW
 Settlement contract. The Ophis adapter submits smart-account orders using the
@@ -55,7 +55,7 @@ checker authority is independently read from the account on every handoff.
 | BTC Grid | CoW order signing for approved BTCB and USDT | Approved BTCB/USDT in the dedicated account |
 | Guardian | Aave `repay` | The dedicated USDT repair reserve; a malicious call can repay another Aave account |
 | Venus Guardian | Venus vUSDT `repayBorrow` | The dedicated USDT repair reserve, applied to this account's Venus debt |
-| Ranger | Pancake V3 `mint`, `decreaseLiquidity`, `collect`, plus CoW signing | The approved WBNB/USDT inventory and managed position proceeds |
+| Ranger | Uniswap v3 `mint`, `decreaseLiquidity`, `collect`, plus CoW signing | The approved WBNB/USDT inventory and managed position proceeds |
 | Rebalancer | CoW order signing for approved WBNB and USDT | Approved WBNB/USDT in the dedicated account |
 
 Guardian activation never supplies collateral or opens debt. It adopts an

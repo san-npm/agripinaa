@@ -508,12 +508,12 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     manifest: {
       name: 'Agripinaa Ranger',
       description:
-        'Concentrated-liquidity range management on PancakeSwap V3 (WBNB/USDT). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.',
+        'Concentrated-liquidity range management on Uniswap v3 (WBNB/USDT, BNB Smart Chain). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.',
       category: 'rebalancing',
       image: 'https://agripinaa.vercel.app/agent-icon.png',
       capabilities: ['trading', 'lp-management', 'x402-status'],
       execution: {
-        venue: 'pancakeswap-v3',
+        venue: 'uniswap-v3',
         rebalanceVenue: 'ophis',
         pair: 'WBNB/USDT',
         chainId: 56,
@@ -540,9 +540,10 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     // harvest is what should refresh this ref (and the attestation anchored to
     // it), not a hand edit here.
     //
-    // The Uniswap v3 row is the agent's own-capital run since 2026-09-13
-    // (`LP_RANGE_VENUE=uniswap-v3` on the runner); managed accounts stay on
-    // PancakeSwap V3 because their session policy allows only that venue.
+    // Ranger runs on Uniswap v3 since 2026-09-13: own capital through
+    // `LP_RANGE_VENUE=uniswap-v3` on the runner, managed accounts through the
+    // session policy in managed-strategies.ts. The PancakeSwap row is the
+    // position from the original venue, kept as history.
     proofs: [
       {
         label: 'Uniswap v3 position minted',

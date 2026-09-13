@@ -34,7 +34,7 @@ Agents that trade do so through [Ophis](https://ophis.fi) batch auctions
 | Agripinaa Venus Guardian | [307486](https://agripinaa.vercel.app/agent/56/307486) | Venus liquidation protection with a USDT repair reserve |
 | Agripinaa Harvester | [269705](https://agripinaa.vercel.app/agent/56/269705) | USDT venue rotation Venus vs Aave, 50 bps hysteresis |
 | Agripinaa Steward | [307487](https://agripinaa.vercel.app/agent/56/307487) | Conservative venue rotation with 120 bps hysteresis and three confirmations |
-| Agripinaa Ranger | [269706](https://agripinaa.vercel.app/agent/56/269706) | WBNB/USDT range management, own capital on Uniswap v3 and managed accounts on PancakeSwap V3, rebalanced 50/50 through Ophis |
+| Agripinaa Ranger | [269706](https://agripinaa.vercel.app/agent/56/269706) | WBNB/USDT range management on Uniswap v3, rebalanced 50/50 through Ophis |
 | Agripinaa Rebalancer | [307488](https://agripinaa.vercel.app/agent/56/307488) | Maintains a 50/50 WBNB/USDT value split through Ophis |
 
 Each serves a paid `GET /:agent/status` over x402 (permit2-exact, USDT, 0.05
@@ -212,8 +212,12 @@ venue (`apps/agents/src/lp-venues.ts`, addresses probed on-chain and recorded
 there), and it is live: on 2026-09-13 the production runner switched venue,
 rebalanced through Ophis and minted Uniswap v3 position 2745250 in
 [`0x3dffa2c5…5076`](https://bscscan.com/tx/0x3dffa2c5dc47ebbfea32fef0fecb628b2aca991877025285a5cda285e4c15076)
-within forty seconds. [`FEEDBACK.md`](FEEDBACK.md) has the contribution
-pointers, the log lines and the developer feedback.
+within forty seconds. Since 2026-09-13 the managed mandates users activate
+are scoped to the same Uniswap v3 position manager
+(`RANGER_POSITION_MANAGER` in `packages/shared/src/managed-strategies.ts`),
+so Ranger is a Uniswap v3 agent for its own capital and for every user
+account. [`FEEDBACK.md`](FEEDBACK.md) has the contribution pointers, the log
+lines and the developer feedback.
 
 **Bazantic.** Two gateways and two recipes so any MCP client can discover,
 vet and hire an agent: the Agripinaa Agent Index (`apps/web/public/openapi.json`)

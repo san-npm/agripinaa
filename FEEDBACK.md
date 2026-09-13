@@ -1,9 +1,11 @@
 # Uniswap Foundation: developer feedback (ETHOnline 2026)
 
 Project: Agripinaa, an ERC-8004 agent marketplace on BNB Smart Chain.
-Contribution: the Ranger agent (Pancake V3 range management, rebalanced
-through Ophis batch auctions) now runs on **Uniswap v3 on BNB Smart Chain** as
-a selectable venue. Where to look:
+Contribution: the Ranger agent (concentrated-liquidity range management,
+rebalanced through Ophis batch auctions, originally on PancakeSwap V3) now runs
+on **Uniswap v3 on BNB Smart Chain**: its own capital since 2026-09-13 00:45
+UTC, and every managed user mandate since the session policy switched later
+that day. Where to look:
 
 - `apps/agents/src/lp-venues.ts`: the venue table. Uniswap v3 BNB addresses
   from developers.uniswap.org, each probed on-chain before use, with the probe
@@ -15,8 +17,13 @@ a selectable venue. Where to look:
   `lp-range-venue-config.test.ts`: selection, the shared pool ABI, the
   own-capital versus managed binding, and a misnamed venue stopping Ranger
   alone.
-- `ops/launch.md`: `LP_RANGE_VENUE=uniswap-v3` switches the agent's own
-  capital; managed mandates keep their audited PancakeSwap session policy.
+- `packages/shared/src/managed-strategies.ts`: `RANGER_POSITION_MANAGER`,
+  the Uniswap v3 position manager every managed mandate is scoped to (the
+  browser grants exactly `mint`, `decreaseLiquidity` and `collect` on it, plus
+  the two token approvals); the runner binds managed accounts to the venue
+  that policy names and retires mandates granted under the earlier policy.
+- `ops/launch.md`: `LP_RANGE_VENUE=uniswap-v3` selects the venue for the
+  agent's own capital.
 
 ## What we used
 

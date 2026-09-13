@@ -1,9 +1,9 @@
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { erc20Abi, parseAbi, parseEventLogs, zeroAddress, type Log } from 'viem';
 
-import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
+import { TOKENS_BSC, fromBaseUnits, managedStrategyFor, toBaseUnits } from '@agripinaa/shared';
 
-import { LP_VENUES, POOL_ABI, selectLpVenue, type LpVenue } from '../lp-venues';
+import { POOL_ABI, selectLpVenue, venueForPositionManager, type LpVenue } from '../lp-venues';
 import { ChassisOphisWallet } from '../ophis-wallet';
 import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
@@ -220,7 +220,9 @@ export function formatWholeUnits(amount: number): string {
  * at runtime through the verified factory rather than hardcoded.
  */
 const OWN_CAPITAL = selectLpVenue();
-const PANCAKE = LP_VENUES['pancakeswap-v3'];
+/** The venue every managed mandate is scoped to: the first call scope of the Ranger session policy. */
+const MANAGED_TARGET = managedStrategyFor('lp-range')?.callScopes[0]?.to ?? '';
+const MANAGED = venueForPositionManager(MANAGED_TARGET);
 
 /** A context bound to the venue it runs on. Every helper below takes one. */
 type VenueCtx = AgentContext & { venue: LpVenue };
@@ -1004,33 +1006,52 @@ async function prepareInventory(ctx: VenueCtx, info: PoolInfo): Promise<void> {
 const VENUE_SCOPED_KEYS = new Set(['poolInfo', 'position', 'mintedTokenIds']);
 
 /**
- * Bind a context to the venue it runs on.
- *
- * A managed context (tickManagedStrategy marks it with `managedAccount`) acts
- * under a session policy that authorizes PancakeSwap only, so it is bound to
- * PancakeSwap whatever LP_RANGE_VENUE says, and is never skipped: a confirmed
- * relay mint still gets recovered. The agent's own capital runs on the
- * selected venue; on a non-default venue its position state is kept apart so
- * PancakeSwap position ids are never read against another manager's NFTs.
- * Returns null, with the reason, when own capital is asked to run on a venue
- * LP_RANGE_VENUE does not name: Ranger then sits out, the other agents and
- * the managed mandates are unaffected.
+ * State key for a venue-scoped value. PancakeSwap, the original venue, keeps
+ * the plain keys the live state was written under; every other venue keeps
+ * its position state apart, so a PancakeSwap position id is never read
+ * against another manager's NFTs. Managed accounts follow the same rule
+ * inside their own namespace, which is what makes a mandate re-activated
+ * after the venue change start clean.
  */
-export function venueContext(ctx: AgentContext): VenueCtx | { configError: string } {
-  if (ctx.managedAccount) return { ...ctx, venue: PANCAKE };
-  if ('error' in OWN_CAPITAL) return { configError: OWN_CAPITAL.error };
-  const venue = OWN_CAPITAL.venue;
+export function venueScopedKey(venue: LpVenue, key: string): string {
+  return venue.name !== 'pancakeswap-v3' && VENUE_SCOPED_KEYS.has(key) ? `venue:${venue.name}:${key}` : key;
+}
+
+/** Where a managed account's current position lives, for the public managed-status read. */
+export function managedPositionStateKey(): string | null {
+  return MANAGED ? venueScopedKey(MANAGED, 'position') : null;
+}
+
+function bindVenue(ctx: AgentContext, venue: LpVenue): VenueCtx {
   if (venue.name === 'pancakeswap-v3') return { ...ctx, venue };
-  const prefix = `venue:${venue.name}:`;
-  const scoped = (key: string) => (VENUE_SCOPED_KEYS.has(key) ? prefix + key : key);
   return {
     ...ctx,
     venue,
     state: {
-      get: (key, fallback) => ctx.state.get(scoped(key), fallback),
-      set: (key, value) => ctx.state.set(scoped(key), value),
+      get: (key, fallback) => ctx.state.get(venueScopedKey(venue, key), fallback),
+      set: (key, value) => ctx.state.set(venueScopedKey(venue, key), value),
     },
   };
+}
+
+/**
+ * Bind a context to the venue it runs on.
+ *
+ * A managed context (tickManagedStrategy marks it with `managedAccount`) acts
+ * under the Ranger session policy, so it is bound to the venue that policy
+ * names whatever LP_RANGE_VENUE says, and is never skipped: a confirmed relay
+ * mint still gets recovered. The agent's own capital runs on the selected
+ * venue. Returns the reason instead of a context when a lane is asked to run
+ * on a venue Ranger does not know: Ranger then sits out, the other agents
+ * are unaffected.
+ */
+export function venueContext(ctx: AgentContext): VenueCtx | { configError: string } {
+  if (ctx.managedAccount) {
+    if (!MANAGED) return { configError: `managed policy names position manager ${MANAGED_TARGET || '(none)'}, which is not a known venue` };
+    return bindVenue(ctx, MANAGED);
+  }
+  if ('error' in OWN_CAPITAL) return { configError: OWN_CAPITAL.error };
+  return bindVenue(ctx, OWN_CAPITAL.venue);
 }
 
 export const lpRangeAgent: AgentModule = {
