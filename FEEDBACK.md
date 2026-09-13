@@ -18,10 +18,11 @@ that day. Where to look:
   own-capital versus managed binding, and a misnamed venue stopping Ranger
   alone.
 - `packages/shared/src/managed-strategies.ts`: `RANGER_POSITION_MANAGER`,
-  the Uniswap v3 position manager every managed mandate is scoped to (the
-  browser grants exactly `mint`, `decreaseLiquidity` and `collect` on it, plus
-  the two token approvals); the runner binds managed accounts to the venue
-  that policy names and retires mandates granted under the earlier policy.
+  the Uniswap v3 position manager every managed mandate is scoped to: the
+  session grants only `mint`, `decreaseLiquidity` and `collect` on it, and the
+  owner-authorized activation separately approves WBNB and USDT to it. The
+  runner binds managed accounts to the venue that policy names and retires
+  mandates granted under the earlier policy.
 - `ops/launch.md`: `LP_RANGE_VENUE=uniswap-v3` selects the venue for the
   agent's own capital.
 

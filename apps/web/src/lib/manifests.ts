@@ -4,7 +4,8 @@
  * These were four static files under public/manifests, then a hardcoded copy
  * here, and are now read straight off the shared agent registry. The on-chain
  * ERC-8004 tokenURIs point at those exact paths and are permanent. Each body is
- * pinned after its registration status becomes live; the only runtime value is
+ * pinned by packages/shared/tests once its registration status becomes live,
+ * so it changes only on purpose, fixture and registry together; the only runtime value is
  * x402.endpoint, which is injected per request from the runner resolver instead
  * of being frozen into a committed file at tunnel-rotation time.
  *

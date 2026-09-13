@@ -5,7 +5,7 @@ import { test } from 'node:test';
 process.env.LP_RANGE_VENUE = 'uniswap-v3';
 
 const { managedStrategyFor } = await import('@agripinaa/shared');
-const { managedPositionStateKey, venueContext } = await import('../src/agents/lp-range');
+const { knownMintedTokenIds, managedPositionStateKey, venueContext } = await import('../src/agents/lp-range');
 const { LP_VENUES } = await import('../src/lp-venues');
 
 type Ctx = Parameters<typeof venueContext>[0];
@@ -67,4 +67,15 @@ test('on a non-default venue only the position state is kept apart; a pending or
   assert.deepEqual(managedStore.get('venue:uniswap-v3:position'), { tokenId: 'm' });
   managed.state.set('pendingOrder', { uid: '0xorder' });
   assert.deepEqual(managedStore.get('pendingOrder'), { uid: '0xorder' });
+});
+
+test('the legacy PancakeSwap mint seed is trusted only by own capital on PancakeSwap', () => {
+  const managed = bound(fakeCtx('0x2222222222222222222222222222222222222222').ctx);
+  assert.deepEqual([...knownMintedTokenIds(managed)], [], 'a managed Uniswap account starts with no adoptable ids');
+  const own = bound(fakeCtx().ctx);
+  assert.deepEqual([...knownMintedTokenIds(own)], [], 'own capital on Uniswap does not inherit the PancakeSwap seed');
+  own.state.set('mintedTokenIds', ['2745250']);
+  assert.deepEqual([...knownMintedTokenIds(own)], ['2745250']);
+  const pancake = { ...own, managedAccount: undefined, venue: { ...own.venue, name: 'pancakeswap-v3' as const } };
+  assert.deepEqual([...knownMintedTokenIds(pancake)], ['7248592', '2745250']);
 });
