@@ -1,4 +1,4 @@
-import { bscScanAddress, bscScanTx } from "@agripinaa/shared";
+import { bscScanAddress, bscScanNft, bscScanTx } from "@agripinaa/shared";
 
 import type { VerifiedAgent } from "@/lib/verified";
 import { VerifiedIcon } from "./icons";
@@ -63,7 +63,7 @@ export function ProofPanel({ agent }: { agent: VerifiedAgent }) {
             note={p.note}
             href={
               p.kind === "position"
-                ? `${bscScanAddress(56, p.positionManager ?? NPM)}?a=${p.ref}`
+                ? bscScanNft(56, p.positionManager ?? NPM, p.ref)
                 : bscScanTx(56, p.ref)
             }
             linkText={p.kind === "position" ? `position #${p.ref}` : "execution tx"}
