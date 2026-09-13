@@ -360,8 +360,12 @@ test('a mandate scoped to a superseded policy target is retired without a tick; 
   const module = { name: 'lp-range', tick: async () => { ticked += 1; } } as never;
   const managerKey = { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey };
 
+  let fetches = 0;
+  t.mock.method(globalThis, 'fetch', async () => { fetches += 1; throw new Error('offline'); });
+
   upsertManaged('lp-range', rangerEntry(PANCAKE_V3_POSITION_MANAGER) as never, dir);
   const retired = await tickManagedStrategy({ ctx: base, module, client: {} as never, managerKey, dataDir: dir });
+  assert.equal(fetches, 0, 'a superseded mandate is retired before any on-chain read');
   assert.deepEqual(retired, { serviced: 0, errors: 0 });
   assert.equal(ticked, 0);
   assert.deepEqual(loadManaged('lp-range', dir), []);
@@ -370,9 +374,9 @@ test('a mandate scoped to a superseded policy target is retired without a tick; 
   // The canonical target passes the scope check and reaches the on-chain
   // session read, which this test makes fail: the entry then stays registered
   // and the sweep reports the error instead of retiring the mandate.
-  t.mock.method(globalThis, 'fetch', async () => { throw new Error('offline'); });
   upsertManaged('lp-range', rangerEntry(RANGER_POSITION_MANAGER) as never, dir);
   const canonical = await tickManagedStrategy({ ctx: base, module, client: {} as never, managerKey, dataDir: dir });
+  assert.ok(fetches > 0, 'the canonical mandate reached the on-chain session check');
   assert.deepEqual(canonical, { serviced: 0, errors: 1 });
   assert.equal(ticked, 0);
   assert.equal(loadManaged('lp-range', dir).length, 1);

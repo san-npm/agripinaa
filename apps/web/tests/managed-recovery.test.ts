@@ -141,8 +141,15 @@ test('Ranger owner recovery decreases bounded liquidity before collecting to the
     deadline: 1234n,
   });
   const collect = decodeFunctionData({ abi: POSITION_MANAGER_ABI, data: calls[1]!.data });
+  assert.equal(calls[1]!.to, RANGER_POSITION_MANAGER);
   assert.equal(collect.functionName, 'collect');
   assert.equal(collect.args?.[0].recipient.toLowerCase(), account.toLowerCase());
+
+  // Closed liquidity with fees still owed: collect alone, on the same manager.
+  const collectOnly = buildRangerExitCalls({ account, tokenId: 7271073n, liquidity: 0n, deadline: 1234n });
+  assert.equal(collectOnly.length, 1);
+  assert.equal(collectOnly[0]!.to, RANGER_POSITION_MANAGER);
+  assert.equal(decodeFunctionData({ abi: POSITION_MANAGER_ABI, data: collectOnly[0]!.data }).functionName, 'collect');
 });
 
 test('strategy recovery resets every pinned allowance before transferring live balances', () => {

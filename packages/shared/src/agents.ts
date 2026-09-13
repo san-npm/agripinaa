@@ -532,7 +532,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       txHash: '0x89a33aa7661447b2d73e8ac69e78f2db11c86e4992b6558db3118dbeab1fdd82',
       verifier: VERIFIER,
       tag: 'agripinaa-verified · rebalancing',
-      feedbackHash: 'anchored to the V3 position below',
+      feedbackHash: 'anchored to the PancakeSwap V3 position below',
     },
     // STALE, carried verbatim from verified.ts rather than silently corrected:
     // position 7173629 reads liquidity = 0 on-chain as of 2026-08-24 because the
@@ -556,7 +556,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         label: 'PancakeSwap V3 position minted',
         ref: '7173629',
         kind: 'position',
-        note: 'Concentrated-liquidity WBNB/USDT position, managed in range',
+        note: 'Concentrated-liquidity WBNB/USDT position on the original venue, kept as history',
       },
     ],
   },

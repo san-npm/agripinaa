@@ -72,6 +72,11 @@ test('on a non-default venue only the position state is kept apart; a pending or
 test('the legacy PancakeSwap mint seed is trusted only by own capital on PancakeSwap', () => {
   const managed = bound(fakeCtx('0x2222222222222222222222222222222222222222').ctx);
   assert.deepEqual([...knownMintedTokenIds(managed)], [], 'a managed Uniswap account starts with no adoptable ids');
+  assert.deepEqual(
+    [...knownMintedTokenIds({ ...managed, venue: { ...managed.venue, name: 'pancakeswap-v3' as const } })],
+    [],
+    'a managed account never trusts the seed, whatever venue it is bound to',
+  );
   const own = bound(fakeCtx().ctx);
   assert.deepEqual([...knownMintedTokenIds(own)], [], 'own capital on Uniswap does not inherit the PancakeSwap seed');
   own.state.set('mintedTokenIds', ['2745250']);
