@@ -202,8 +202,11 @@ live 402 challenge on the tunnel, and the reasons are in
 
 **Uniswap.** Ranger runs on Uniswap v3 on BNB Smart Chain as a selectable
 venue (`apps/agents/src/lp-venues.ts`, addresses probed on-chain and recorded
-there). [`FEEDBACK.md`](FEEDBACK.md) has the contribution pointers and the
-developer feedback.
+there), and it is live: on 2026-09-13 the production runner switched venue,
+rebalanced through Ophis and minted Uniswap v3 position 2745250 in
+[`0x3dffa2c5…5076`](https://bscscan.com/tx/0x3dffa2c5dc47ebbfea32fef0fecb628b2aca991877025285a5cda285e4c15076)
+within forty seconds. [`FEEDBACK.md`](FEEDBACK.md) has the contribution
+pointers, the log lines and the developer feedback.
 
 **Bazantic.** Two gateways and two recipes so any MCP client can discover,
 vet and hire an agent: the Agripinaa Agent Index (`apps/web/public/openapi.json`)
