@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
 import {
+  RANGER_POSITION_MANAGER,
   ALTANA_KEYSTORE_CONTROLLER_BSC,
   ALTANA_ORCHESTRATOR_BSC,
   ALTANA_ORCHESTRATOR_VERSION_BSC,
@@ -421,6 +422,17 @@ describe('reimbursed funding merchant', () => {
       },
     ];
     assert.equal(await validReimbursedFundingRequest(client as never, merchantRequest(calls)), true);
+
+    // A Ranger activation bundle also approves its position manager for both
+    // legs; the sponsor must accept every spender a managed policy names.
+    const rangerApprovals: TestCall[] = (['WBNB', 'USDT'] as const).map((symbol) => ({
+      to: TOKENS_BSC[symbol]!.address,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [RANGER_POSITION_MANAGER, maxUint256] }),
+    }));
+    assert.equal(
+      await validReimbursedFundingRequest(client as never, merchantRequest([...calls, ...rangerApprovals])),
+      true,
+    );
 
     const impossibleSwapMinimum = [...calls];
     impossibleSwapMinimum[2] = {

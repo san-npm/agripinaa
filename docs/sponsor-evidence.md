@@ -105,6 +105,11 @@ live position, then revoke or withdraw.
 
 ## Best Built with Altana
 
+> Update, 2026-09-13: new Ranger sessions are scoped to the Uniswap v3 position
+> manager on BNB Smart Chain instead of PancakeSwap V3. The KeyStore session,
+> relay, checker and spend boundaries described here are unchanged; the mainnet
+> evidence below is the PancakeSwap V3 run submitted to Build the Era.
+
 Official qualification mapping:
 
 | Requirement | Agripinaa evidence |
@@ -161,6 +166,12 @@ Suggested TermiX submission sentence:
 > plainly whenever manual verification was faster.
 
 ## PancakeSwap
+
+> Update, 2026-09-13, after the Build the Era deadline and as ETHOnline 2026
+> work: new Ranger positions, for the agent's own capital and for every newly
+> activated managed account, now open on Uniswap v3 on BNB Smart Chain. This
+> section describes the PancakeSwap V3 run submitted to Build the Era; the
+> transactions and the position linked below remain on-chain as recorded.
 
 Ranger is designed to benefit Pancake V3 liquidity providers:
 
