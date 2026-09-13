@@ -95,3 +95,9 @@ export function bscScanAddress(chainId: number, address: string): string {
   const base = chainId === 97 ? BSC_TESTNET.explorer : BSC_MAINNET.explorer;
   return `${base}/address/${address}`;
 }
+
+/** The explorer page of one ERC-721 token, e.g. a concentrated-liquidity position. */
+export function bscScanNft(chainId: number, contract: string, tokenId: string): string {
+  const base = chainId === 97 ? BSC_TESTNET.explorer : BSC_MAINNET.explorer;
+  return `${base}/nft/${contract}/${tokenId}`;
+}
