@@ -6,10 +6,12 @@ process.env.GRAPH_GATEWAY_BASE = 'https://gateway.test/api/subgraphs/id';
 
 const {
   graphConfirms,
+  plausibleAgainstChain,
   readGraphRates,
   rescaleVenusBps,
   supplyBpsFromMarkets,
   MESSARI_BSC_BLOCKS_PER_YEAR,
+  MAX_GRAPH_VETOES,
   MESSARI_LENDING_SUBGRAPHS,
 } = await import('../src/graph-rates');
 
@@ -76,7 +78,6 @@ test('both venues are read from their pinned Messari deployments', async () => {
     assert.ok(!('unavailable' in read), JSON.stringify(read));
     assert.equal(read.venusBps, 202);
     assert.equal(read.aaveBps, 207);
-    assert.equal(read.source, 'the-graph');
     // At the real cadence the same subgraph answer is worth more; Aave is untouched.
     const faster = await readGraphRates(USDT, ASSUMED * 2);
     assert.ok(!('unavailable' in faster));
@@ -108,7 +109,7 @@ test('a gateway failure on either venue makes the whole read unavailable', async
 
 const rotate = { action: 'rotate' as const, target: 'aave' as const, edgeBps: 80, nextStreak: 0 };
 const input = { venue: 'venus' as const, betterStreak: 1 };
-const agrees = { source: 'the-graph' as const, venusBps: 200, aaveBps: 260, indexedAt: { venus: '', aave: '' }, asOf: '' };
+const agrees = { venusBps: 200, aaveBps: 260, indexedAt: { venus: '', aave: '' }, asOf: '' };
 const disagrees = { ...agrees, aaveBps: 190 };
 
 test('a rotation The Graph agrees with goes ahead unchanged', () => {
@@ -128,7 +129,7 @@ test('a rotation The Graph disagrees with becomes a hold that freezes the streak
 test('a hold, or an unavailable lane, passes through untouched', () => {
   const hold = { action: 'hold' as const, target: 'venus' as const, edgeBps: 10, nextStreak: 0 };
   assert.deepEqual(graphConfirms(hold, input, disagrees), hold);
-  assert.deepEqual(graphConfirms(rotate, input, { source: 'the-graph', unavailable: 'GRAPH_API_KEY not set' }), rotate);
+  assert.deepEqual(graphConfirms(rotate, input, { unavailable: 'GRAPH_API_KEY not set' }), rotate);
   assert.deepEqual(graphConfirms(rotate, input, null), rotate);
 });
 
@@ -137,4 +138,27 @@ test('The Graph can veto but never trigger: equal rates hold, and a hold stays a
   assert.equal(graphConfirms(rotate, input, equal).action, 'hold');
   const hold = { action: 'hold' as const, target: 'venus' as const, edgeBps: 0, nextStreak: 0 };
   assert.equal(graphConfirms(hold, input, { ...agrees, aaveBps: 900 }).action, 'hold');
+});
+
+test('a subgraph number far from the chain\'s is not a second opinion, it is a broken lane', () => {
+  const chain = { venusBps: 242, aaveBps: 278 };
+  // Index lag: a few percent off, still the same measurement.
+  assert.deepEqual(plausibleAgainstChain(agrees, { venusBps: 205, aaveBps: 250 }), agrees);
+  // A stale annualization constant: multiples off, the chain decides alone.
+  const off = plausibleAgainstChain({ ...agrees, venusBps: 60 }, chain);
+  assert.ok('unavailable' in off && /venus: subgraph says 60.00 bps, chain says 242.00 bps/.test(off.unavailable));
+  // An unavailable read passes through untouched.
+  assert.deepEqual(plausibleAgainstChain({ unavailable: 'x' }, chain), { unavailable: 'x' });
+});
+
+test('a lane that keeps saying no is overruled after MAX_GRAPH_VETOES ticks, so a bias can only delay', () => {
+  assert.equal(MAX_GRAPH_VETOES, 3);
+  for (let vetoes = 0; vetoes < MAX_GRAPH_VETOES; vetoes++) {
+    assert.equal(graphConfirms(rotate, { ...input, graphVetoes: vetoes }, disagrees).action, 'hold', `veto ${vetoes + 1}`);
+  }
+  const overruled = graphConfirms(rotate, { ...input, graphVetoes: MAX_GRAPH_VETOES }, disagrees);
+  assert.equal(overruled.action, 'rotate');
+  assert.equal(overruled.graphOverruled, true);
+  // Agreement does not need the count at all.
+  assert.deepEqual(graphConfirms(rotate, { ...input, graphVetoes: 9 }, agrees), rotate);
 });

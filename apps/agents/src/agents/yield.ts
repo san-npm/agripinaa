@@ -2,7 +2,7 @@ import { TOKENS_BSC, fromBaseUnits, toBaseUnits, type TokenInfo } from '@agripin
 import { erc20Abi, maxUint256, padHex, parseAbi, toEventSelector, type Hex, type PublicClient } from 'viem';
 
 import type { ManagedExecutor } from '../executor';
-import { graphConfirms, readGraphRates, type GraphRatesRead } from '../graph-rates';
+import { graphConfirms, plausibleAgainstChain, readGraphRates, type GraphRatesRead } from '../graph-rates';
 import { isGlobalHalt, type AgentContext, type AgentModule } from '../types';
 
 export type Venue = 'none' | 'venus' | 'aave';
@@ -148,6 +148,8 @@ export interface RotationDecision {
   nextStreak: number;
   /** Set when the chain said rotate and The Graph's rates did not agree. */
   graphVeto?: true;
+  /** Set when The Graph disagreed again but had already vetoed MAX_GRAPH_VETOES ticks in a row. */
+  graphOverruled?: true;
 }
 
 /**
@@ -220,13 +222,16 @@ export async function readRates(client: Reader, venues: Venues = USDT_VENUES): P
     readGraphRates(venues.token, blocksPerYear),
   ]);
 
+  const venusBps = venusApyBps(venusRate, blocksPerYear);
+  const aaveBps = aaveApyBps(reserve.currentLiquidityRate);
   return {
-    venusBps: venusApyBps(venusRate, blocksPerYear),
-    aaveBps: aaveApyBps(reserve.currentLiquidityRate),
+    venusBps,
+    aaveBps,
     blocksPerYear,
     venusRatePerBlock: venusRate.toString(),
     aaveLiquidityRate: reserve.currentLiquidityRate.toString(),
-    graph,
+    // A second opinion only counts when it measures the same thing as the chain.
+    graph: plausibleAgainstChain(graph, { venusBps, aaveBps }),
   };
 }
 
@@ -446,6 +451,8 @@ export const yieldAgent: AgentModule = {
     };
 
     if (venue === 'none') {
+      // No rotation to veto here, so the lane's veto streak ends.
+      ctx.state.set('graphVetoes', 0);
       const deployableWei = position.walletUsdtWei - RESERVE_WEI;
       if (deployableWei <= DUST_WEI) {
         ctx.log({ ...base, event: 'tick', decision: 'unfunded', deployable: fromBaseUnits(
@@ -472,9 +479,11 @@ export const yieldAgent: AgentModule = {
       venusBps: rates.venusBps,
       aaveBps: rates.aaveBps,
       betterStreak: ctx.state.get<number>('betterStreak', 0),
+      graphVetoes: ctx.state.get<number>('graphVetoes', 0),
     };
     const decision = graphConfirms(decideRotation(input), input, rates.graph);
     ctx.state.set('betterStreak', decision.nextStreak);
+    ctx.state.set('graphVetoes', decision.graphVeto ? input.graphVetoes + 1 : 0);
 
     if (decision.action === 'hold') {
       ctx.log({ ...base, event: 'tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak, graphVeto: decision.graphVeto });
@@ -486,7 +495,7 @@ export const yieldAgent: AgentModule = {
       return;
     }
 
-    ctx.log({ ...base, event: 'tick', decision: 'rotate', from: venue, to: decision.target, edgeBps: decision.edgeBps });
+    ctx.log({ ...base, event: 'tick', decision: 'rotate', from: venue, to: decision.target, edgeBps: decision.edgeBps, graphOverruled: decision.graphOverruled });
     if (venue === 'venus') await withdrawVenus(ctx);
     else await withdrawAave(ctx);
     ctx.state.set('venue', 'none');
@@ -789,6 +798,8 @@ export async function managedYieldTick(
   }
 
   if (venue === 'none') {
+    // No rotation to veto here, so the lane's veto streak ends.
+    ctx.state.set(ns('graphVetoes'), 0);
     // Managed funds deploy in full: the router moves the account's entire USDT
     // balance, so there is no reserve/partial-deploy split as in own-capital mode.
     if (position.walletUsdtWei <= DUST_WEI) {
@@ -866,9 +877,11 @@ export async function managedYieldTick(
     venusBps: rates.venusBps,
     aaveBps: rates.aaveBps,
     betterStreak: previousStreak,
+    graphVetoes: ctx.state.get<number>(ns('graphVetoes'), 0),
   };
   const decision = graphConfirms(policy.decide(input), input, rates.graph);
   ctx.state.set(ns('betterStreak'), decision.nextStreak);
+  ctx.state.set(ns('graphVetoes'), decision.graphVeto ? input.graphVetoes + 1 : 0);
 
   if (decision.action === 'hold') {
     ctx.log({ ...base, event: 'managed-tick', decision: 'hold', edgeBps: decision.edgeBps, betterStreak: decision.nextStreak, graphVeto: decision.graphVeto });
@@ -901,6 +914,7 @@ export async function managedYieldTick(
   const action = decision.target === 'venus' ? 'toVenus' : 'toAave';
   // Anchored before the call, so a crash inside the execute window cannot let
   // the next tick fire a second rotation against a mandate already moving.
+  ctx.log({ ...base, event: 'managed-tick', decision: 'rotate', target: decision.target, edgeBps: decision.edgeBps, graphOverruled: decision.graphOverruled });
   ctx.state.set(ns('lastRotateAt'), now);
   let res: Awaited<ReturnType<ManagedExecutor['execute']>>;
   try {

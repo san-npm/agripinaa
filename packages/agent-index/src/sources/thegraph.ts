@@ -1,4 +1,4 @@
-import { ERC8004_REGISTRIES } from '@agripinaa/shared';
+import { ERC8004_REGISTRIES, graphQuery } from '@agripinaa/shared';
 
 import { classify } from '../classify';
 import type { AgentIndexSource } from '../source';
@@ -26,15 +26,8 @@ export const AGENT0_SUBGRAPHS: Record<number, string> = {
   97: 'BTjind17gmRZ6YhT9peaCM13SvWuqztsmqyfjpntbg3Z',
 };
 
-const GATEWAY_BASE =
-  process.env.GRAPH_GATEWAY_BASE ?? 'https://gateway.thegraph.com/api/subgraphs/id';
+const GATEWAY_BASE = process.env.GRAPH_GATEWAY_BASE;
 const API_KEY = process.env.GRAPH_API_KEY;
-
-/** Same reasoning as the 8004scan deadline: a quiet socket must not hold a render. */
-const REQUEST_TIMEOUT_MS = (() => {
-  const configured = Number(process.env.GRAPH_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured > 0 ? configured : 15_000;
-})();
 
 /** A list cursor this lane issued: `g` and the agentId to continue below. */
 export function isGraphCursor(cursor: string): boolean {
@@ -42,10 +35,7 @@ export function isGraphCursor(cursor: string): boolean {
 }
 
 export class TheGraphError extends Error {
-  constructor(
-    message: string,
-    readonly status?: number,
-  ) {
+  constructor(message: string) {
     super(message);
     this.name = 'TheGraphError';
   }
@@ -105,21 +95,11 @@ async function gql<T>(
 ): Promise<T> {
   const subgraph = AGENT0_SUBGRAPHS[chainId];
   if (!subgraph) throw new TheGraphError(`no Agent0 subgraph pinned for chain ${chainId}`);
-  const res = await fetch(`${GATEWAY_BASE}/${subgraph}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json',
-      authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new TheGraphError(`gateway responded ${res.status}`, res.status);
-  const json = (await res.json()) as { data?: T; errors?: { message: string }[] };
-  if (json.errors?.length) throw new TheGraphError(json.errors.map((e) => e.message).join('; '));
-  if (!json.data) throw new TheGraphError('gateway answered without data');
-  return json.data;
+  try {
+    return await graphQuery<T>(subgraph, query, variables, { apiKey: API_KEY!, gatewayBase: GATEWAY_BASE });
+  } catch (err) {
+    throw new TheGraphError(err instanceof Error ? err.message : String(err));
+  }
 }
 
 function isoFromSeconds(s: string | null | undefined): string | null {
@@ -127,16 +107,23 @@ function isoFromSeconds(s: string | null | undefined): string | null {
   return Number.isFinite(n) && n > 0 ? new Date(n * 1000).toISOString() : null;
 }
 
-/** The labels 8004scan uses for the same endpoints, so the two lanes agree in the UI. */
-function protocols(f: GqlRegistrationFile | null): string[] {
+/** The registration file's endpoints under the labels 8004scan uses, so the two lanes agree in the UI. */
+const ENDPOINTS = [
+  ['MCP', 'mcpEndpoint'],
+  ['A2A', 'a2aEndpoint'],
+  ['Web', 'webEndpoint'],
+  ['Email', 'emailEndpoint'],
+] as const;
+
+function services(f: GqlRegistrationFile | null): { name: string; endpoint: string }[] {
   if (!f) return [];
-  const out: string[] = [];
-  if (f.mcpEndpoint) out.push('MCP');
-  if (f.a2aEndpoint) out.push('A2A');
-  if (f.hasOASF) out.push('OASF');
-  if (f.webEndpoint) out.push('Web');
-  if (f.emailEndpoint) out.push('Email');
-  return out;
+  return ENDPOINTS.flatMap(([name, key]) => (f[key] ? [{ name, endpoint: f[key]! }] : []));
+}
+
+function protocols(f: GqlRegistrationFile | null): string[] {
+  const present = new Set(services(f).map((s) => s.name));
+  if (f?.hasOASF) present.add('OASF');
+  return ['MCP', 'A2A', 'OASF', 'Web', 'Email'].filter((name) => present.has(name));
 }
 
 function toSummary(a: GqlAgent, chainId: number, asOf: string): AgentSummary {
@@ -199,18 +186,7 @@ function toDetail(a: GqlAgent, chainId: number, asOf: string): AgentDetail {
           did: f.did,
         }
       : null,
-    services: f
-      ? (
-          [
-            ['MCP', f.mcpEndpoint],
-            ['A2A', f.a2aEndpoint],
-            ['Web', f.webEndpoint],
-            ['Email', f.emailEndpoint],
-          ] as const
-        )
-          .filter(([, endpoint]) => endpoint)
-          .map(([name, endpoint]) => ({ name, endpoint }))
-      : null,
+    services: f ? services(f) : null,
   };
 }
 

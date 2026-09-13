@@ -252,7 +252,7 @@ A dedicated Solidity audit pass ran over the live BSC deployments on
 and no Critical findings. The pass, its scope and its result are written down in
 the plan, under the heading "Verification sweep, 2026-08-24 (five independent
 lenses)" and its "Router audit" paragraph
-([`docs/superpowers/plans/2026-08-24-marketplace-expansion.md`](./superpowers/plans/2026-08-24-marketplace-expansion.md)).
+([`docs/archive/superpowers/plans/2026-08-24-marketplace-expansion.md`](./archive/superpowers/plans/2026-08-24-marketplace-expansion.md)).
 
 The L-1 delta-accounting fix was checked rather than assumed. Claim by claim,
 with where each one can be checked from this repo and where it cannot:

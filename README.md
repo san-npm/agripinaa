@@ -9,7 +9,9 @@ Chain: browse by category, read a provable on-chain track record, grant a
 scoped revocable session key with one signature, pay per call over x402.
 
 **Live:** https://agripinaa.vercel.app · Built for BNB Chain's
-["Build the Era"](https://www.bnbchain.org/en/hackathons/smart-money-era) hackathon.
+["Build the Era"](https://www.bnbchain.org/en/hackathons/smart-money-era) hackathon,
+continued at ETHGlobal's ETHOnline 2026 as a Continuity project: see
+[what was built during the event](#ethonline-2026-what-was-built-during-the-event).
 
 ## Why it is different: performance is provable
 
@@ -121,14 +123,15 @@ apps/
   web/           Marketplace (Next.js 16) → Vercel
   agents/        Reference agents: chassis, strategies, x402 server, ops CLIs
 packages/
-  agent-index/   ERC-8004 index: 8004scan (keyed) + direct registry reads + snapshot
+  agent-index/   ERC-8004 index: The Graph (Agent0 subgraph) + 8004scan + registry reads + snapshot
   exec-metrics/  Ophis/BSC orderbook client, surplus math, MevProofReceipt build/export
   session-kit/   Fail-closed session scoping, byte-exact persistence, KeyStore reads
   shared/        Chains, pinned ABIs, tokens, routers, the agent registry, the SSRF guard
   spikes/        The de-risking scripts that proved every integration on-chain first
 contracts/       AgripinaaYieldRouter, its BSC fork tests, the fuzz harness
 ops/             Start, stop, deploy, and runner-URL reporting for the agent VM
-docs/            Architecture, router security, the TermiX report and its evidence
+docs/            Architecture, security, sponsor evidence, the ETHOnline docs;
+                 reviews/ holds the audits, archive/ the superseded plans and logs
 ```
 
 The repository-wide TypeScript suite runs from `pnpm test`; the exact count is
@@ -166,7 +169,11 @@ ERC-8004 yet, and the UI says so rather than pretending.
 - [`docs/sponsor-evidence.md`](docs/sponsor-evidence.md): form-ready copy and
   requirement-by-requirement evidence for Altana, TermiX, PancakeSwap and
   AltLayer/8004scan
-- [`docs/demo-video-script.md`](docs/demo-video-script.md): the 3-minute demo storyboard
+- [`docs/ethonline-2026-demo-script.md`](docs/ethonline-2026-demo-script.md): the demo storyboard, 2 to 4 minutes
+- [`docs/reviews/`](docs/reviews/): the Pashov AI contract audit, the recovery-path
+  security review, and seven differential reviews of the pre-event work
+- [`docs/archive/`](docs/archive/): investigation logs, superseded plans and the
+  BNB-era checklist, kept for the record
 - [`ops/launch.md`](ops/launch.md): how the agents run, deploy, and migrate hosts
 
 ## ETHOnline 2026: what was built during the event

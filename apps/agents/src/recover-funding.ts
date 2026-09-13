@@ -1,7 +1,7 @@
 /**
  * Recovery primitives shared by the operator CLI and the gated first-funding sender.
  * The CLI defaults to simulation. No automatic fallback or replacement transaction.
- * See docs/funding-recovery.md before enabling a broadcast.
+ * See docs/archive/funding-recovery.md before enabling a broadcast.
  */
 import { closeSync, existsSync, openSync, readFileSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';

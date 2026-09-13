@@ -8,11 +8,13 @@ a selectable venue. Where to look:
 - `apps/agents/src/lp-venues.ts`: the venue table. Uniswap v3 BNB addresses
   from developers.uniswap.org, each probed on-chain before use, with the probe
   record in the comment above the entry.
-- `apps/agents/src/agents/lp-range.ts`: the strategy. `VENUE = selectLpVenue()`
-  replaces the hardcoded Pancake constants; every mint, decreaseLiquidity,
-  collect, factory `getPool` and pool read goes through the venue record.
-- `apps/agents/tests/lp-venues.test.ts`: selection, the slot0 width per venue,
-  and the published addresses.
+- `apps/agents/src/agents/lp-range.ts`: the strategy. `venueContext()` binds
+  each run to a venue record; every mint, decreaseLiquidity, collect, factory
+  `getPool` and pool read goes through `ctx.venue`.
+- `apps/agents/tests/lp-venues.test.ts`, `lp-range-venue.test.ts`,
+  `lp-range-venue-config.test.ts`: selection, the shared pool ABI, the
+  own-capital versus managed binding, and a misnamed venue stopping Ranger
+  alone.
 - `ops/launch.md`: `LP_RANGE_VENUE=uniswap-v3` switches the agent's own
   capital; managed mandates keep their audited PancakeSwap session policy.
 
@@ -43,7 +45,21 @@ production runner. Ranger's first tick on the new venue, from its JSONL log:
   owned by Ranger's wallet `0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6`.
 
 Forty seconds from restart to a live position, no code change between the
-PancakeSwap and Uniswap runs.
+PancakeSwap and Uniswap runs. The four records, verbatim from the runner's
+journal (`apps/agents/data/lp-range.log.jsonl` on the VM):
+
+```json
+{"at":"2026-09-13T00:45:53.093Z","agent":"lp-range","event":"pool-selected","pool":"0x6fe9E9de56356F7eDBfcBB29FAB7cd69471a4869","fee":500,"tickSpacing":10,"wbnbIsToken0":false,"liquidity":"1650088509849585424835459"}
+{"at":"2026-09-13T00:45:59.087Z","agent":"lp-range","event":"ophis-swap-submitted","orderUid":"0xf3f261b567602f5aafe7d69a68229df9ca55a5874e540ac4c5bc525802bd730f79827ef1fadea3b30a8e77fdbaf17944298a3bb66aa5f94b","explorerUrl":"https://explorer.ophis.fi/orders/0xf3f261b567602f5aafe7d69a68229df9ca55a5874e540ac4c5bc525802bd730f79827ef1fadea3b30a8e77fdbaf17944298a3bb66aa5f94b","sellToken":"WBNB","buyToken":"USDT","sellAmount":"0.001522369437","notionalUsd":1.107201516766753,"minBuyAmount":"1091786132287050670","enrollmentWarning":null}
+{"at":"2026-09-13T00:46:14.410Z","agent":"lp-range","event":"ophis-order-filled","orderUid":"0xf3f261b567602f5aafe7d69a68229df9ca55a5874e540ac4c5bc525802bd730f79827ef1fadea3b30a8e77fdbaf17944298a3bb66aa5f94b"}
+{"at":"2026-09-13T00:46:26.877Z","agent":"lp-range","event":"minted","txHash":"0x3dffa2c5dc47ebbfea32fef0fecb628b2aca991877025285a5cda285e4c15076","tokenId":"2745250","tickLower":-66390,"tickUpper":-65410,"currentTick":-65897,"wbnbUnits":0.001477630563,"usdtUnits":1.1192367490982553}
+```
+
+The `inventory-prep` decision that preceded the swap, for completeness:
+
+```json
+{"at":"2026-09-13T00:45:53.492Z","agent":"lp-range","event":"inventory-prep","sell":"WBNB","amountUnits":0.0015223694372417749,"notionalUsd":1.107201516766753,"wbnbUnits":0.003,"usdtUnits":0.012919603784337786,"usdtPerWbnb":727.2883241618263}
+```
 
 ## Feedback
 
@@ -61,12 +77,16 @@ PancakeSwap and Uniswap runs.
    pool moves (the price a range strategy protects itself against is read from
    that pool).
 
-3. **`slot0` is the one ABI difference between Uniswap v3 and its forks that
-   bites silently.** `feeProtocol` is `uint8` on Uniswap and `uint32` on
-   PancakeSwap. Decoding with the wrong width does not throw; it shifts the
-   trailing `unlocked` boolean. The v3 docs could carry a one-line "forks
-   differ here" note next to the `slot0` reference; we now carry one ABI per
-   venue for exactly this reason.
+3. **`slot0` reads the same on Uniswap v3 and its forks, and we first
+   thought it did not.** PancakeSwap declares `feeProtocol` as `uint32`,
+   Uniswap as `uint8`. Our first venue record carried one pool ABI per venue
+   on the belief that decoding with the wrong width would shift the trailing
+   `unlocked` boolean. It does not: ABI static types are word-padded, so the
+   seven return words decode identically under either declaration, which we
+   verified by encoding a PancakeSwap-shaped `slot0` and decoding it with the
+   Uniswap ABI. One ABI now serves both. The docs could still say this in one
+   line next to `slot0`, because an integrator reading two verified sources
+   with different widths will reach for the same wrong conclusion we did.
 
 4. **What worked.** The periphery being byte-compatible across the fork meant
    the whole venue switch is one record and no strategy change: the same

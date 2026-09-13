@@ -119,6 +119,19 @@ test('a registry that cannot be read is skipped, not fatal: the next one still a
   assert.match(reason(declined), /not registered in AgentBook/);
 });
 
+test('a signature on a chain the challenge did not offer is refused before any RPC is chosen', async () => {
+  const gate = createAgentkitGate({ agentBooks: [book] });
+  const challenge = agentkitChallenge(RESOURCE).agentkit;
+  // Advertise the foreign chain to the client so it signs for it.
+  const foreign = { ...challenge, supportedChains: [{ chainId: 'eip155:1', type: 'eip191' as const }] };
+  const header = await createAgentkitClient({
+    signer: { address: human.address, chainId: 'eip155:1', type: 'eip191', signMessage: (m) => human.signMessage({ message: m }) },
+  }).createHeader(foreign);
+  const refused = await gate.admit(header, RESOURCE, '/grid/status');
+  assert.equal(refused.granted, false);
+  assert.match(reason(refused), /chain eip155:1 is not one the challenge offered/);
+});
+
 test('a signature for another path on the same host does not open this one', async () => {
   const gate = createAgentkitGate({ agentBooks: [book] });
   const login = 'https://abc-def.trycloudflare.com/login';
@@ -180,6 +193,33 @@ test('verification is rate limited per client and in flight', async () => {
   assert.match(reason(throttled), /too many verification attempts/);
   const someoneElse = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', '10.0.0.2');
   assert.equal(someoneElse.granted, true);
+});
+
+test('a verification past its deadline declines, keeps its slot until it settles, and spends no trial', async () => {
+  // A registry that answers well after the deadline, and says when it did.
+  let settle!: () => void;
+  const settled = new Promise<void>((resolve) => { settle = resolve; });
+  const slow = {
+    name: 'slow',
+    verifier: {
+      lookupHuman: () => new Promise<string>((resolve) => setTimeout(() => { resolve('0xhuman1'); setTimeout(settle, 0); }, 300)),
+    },
+  };
+  const storage = new BoundedAgentKitStorage();
+  const gate = createAgentkitGate({ agentBooks: [slow], uses: 1, storage, gate: new RequestGate(30, 60_000, 1), deadlineMs: 50 });
+  const late = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', 'a');
+  assert.equal(late.granted, false);
+  assert.match(reason(late), /took too long/);
+  // The one in-flight slot is still taken by the unfinished verification.
+  const blocked = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', 'b');
+  assert.match(reason(blocked), /too many verification attempts/);
+  await settled;
+  await new Promise((r) => setTimeout(r, 0));
+  // The late lookup resolved after the deadline: no trial use was spent.
+  assert.equal(storage.tryIncrementUsage('/grid/status', '0xhuman1', 1), true, 'the single free read is still unspent');
+  // And the slot came back once the verification settled.
+  const slot = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', 'c');
+  assert.doesNotMatch(reason(slot), /too many verification attempts/);
 });
 
 test('the status route offers the challenge in its 402 and serves a human-backed caller without settlement', async (t) => {

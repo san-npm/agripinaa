@@ -36,6 +36,10 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function addressValue(value: unknown): `0x${string}` | undefined {
+  return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) ? (value as `0x${string}`) : undefined;
+}
+
 function txValue(value: unknown): `0x${string}` | undefined {
   const text = stringValue(value);
   return text && TX_HASH.test(text) ? (text as `0x${string}`) : undefined;
@@ -200,12 +204,16 @@ function mapLogEntry(
     const txHash = txValue(entry.txHash);
     const tokenId = stringValue(entry.tokenId);
     if (!txHash || !tokenId) return null;
+    // Older log lines carry no venue; a reader must then not assume one.
+    const venue = stringValue(entry.venue);
+    const positionManager = addressValue(entry.positionManager);
     return {
       ...base,
       id: eventId(meta.tokenId, event, at, txHash),
       kind: 'mint',
-      summary: `Minted WBNB/USDT liquidity position #${tokenId}`,
+      summary: `Minted WBNB/USDT liquidity position #${tokenId}${venue ? ` on ${venue}` : ''}`,
       txHash,
+      ...(positionManager ? { positionManager } : {}),
     };
   }
 
