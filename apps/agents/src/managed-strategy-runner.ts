@@ -368,7 +368,9 @@ export async function tickManagedStrategy(opts: {
   const all = loadManaged(opts.ctx.name, opts.dataDir);
   // The target the browser grants today. An entry scoped to an earlier
   // policy's target can never act again under this runner (the relay would
-  // refuse every call), so it is retired and the owner re-activates.
+  // refuse every call), so it is retired. The owner re-activates from a new
+  // strategy account: KeyStore never registers the same manager key twice on
+  // one account, so reusing the old account needs a manager-key rotation first.
   const canonicalTarget = managedStrategyFor(opts.ctx.name)?.callScopes[0]?.to;
   const cursorKey = 'managed:strategySweepCursor';
   const batch = managedSweepBatch(all, opts.ctx.state.get<number>(cursorKey, 0));
@@ -393,7 +395,7 @@ export async function tickManagedStrategy(opts: {
             account: entry.account,
             target,
             canonicalTarget,
-            reason: 'session scope predates the current managed policy; re-activation required',
+            reason: 'session scope predates the current managed policy; re-activate from a new strategy account',
           });
           continue;
         }

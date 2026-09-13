@@ -1,7 +1,9 @@
 import {
   MANAGED_STRATEGIES,
   managedStrategyFor,
+  PANCAKE_V3_POSITION_MANAGER,
   RANGER_POSITION_MANAGER,
+  type ManagedApproval,
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
@@ -24,6 +26,12 @@ export interface RecoveryCall {
 const EXIT_MIN_BPS = 9_000n;
 const BPS_DENOMINATOR = 10_000n;
 const MAX_UINT128 = (1n << 128n) - 1n;
+
+/** Spenders no current policy grants but earlier activations did: Ranger ran on PancakeSwap V3 until 2026-09-13. */
+const RETIRED_APPROVALS: readonly ManagedApproval[] = [
+  { token: 'WBNB', spender: PANCAKE_V3_POSITION_MANAGER },
+  { token: 'USDT', spender: PANCAKE_V3_POSITION_MANAGER },
+];
 
 /** Keep the owner exit at least as strict as Ranger's automated exit. */
 export function rangerExitMinimums(quoted: readonly [bigint, bigint]): readonly [bigint, bigint] {
@@ -76,7 +84,7 @@ export function buildRangerExitCalls(input: {
   return calls;
 }
 
-/** Reset every shared-account strategy allowance, then sweep this strategy's freshly read balances. */
+/** Reset every current and retired shared-account strategy allowance, then sweep this strategy's freshly read balances. */
 export function buildStrategyTokenRecoveryCalls(
   slug: ManagedStrategySlug,
   destination: Hex,
@@ -87,6 +95,7 @@ export function buildStrategyTokenRecoveryCalls(
   const seenApprovals = new Set<string>();
   const approvalCalls = Object.values(MANAGED_STRATEGIES)
     .flatMap(({ approvals }) => approvals)
+    .concat(RETIRED_APPROVALS)
     .flatMap(({ token, spender }) => {
       const address = TOKENS_BSC[token]?.address;
       if (!address) throw new Error(`Unknown strategy token ${token}.`);

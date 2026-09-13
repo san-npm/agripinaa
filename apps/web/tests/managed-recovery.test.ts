@@ -12,6 +12,7 @@ import {
 } from '@agripinaa/shared/contracts';
 import {
   OPHIS_VAULT_RELAYER_BSC,
+  PANCAKE_V3_POSITION_MANAGER,
   RANGER_POSITION_MANAGER,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
@@ -159,14 +160,12 @@ test('strategy recovery resets every pinned allowance before transferring live b
     USDT: 11n,
     BTCB: 13n,
   });
-  assert.equal(calls.length, 10);
-  const approvals = calls.slice(0, 7).map((call) => ({
+  assert.equal(calls.length, 12);
+  const approvals = calls.slice(0, 9).map((call) => ({
     to: call.to.toLowerCase(),
     decoded: decodeFunctionData({ abi: erc20Abi, data: call.data }),
   }));
-  assert.deepEqual(approvals.map(({ decoded }) => decoded.functionName), [
-    'approve', 'approve', 'approve', 'approve', 'approve', 'approve', 'approve',
-  ]);
+  assert.deepEqual(approvals.map(({ decoded }) => decoded.functionName), Array(9).fill('approve'));
   assert.ok(approvals.every(({ decoded }) => decoded.args?.[1] === 0n));
   assert.ok(approvals.some(({ to, decoded }) =>
     to === TOKENS_BSC.WBNB!.address.toLowerCase()
@@ -174,7 +173,13 @@ test('strategy recovery resets every pinned allowance before transferring live b
   assert.ok(approvals.some(({ to, decoded }) =>
     to === TOKENS_BSC.USDT!.address.toLowerCase()
     && decoded.args?.[0]?.toLowerCase() === RANGER_POSITION_MANAGER.toLowerCase()));
-  const transfers = calls.slice(7).map((call) =>
+  // Accounts activated while Ranger ran on PancakeSwap V3 still get that manager's allowances reset.
+  for (const token of [TOKENS_BSC.WBNB!, TOKENS_BSC.USDT!]) {
+    assert.ok(approvals.some(({ to, decoded }) =>
+      to === token.address.toLowerCase()
+      && decoded.args?.[0]?.toLowerCase() === PANCAKE_V3_POSITION_MANAGER.toLowerCase()));
+  }
+  const transfers = calls.slice(9).map((call) =>
     decodeFunctionData({ abi: erc20Abi, data: call.data }));
   assert.deepEqual(transfers.map((decoded) => decoded.functionName), ['transfer', 'transfer', 'transfer']);
   assert.deepEqual(transfers.map((decoded) => decoded.args), [
