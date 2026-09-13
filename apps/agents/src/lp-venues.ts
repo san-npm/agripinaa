@@ -4,43 +4,36 @@ import { parseAbi } from 'viem';
  * The concentrated-liquidity venues Ranger can run on. Both expose the
  * Uniswap v3 periphery: the same NonfungiblePositionManager ABI for mint,
  * decreaseLiquidity and collect, the same factory getPool, the same pool
- * reads. They differ in three places, which is all a venue record holds:
- * the addresses, the fee tiers the pair is deployed at, and the width of
- * `feeProtocol` in `slot0` (uint8 on Uniswap, uint32 on PancakeSwap), which
- * changes the ABI a pool is read with.
+ * reads. What differs is what a venue record holds: the addresses and the
+ * fee tiers the pair is deployed at.
  *
- * `LP_RANGE_VENUE` selects the venue for the agent's own capital;
- * PancakeSwap stays the default so the live runner is unchanged. Managed
- * mandates keep their PancakeSwap session policy
+ * `LP_RANGE_VENUE` selects the venue for the agent's own capital; PancakeSwap
+ * stays the default so the live runner is unchanged. Managed mandates keep
+ * their PancakeSwap session policy
  * (`packages/shared/src/managed-strategies.ts`); a venue there is a policy
  * change that must be re-verified on-chain, not an env var.
  */
-const POOL_ABI_SHARED = [
-  'function liquidity() view returns (uint128)',
-  'function tickSpacing() view returns (int24)',
-  'function token0() view returns (address)',
-  'function observe(uint32[] secondsAgos) view returns (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128)',
-] as const;
-
-const PANCAKE_POOL_ABI = parseAbi([
-  ...POOL_ABI_SHARED,
-  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint32 feeProtocol, bool unlocked)',
-] as const);
-
-const UNISWAP_POOL_ABI = parseAbi([
-  ...POOL_ABI_SHARED,
-  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
-] as const);
-
 export interface LpVenue {
   name: 'pancakeswap-v3' | 'uniswap-v3';
-  label: string;
   positionManager: `0x${string}`;
   factory: `0x${string}`;
   /** Fee tiers the WBNB/USDT pair is deployed at, deepest first at probe time. */
   feeTiers: readonly number[];
-  poolAbi: typeof PANCAKE_POOL_ABI | typeof UNISWAP_POOL_ABI;
 }
+
+/**
+ * One pool ABI for both venues. PancakeSwap declares slot0's feeProtocol as
+ * uint32 and Uniswap as uint8, but ABI static types are word-padded, so the
+ * seven return words decode identically either way; the declaration below
+ * uses the Uniswap width and reads both.
+ */
+export const POOL_ABI = parseAbi([
+  'function liquidity() view returns (uint128)',
+  'function tickSpacing() view returns (int24)',
+  'function token0() view returns (address)',
+  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
+  'function observe(uint32[] secondsAgos) view returns (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128)',
+]);
 
 export const LP_VENUES: Record<LpVenue['name'], LpVenue> = {
   /*
@@ -55,11 +48,9 @@ export const LP_VENUES: Record<LpVenue['name'], LpVenue> = {
    */
   'pancakeswap-v3': {
     name: 'pancakeswap-v3',
-    label: 'PancakeSwap V3',
     positionManager: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factory: '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
     feeTiers: [500, 100, 2500],
-    poolAbi: PANCAKE_POOL_ABI,
   },
   /*
    * Addresses from developers.uniswap.org, v3 BNB deployments, read 2026-09-12.
@@ -71,22 +62,22 @@ export const LP_VENUES: Record<LpVenue['name'], LpVenue> = {
    *   fee 100   -> 0x47a90A2d92A8367A91EfA1906bFc8c1E05bf10c4 liquidity 1.35e23 tickSpacing 1
    *   fee 3000  -> 0x7862D9B4bE2156B15d54F41ee4EDE2d5b0b455e4 liquidity 3.50e22 tickSpacing 60
    *   fee 10000 -> 0x4d170f8714367C44787AE98259CE8Adb72240067 liquidity 1.81e22 tickSpacing 200
-   * slot0().feeProtocol read 68 and 102, inside uint8 as the Uniswap layout says.
+   * Live since 2026-09-13 00:45 UTC: position 2745250 minted in the 500 pool.
    */
   'uniswap-v3': {
     name: 'uniswap-v3',
-    label: 'Uniswap v3',
     positionManager: '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613',
     factory: '0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7',
     feeTiers: [500, 100, 3000, 10000],
-    poolAbi: UNISWAP_POOL_ABI,
   },
 };
 
-/** The venue named by `LP_RANGE_VENUE`; an unknown name is a startup error, not a silent default. */
-export function selectLpVenue(name = process.env.LP_RANGE_VENUE): LpVenue {
-  if (!name) return LP_VENUES['pancakeswap-v3'];
+/**
+ * The venue named by `LP_RANGE_VENUE`. An unknown name is reported, not
+ * thrown: Ranger refuses to run on it, the other agents keep running.
+ */
+export function selectLpVenue(name = process.env.LP_RANGE_VENUE): { venue: LpVenue } | { error: string } {
+  if (!name) return { venue: LP_VENUES['pancakeswap-v3'] };
   const venue = LP_VENUES[name as LpVenue['name']];
-  if (!venue) throw new Error(`LP_RANGE_VENUE=${name} is not one of ${Object.keys(LP_VENUES).join(', ')}`);
-  return venue;
+  return venue ? { venue } : { error: `LP_RANGE_VENUE=${name} is not one of ${Object.keys(LP_VENUES).join(', ')}` };
 }

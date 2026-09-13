@@ -59,6 +59,8 @@ export interface ProofEvent {
   orderUid?: `0x${string}`;
   surplusBps?: number;
   hf?: number;
+  /** For a mint: the position manager the NFT lives on, since Ranger can run on more than one venue. */
+  positionManager?: `0x${string}`;
   at: string;
 }
 

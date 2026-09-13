@@ -3,7 +3,7 @@ import { erc20Abi, parseAbi, parseEventLogs, zeroAddress, type Log } from 'viem'
 
 import { TOKENS_BSC, fromBaseUnits, toBaseUnits } from '@agripinaa/shared';
 
-import { LP_VENUES, selectLpVenue, type LpVenue } from '../lp-venues';
+import { LP_VENUES, POOL_ABI, selectLpVenue, type LpVenue } from '../lp-venues';
 import { ChassisOphisWallet } from '../ophis-wallet';
 import { independentMinimumBuyAmount } from '../quote-guard';
 import type { AgentContext, AgentModule } from '../types';
@@ -216,18 +216,14 @@ export function formatWholeUnits(amount: number): string {
 /*
  * The venue records (PancakeSwap V3, Uniswap v3) and their probe records live
  * in ../lp-venues. Which one a context runs on is decided in venueContext()
- * below and read with venueOf(ctx) everywhere a manager, factory, fee tier or
- * pool ABI is needed. The pool is still resolved at runtime through the
- * verified factory rather than hardcoded.
+ * below and carried on the context as `ctx.venue`. The pool is still resolved
+ * at runtime through the verified factory rather than hardcoded.
  */
-const OWN_CAPITAL_VENUE = selectLpVenue();
+const OWN_CAPITAL = selectLpVenue();
 const PANCAKE = LP_VENUES['pancakeswap-v3'];
-const VENUE_OF = new WeakMap<AgentContext, LpVenue>();
 
-/** The venue this context is bound to; PancakeSwap unless venueContext() said otherwise. */
-function venueOf(ctx: AgentContext): LpVenue {
-  return VENUE_OF.get(ctx) ?? PANCAKE;
-}
+/** A context bound to the venue it runs on. Every helper below takes one. */
+type VenueCtx = AgentContext & { venue: LpVenue };
 
 const WBNB = TOKENS_BSC['WBNB']!;
 const USDT = TOKENS_BSC['USDT']!;
@@ -252,7 +248,6 @@ const FACTORY_ABI = parseAbi([
   'function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)',
 ]);
 
-/* slot0 differs per venue (feeProtocol uint32 on PancakeSwap, uint8 on Uniswap): see venueOf(ctx).poolAbi. */
 
 /** Coarse min-out floor on mint/exit (concentrated-liquidity consumed
  * amounts vary with the tick, so this is a backstop; a legitimate revert
@@ -274,11 +269,11 @@ export function exitMinimums(quoted: readonly [bigint, bigint]): readonly [bigin
  * observation history (observe reverts), returns true so the coarse mins
  * remain the only guard rather than halting the strategy.
  */
-async function twapAligned(ctx: AgentContext, pool: `0x${string}`, spotTick: number): Promise<boolean> {
+async function twapAligned(ctx: VenueCtx, pool: `0x${string}`, spotTick: number): Promise<boolean> {
   try {
     const [tickCumulatives] = await ctx.publicClient.readContract({
       address: pool,
-      abi: venueOf(ctx).poolAbi,
+      abi: POOL_ABI,
       functionName: 'observe',
       args: [[TWAP_WINDOW_SECONDS, 0]],
     });
@@ -343,14 +338,14 @@ interface PendingOrder {
  */
 const LEGACY_MINTED_TOKEN_IDS: readonly string[] = ['7248592'];
 
-function knownMintedTokenIds(ctx: AgentContext): Set<string> {
+function knownMintedTokenIds(ctx: VenueCtx): Set<string> {
   return new Set([
     ...LEGACY_MINTED_TOKEN_IDS,
     ...ctx.state.get<string[]>('mintedTokenIds', []),
   ]);
 }
 
-function recordMintedTokenId(ctx: AgentContext, tokenId: string): void {
+function recordMintedTokenId(ctx: VenueCtx, tokenId: string): void {
   ctx.state.set(
     'mintedTokenIds',
     rememberTokenId(ctx.state.get<string[]>('mintedTokenIds', []), tokenId),
@@ -369,7 +364,7 @@ function txDeadline(): bigint {
   return BigInt(Math.floor(Date.now() / 1000) + TX_DEADLINE_SECONDS);
 }
 
-async function erc20Balance(ctx: AgentContext, token: `0x${string}`): Promise<bigint> {
+async function erc20Balance(ctx: VenueCtx, token: `0x${string}`): Promise<bigint> {
   return ctx.publicClient.readContract({
     address: token,
     abi: erc20Abi,
@@ -379,12 +374,12 @@ async function erc20Balance(ctx: AgentContext, token: `0x${string}`): Promise<bi
 }
 
 async function readSlot0(
-  ctx: AgentContext,
+  ctx: VenueCtx,
   pool: `0x${string}`,
 ): Promise<{ sqrtPriceX96: bigint; tick: number }> {
   const slot0 = await ctx.publicClient.readContract({
     address: pool,
-    abi: venueOf(ctx).poolAbi,
+    abi: POOL_ABI,
     functionName: 'slot0',
   });
   return { sqrtPriceX96: slot0[0], tick: slot0[1] };
@@ -402,7 +397,7 @@ interface Inventory {
 
 /** Wallet balances and the pool price in one read: the inputs every mint and
  * swap decision below is made from. */
-async function readInventory(ctx: AgentContext, info: PoolInfo): Promise<Inventory> {
+async function readInventory(ctx: VenueCtx, info: PoolInfo): Promise<Inventory> {
   const [wbnbBal, usdtBal, slot0] = await Promise.all([
     erc20Balance(ctx, WBNB.address),
     erc20Balance(ctx, USDT.address),
@@ -418,16 +413,16 @@ async function readInventory(ctx: AgentContext, info: PoolInfo): Promise<Invento
   };
 }
 
-async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
+async function resolvePool(ctx: VenueCtx): Promise<PoolInfo> {
   const cached = ctx.state.get<PoolInfo | null>('poolInfo', null);
   if (cached && cached.pool) return cached;
 
   const factory = await ctx.publicClient.readContract({
-    address: venueOf(ctx).positionManager,
+    address: ctx.venue.positionManager,
     abi: NPM_ABI,
     functionName: 'factory',
   });
-  if (factory.toLowerCase() !== venueOf(ctx).factory.toLowerCase()) {
+  if (factory.toLowerCase() !== ctx.venue.factory.toLowerCase()) {
     /* Minting through a manager wired to an unknown factory risks the funds. */
     ctx.breakers.halt(`position manager factory mismatch: ${factory}`, { global: true });
     throw new Error(`position manager factory mismatch: ${factory}`);
@@ -437,7 +432,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
   // liquidity: a shallow reference pool makes the price cheaper to skew
   // (the mint/exit slippage protection below rides on this pool's tick).
   let best: { info: PoolInfo; liquidity: bigint } | null = null;
-  for (const fee of venueOf(ctx).feeTiers) {
+  for (const fee of ctx.venue.feeTiers) {
     const pool = await ctx.publicClient.readContract({
       address: factory,
       abi: FACTORY_ABI,
@@ -450,7 +445,7 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
     }
     const liquidity = await ctx.publicClient.readContract({
       address: pool,
-      abi: venueOf(ctx).poolAbi,
+      abi: POOL_ABI,
       functionName: 'liquidity',
     });
     if (liquidity <= BigInt(0)) {
@@ -458,8 +453,8 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
       continue;
     }
     const [tickSpacing, token0] = await Promise.all([
-      ctx.publicClient.readContract({ address: pool, abi: venueOf(ctx).poolAbi, functionName: 'tickSpacing' }),
-      ctx.publicClient.readContract({ address: pool, abi: venueOf(ctx).poolAbi, functionName: 'token0' }),
+      ctx.publicClient.readContract({ address: pool, abi: POOL_ABI, functionName: 'tickSpacing' }),
+      ctx.publicClient.readContract({ address: pool, abi: POOL_ABI, functionName: 'token0' }),
     ]);
     const info: PoolInfo = {
       pool,
@@ -474,12 +469,12 @@ async function resolvePool(ctx: AgentContext): Promise<PoolInfo> {
     ctx.log({ event: 'pool-selected', ...best.info, liquidity: best.liquidity.toString() });
     return best.info;
   }
-  throw new Error(`no WBNB/USDT ${venueOf(ctx).label} pool with liquidity found`);
+  throw new Error(`no WBNB/USDT ${ctx.venue.name} pool with liquidity found`);
 }
 
 type PendingStatus = 'none' | 'pending' | 'filled' | 'expired';
 
-async function checkPendingOrder(ctx: AgentContext): Promise<PendingStatus> {
+async function checkPendingOrder(ctx: VenueCtx): Promise<PendingStatus> {
   const po = ctx.state.get<PendingOrder | null>('pendingOrder', null);
   if (!po) return 'none';
   const token = po.sellSymbol === 'WBNB' ? WBNB : USDT;
@@ -501,22 +496,22 @@ async function checkPendingOrder(ctx: AgentContext): Promise<PendingStatus> {
   return 'pending';
 }
 
-async function findMintedTokenId(ctx: AgentContext, logs: Log[]): Promise<bigint> {
+async function findMintedTokenId(ctx: VenueCtx, logs: Log[]): Promise<bigint> {
   const events = parseEventLogs({ abi: NPM_ABI, logs, eventName: 'IncreaseLiquidity' }).filter(
-    (l) => l.address.toLowerCase() === venueOf(ctx).positionManager.toLowerCase(),
+    (l) => l.address.toLowerCase() === ctx.venue.positionManager.toLowerCase(),
   );
   const first = events[0];
   if (first) return first.args.tokenId;
   ctx.log({ event: 'mint-event-parse-miss', fallback: 'tokenOfOwnerByIndex' });
   const balance = await ctx.publicClient.readContract({
-    address: venueOf(ctx).positionManager,
+    address: ctx.venue.positionManager,
     abi: NPM_ABI,
     functionName: 'balanceOf',
     args: [ctx.account.address],
   });
   if (balance <= BigInt(0)) throw new Error('mint receipt has no IncreaseLiquidity and owner holds no NPM tokens');
   return ctx.publicClient.readContract({
-    address: venueOf(ctx).positionManager,
+    address: ctx.venue.positionManager,
     abi: NPM_ABI,
     functionName: 'tokenOfOwnerByIndex',
     args: [ctx.account.address, balance - BigInt(1)],
@@ -535,9 +530,9 @@ async function findMintedTokenId(ctx: AgentContext, logs: Log[]): Promise<bigint
  * reference pool for range-checks, exits and mints, which is a cheap way to
  * move the agent onto a thin book. Only the agent's own mints are adopted.
  */
-async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<PositionState | null> {
+async function recoverPosition(ctx: VenueCtx, info: PoolInfo): Promise<PositionState | null> {
   const balance = await ctx.publicClient.readContract({
-    address: venueOf(ctx).positionManager,
+    address: ctx.venue.positionManager,
     abi: NPM_ABI,
     functionName: 'balanceOf',
     args: [ctx.account.address],
@@ -546,7 +541,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
   const minted = knownMintedTokenIds(ctx);
   for (let i = balance - BigInt(1); i >= BigInt(0); i -= BigInt(1)) {
     const tokenId = await ctx.publicClient.readContract({
-      address: venueOf(ctx).positionManager,
+      address: ctx.venue.positionManager,
       abi: NPM_ABI,
       functionName: 'tokenOfOwnerByIndex',
       args: [ctx.account.address, i],
@@ -557,7 +552,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
       continue;
     }
     const p = await ctx.publicClient.readContract({
-      address: venueOf(ctx).positionManager,
+      address: ctx.venue.positionManager,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
@@ -573,14 +568,14 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
     if (holdsCapital && pair.has(token0.toLowerCase()) && pair.has(token1.toLowerCase())) {
       if (fee !== info.fee) {
         const pool = await ctx.publicClient.readContract({
-          address: venueOf(ctx).factory,
+          address: ctx.venue.factory,
           abi: FACTORY_ABI,
           functionName: 'getPool',
           args: [token0, token1, fee],
         });
         const tickSpacing = await ctx.publicClient.readContract({
           address: pool,
-          abi: venueOf(ctx).poolAbi,
+          abi: POOL_ABI,
           functionName: 'tickSpacing',
         });
         ctx.state.set('poolInfo', {
@@ -598,7 +593,7 @@ async function recoverPosition(ctx: AgentContext, info: PoolInfo): Promise<Posit
   return null;
 }
 
-async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
+async function tryMint(ctx: VenueCtx, info: PoolInfo): Promise<void> {
   const pending = await checkPendingOrder(ctx);
   if (pending === 'pending') {
     ctx.log({ event: 'mint-deferred', reason: 'ophis-order-pending' });
@@ -632,8 +627,8 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
   const { tickLower, tickUpper } = snapRange(tick, pctToTickDelta(RANGE_PCT), info.tickSpacing);
   const wallet = new ChassisOphisWallet(ctx.account, ctx.publicClient, ctx.walletClient);
   try {
-    await wallet.ensureErc20Allowance(USDT.address, venueOf(ctx).positionManager, availUsdt);
-    await wallet.ensureErc20Allowance(WBNB.address, venueOf(ctx).positionManager, availWbnb);
+    await wallet.ensureErc20Allowance(USDT.address, ctx.venue.positionManager, availUsdt);
+    await wallet.ensureErc20Allowance(WBNB.address, ctx.venue.positionManager, availWbnb);
 
     const amount0Desired = info.wbnbIsToken0 ? availWbnb : availUsdt;
     const amount1Desired = info.wbnbIsToken0 ? availUsdt : availWbnb;
@@ -641,7 +636,7 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
     const token1 = info.wbnbIsToken0 ? USDT.address : WBNB.address;
 
     const hash = await ctx.walletClient.writeContract({
-      address: venueOf(ctx).positionManager,
+      address: ctx.venue.positionManager,
       abi: NPM_ABI,
       functionName: 'mint',
       args: [
@@ -682,6 +677,8 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
       event: 'minted',
       txHash: hash,
       tokenId: position.tokenId,
+      venue: ctx.venue.name,
+      positionManager: ctx.venue.positionManager,
       tickLower,
       tickUpper,
       currentTick: tick,
@@ -693,7 +690,7 @@ async function tryMint(ctx: AgentContext, info: PoolInfo): Promise<void> {
   }
 }
 
-async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInfo): Promise<boolean> {
+async function exitPosition(ctx: VenueCtx, pos: PositionState, info: PoolInfo): Promise<boolean> {
   const tokenId = BigInt(pos.tokenId);
   try {
     // Removing liquidity at a manipulated price lets an attacker skew the
@@ -705,7 +702,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       return false;
     }
     const position = await ctx.publicClient.readContract({
-      address: venueOf(ctx).positionManager,
+      address: ctx.venue.positionManager,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
@@ -718,7 +715,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       // alone can be sandwiched after the RPC read; these minima make that
       // manipulation revert on-chain instead of changing the token mix.
       const { result: quotedExit } = await ctx.publicClient.simulateContract({
-        address: venueOf(ctx).positionManager,
+        address: ctx.venue.positionManager,
         abi: NPM_ABI,
         functionName: 'decreaseLiquidity',
         args: [
@@ -734,7 +731,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       });
       const [amount0Min, amount1Min] = exitMinimums(quotedExit);
       const decreaseHash = await ctx.walletClient.writeContract({
-        address: venueOf(ctx).positionManager,
+        address: ctx.venue.positionManager,
         abi: NPM_ABI,
         functionName: 'decreaseLiquidity',
         args: [
@@ -757,7 +754,7 @@ async function exitPosition(ctx: AgentContext, pos: PositionState, info: PoolInf
       ctx.log({ event: 'decrease-liquidity', txHash: decreaseHash, tokenId: pos.tokenId });
     }
     const collectHash = await ctx.walletClient.writeContract({
-      address: venueOf(ctx).positionManager,
+      address: ctx.venue.positionManager,
       abi: NPM_ABI,
       functionName: 'collect',
       args: [
@@ -798,12 +795,12 @@ type Settlement = 'keep' | 'released' | 'retry';
  *            would report "in range" forever (the 2026-08-22 incident).
  */
 async function settlePosition(
-  ctx: AgentContext,
+  ctx: VenueCtx,
   pos: PositionState,
   info: PoolInfo,
 ): Promise<Settlement> {
   const onChain = await ctx.publicClient.readContract({
-    address: venueOf(ctx).positionManager,
+    address: ctx.venue.positionManager,
     abi: NPM_ABI,
     functionName: 'positions',
     args: [BigInt(pos.tokenId)],
@@ -839,7 +836,7 @@ async function settlePosition(
   return 'keep';
 }
 
-async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<void> {
+async function rebalanceInventory(ctx: VenueCtx, info: PoolInfo): Promise<void> {
   const { wbnbBal, usdtBal, usdtPerWbnb: price } = await readInventory(ctx, info);
   const leg = computeRebalanceLeg(
     Number(fromBaseUnits(wbnbBal, WBNB.decimals)),
@@ -916,7 +913,7 @@ async function rebalanceInventory(ctx: AgentContext, info: PoolInfo): Promise<vo
  * window so status() still reports position rebalances as position rebalances:
  * a prep swap neither opens nor closes a position.
  */
-async function prepareInventory(ctx: AgentContext, info: PoolInfo): Promise<void> {
+async function prepareInventory(ctx: VenueCtx, info: PoolInfo): Promise<void> {
   /* A second order on top of an unfilled one would sell the same side twice. */
   if ((await checkPendingOrder(ctx)) === 'pending') {
     ctx.log({ event: 'inventory-prep-deferred', reason: 'ophis-order-pending' });
@@ -1009,31 +1006,32 @@ const VENUE_SCOPED_KEYS = new Set(['poolInfo', 'position', 'mintedTokenIds']);
 /**
  * Bind a context to the venue it runs on.
  *
- * Managed contexts arrive from tickManagedStrategy with the strategy account
- * as a json-rpc account; their session policy authorizes PancakeSwap only, so
- * they are bound to PancakeSwap whatever LP_RANGE_VENUE says, and are never
- * skipped: a confirmed relay mint still gets recovered. The agent's own
- * capital (a local signer) runs on the selected venue; on a non-default venue
- * its position state is kept apart so PancakeSwap position ids are never read
- * against another manager's NFTs.
+ * A managed context (tickManagedStrategy marks it with `managedAccount`) acts
+ * under a session policy that authorizes PancakeSwap only, so it is bound to
+ * PancakeSwap whatever LP_RANGE_VENUE says, and is never skipped: a confirmed
+ * relay mint still gets recovered. The agent's own capital runs on the
+ * selected venue; on a non-default venue its position state is kept apart so
+ * PancakeSwap position ids are never read against another manager's NFTs.
+ * Returns null, with the reason, when own capital is asked to run on a venue
+ * LP_RANGE_VENUE does not name: Ranger then sits out, the other agents and
+ * the managed mandates are unaffected.
  */
-export function venueContext(ctx: AgentContext): AgentContext {
-  const venue = ctx.account.type !== 'local' ? PANCAKE : OWN_CAPITAL_VENUE;
-  if (venue.name === 'pancakeswap-v3') return ctx;
+export function venueContext(ctx: AgentContext): VenueCtx | { configError: string } {
+  if (ctx.managedAccount) return { ...ctx, venue: PANCAKE };
+  if ('error' in OWN_CAPITAL) return { configError: OWN_CAPITAL.error };
+  const venue = OWN_CAPITAL.venue;
+  if (venue.name === 'pancakeswap-v3') return { ...ctx, venue };
   const prefix = `venue:${venue.name}:`;
   const scoped = (key: string) => (VENUE_SCOPED_KEYS.has(key) ? prefix + key : key);
-  const bound: AgentContext = {
+  return {
     ...ctx,
+    venue,
     state: {
       get: (key, fallback) => ctx.state.get(scoped(key), fallback),
       set: (key, value) => ctx.state.set(scoped(key), value),
     },
   };
-  VENUE_OF.set(bound, venue);
-  return bound;
 }
-
-export { venueOf };
 
 export const lpRangeAgent: AgentModule = {
   name: 'lp-range',
@@ -1042,9 +1040,13 @@ export const lpRangeAgent: AgentModule = {
 
   async recoverConfirmedWrite(rawCtx, write) {
     const ctx = venueContext(rawCtx);
+    if ('configError' in ctx) {
+      rawCtx.log({ event: 'config-error', reason: ctx.configError });
+      return false;
+    }
     if (
       write.functionName !== 'mint'
-      || write.to.toLowerCase() !== venueOf(ctx).positionManager.toLowerCase()
+      || write.to.toLowerCase() !== ctx.venue.positionManager.toLowerCase()
     ) return false;
     const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash: write.transactionHash });
     if (receipt.status !== 'success') throw new Error('confirmed relay mint receipt reverted');
@@ -1053,7 +1055,7 @@ export const lpRangeAgent: AgentModule = {
     // the normal recovery scan may safely adopt this NFT on the next sweep.
     recordMintedTokenId(ctx, tokenId.toString());
     const position = await ctx.publicClient.readContract({
-      address: venueOf(ctx).positionManager,
+      address: ctx.venue.positionManager,
       abi: NPM_ABI,
       functionName: 'positions',
       args: [tokenId],
@@ -1076,6 +1078,10 @@ export const lpRangeAgent: AgentModule = {
 
   async tick(rawCtx) {
     const ctx = venueContext(rawCtx);
+    if ('configError' in ctx) {
+      rawCtx.log({ event: 'config-error', reason: ctx.configError });
+      return;
+    }
     if (ctx.breakers.isHalted().halted) {
       ctx.log({ event: 'tick-skipped', reason: 'halted' });
       return;
@@ -1178,6 +1184,7 @@ export const lpRangeAgent: AgentModule = {
 
   async status(rawCtx) {
     const ctx = venueContext(rawCtx);
+    if ('configError' in ctx) return { configError: ctx.configError };
     const now = Date.now();
     const pos = ctx.state.get<PositionState | null>('position', null);
     const budget = weeklyBudget(

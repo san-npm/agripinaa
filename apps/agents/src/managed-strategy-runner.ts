@@ -350,6 +350,7 @@ export function buildManagedStrategyContext(opts: {
     log,
     state,
     breakers: managedBreakers(state, base.breakers, log),
+    managedAccount: entry.account,
   };
 }
 

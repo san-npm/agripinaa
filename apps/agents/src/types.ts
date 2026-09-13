@@ -54,6 +54,12 @@ export interface AgentContext {
   log: AgentLogger;
   state: AgentState;
   breakers: Breakers;
+  /**
+   * Set by tickManagedStrategy when the context acts on a depositor's
+   * strategy account under a session policy, so a module can tell a mandate
+   * from its own capital without guessing from the signer type.
+   */
+  managedAccount?: `0x${string}`;
 }
 
 export interface AgentModule {

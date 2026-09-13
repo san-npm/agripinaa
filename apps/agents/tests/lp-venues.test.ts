@@ -1,23 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { LP_VENUES, selectLpVenue } from '../src/lp-venues';
+import { LP_VENUES, POOL_ABI, selectLpVenue } from '../src/lp-venues';
 
-test('PancakeSwap stays the venue unless LP_RANGE_VENUE names another; an unknown name refuses to start', () => {
-  assert.equal(selectLpVenue(undefined).name, 'pancakeswap-v3');
-  assert.equal(selectLpVenue('').name, 'pancakeswap-v3');
-  assert.equal(selectLpVenue('uniswap-v3').name, 'uniswap-v3');
-  assert.throws(() => selectLpVenue('sushi-v3'), /LP_RANGE_VENUE=sushi-v3 is not one of/);
+test('PancakeSwap stays the venue unless LP_RANGE_VENUE names another; an unknown name is reported, not thrown', () => {
+  assert.deepEqual(selectLpVenue(undefined), { venue: LP_VENUES['pancakeswap-v3'] });
+  assert.deepEqual(selectLpVenue(''), { venue: LP_VENUES['pancakeswap-v3'] });
+  assert.deepEqual(selectLpVenue('uniswap-v3'), { venue: LP_VENUES['uniswap-v3'] });
+  const bad = selectLpVenue('sushi-v3');
+  assert.ok('error' in bad && /LP_RANGE_VENUE=sushi-v3 is not one of/.test(bad.error));
 });
 
-test('each venue reads slot0 with the feeProtocol width its pools actually use', () => {
-  const width = (venue: keyof typeof LP_VENUES) => {
-    const slot0 = LP_VENUES[venue].poolAbi.find((item) => item.type === 'function' && item.name === 'slot0');
-    assert.ok(slot0 && slot0.type === 'function');
-    return slot0.outputs[5]!.type;
-  };
-  assert.equal(width('pancakeswap-v3'), 'uint32');
-  assert.equal(width('uniswap-v3'), 'uint8');
+test('one pool ABI reads both venues: slot0 is decoded word by word, so the feeProtocol width does not matter', () => {
+  const slot0 = POOL_ABI.find((item) => item.type === 'function' && item.name === 'slot0');
+  assert.ok(slot0 && slot0.type === 'function');
+  assert.equal(slot0.outputs.length, 7);
 });
 
 test('the Uniswap venue is the published BNB deployment and its manager was probed against its factory', () => {
