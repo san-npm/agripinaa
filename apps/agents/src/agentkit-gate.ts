@@ -193,6 +193,8 @@ export interface AgentkitGateOptions {
   storage?: BoundedAgentKitStorage;
   /** Admissions in flight at once and per client per minute; each costs a signature check and an RPC read. */
   gate?: RequestGate;
+  /** Whole admission budget; the default is ADMIT_DEADLINE_MS. */
+  deadlineMs?: number;
 }
 
 export type AgentkitGate = ReturnType<typeof createAgentkitGate>;
@@ -273,24 +275,27 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
       if (!resourceUri) return { granted: false, reason: 'request Host is not a published runner host' };
       const permit = gate.enter(clientKey);
       if (!permit.ok) return { granted: false, reason: `too many verification attempts; retry in ${permit.retryAfterSeconds}s` };
-      // A stalled registry or signature RPC must not hold one of the few
-      // in-flight slots: past the deadline the caller pays like everyone else.
+      // Past the deadline the caller pays like everyone else, but the slot
+      // stays taken until the late verification settles: releasing it early
+      // would let a stalled registry admit unbounded concurrent lookups.
       let deadline: ReturnType<typeof setTimeout> | undefined;
       let expired = false;
       const timeout = new Promise<Admission>((resolve) => {
         deadline = setTimeout(() => {
           expired = true;
           resolve({ granted: false, reason: 'verification took too long' });
-        }, ADMIT_DEADLINE_MS);
+        }, opts.deadlineMs ?? ADMIT_DEADLINE_MS);
       });
-      try {
-        return await Promise.race([admitInner(header, resourceUri, path, () => expired), timeout]);
-      } catch (err) {
-        return { granted: false, reason: firstLine(err instanceof Error ? err.message : undefined, 'bad header') };
-      } finally {
-        clearTimeout(deadline);
-        permit.release();
-      }
+      const verification = admitInner(header, resourceUri, path, () => expired)
+        .catch((err: unknown): Admission => ({
+          granted: false,
+          reason: firstLine(err instanceof Error ? err.message : undefined, 'bad header'),
+        }))
+        .finally(() => {
+          clearTimeout(deadline);
+          permit.release();
+        });
+      return Promise.race([verification, timeout]);
     },
   };
 }
