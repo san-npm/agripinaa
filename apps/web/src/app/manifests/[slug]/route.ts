@@ -6,9 +6,9 @@ import { runnerBase } from '@/lib/runner-url';
 /**
  * Serves the agent manifests that on-chain ERC-8004 tokenURIs resolve to.
  * Those URIs are minted and permanent, so the paths (/manifests/<slug>.json)
- * and the bodies stay exactly as the static files served them; only
- * x402.endpoint is resolved per request, which is what lets a rotated tunnel
- * be picked up without a redeploy.
+ * never change and the bodies change only on purpose (the shared tests pin
+ * them); only x402.endpoint is resolved per request, which is what lets a
+ * rotated tunnel be picked up without a redeploy.
  */
 
 /** Enumerates the served paths; each is still rendered per request, below. */

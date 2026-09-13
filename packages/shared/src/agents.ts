@@ -508,12 +508,12 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     manifest: {
       name: 'Agripinaa Ranger',
       description:
-        'Concentrated-liquidity range management on PancakeSwap V3 (WBNB/USDT). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.',
+        'Concentrated-liquidity range management on Uniswap v3 (WBNB/USDT, BNB Smart Chain). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.',
       category: 'rebalancing',
       image: 'https://agripinaa.vercel.app/agent-icon.png',
       capabilities: ['trading', 'lp-management', 'x402-status'],
       execution: {
-        venue: 'pancakeswap-v3',
+        venue: 'uniswap-v3',
         rebalanceVenue: 'ophis',
         pair: 'WBNB/USDT',
         chainId: 56,
@@ -532,7 +532,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
       txHash: '0x89a33aa7661447b2d73e8ac69e78f2db11c86e4992b6558db3118dbeab1fdd82',
       verifier: VERIFIER,
       tag: 'agripinaa-verified · rebalancing',
-      feedbackHash: 'anchored to the V3 position below',
+      feedbackHash: 'anchored to the PancakeSwap V3 position below',
     },
     // STALE, carried verbatim from verified.ts rather than silently corrected:
     // position 7173629 reads liquidity = 0 on-chain as of 2026-08-24 because the
@@ -540,9 +540,10 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     // harvest is what should refresh this ref (and the attestation anchored to
     // it), not a hand edit here.
     //
-    // The Uniswap v3 row is the agent's own-capital run since 2026-09-13
-    // (`LP_RANGE_VENUE=uniswap-v3` on the runner); managed accounts stay on
-    // PancakeSwap V3 because their session policy allows only that venue.
+    // Ranger runs on Uniswap v3 since 2026-09-13: own capital through
+    // `LP_RANGE_VENUE=uniswap-v3` on the runner, managed accounts through the
+    // session policy in managed-strategies.ts. The PancakeSwap row is the
+    // position from the original venue, kept as history.
     proofs: [
       {
         label: 'Uniswap v3 position minted',
@@ -555,7 +556,7 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
         label: 'PancakeSwap V3 position minted',
         ref: '7173629',
         kind: 'position',
-        note: 'Concentrated-liquidity WBNB/USDT position, managed in range',
+        note: 'Concentrated-liquidity WBNB/USDT position on the original venue, kept as history',
       },
     ],
   },

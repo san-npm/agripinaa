@@ -137,16 +137,16 @@ export async function recoverExistingSession<TSigner>(args: {
     const nowSeconds = args.nowSeconds ?? Math.floor(Date.now() / 1000);
     if (observedExpiry !== undefined
       && (observedExpiry <= nowSeconds || (sawRegistered && !sawLive))) {
-      throw new Error('The existing manager session is expired or revoked and cannot be registered twice. The agent manager key must be rotated before activation.');
+      throw new Error('The existing manager session is expired or revoked and cannot be registered twice. Activate from a new passkey account; reusing this one needs an operator manager-key rotation.');
     }
     if (observedExpiry !== undefined || sawLive || sawRegistered) {
-      throw new Error('The manager key is registered or partially visible on-chain, but its current smart-account authority could not be confirmed. Activation stopped without submitting a duplicate grant.');
+      throw new Error('The manager key is registered or partially visible on-chain, but its current smart-account authority could not be confirmed. Activation stopped without submitting a duplicate grant. If this agent was stopped on this account before, activate from a new passkey account; reusing this one needs an operator manager-key rotation.');
     }
     return null;
   }
   const nowSeconds = args.nowSeconds ?? Math.floor(Date.now() / 1000);
   if (expiry <= nowSeconds) {
-    throw new Error('The existing manager session is expired or revoked and cannot be registered twice. The agent manager key must be rotated before activation.');
+    throw new Error('The existing manager session is expired or revoked and cannot be registered twice. Activate from a new passkey account; reusing this one needs an operator manager-key rotation.');
   }
   const maximumExpiry = args.maximumExpiry === undefined
     ? args.scope.expiry

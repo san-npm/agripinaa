@@ -1,7 +1,9 @@
 'use client';
 
+import { bscScanNft } from '@agripinaa/shared/chains';
 import {
   managedStrategyFor,
+  RANGER_POSITION_MANAGER,
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
 import { formatUnits, type Hex } from 'viem';
@@ -87,7 +89,7 @@ function RangerDetails({
     if (emptyState === 'recorded-unavailable') {
       return (
         <div className="rounded-lg border border-border bg-surface-2 p-3">
-          <p className="text-sm font-medium">Recorded Pancake position unavailable</p>
+          <p className="text-sm font-medium">Recorded Uniswap v3 position unavailable</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-2">
             Ranger recorded NFT #{positionTokenId}, but its WBNB/USDT liquidity is no longer
             readable as an active position. The idle balances above are still live on-chain.
@@ -98,7 +100,7 @@ function RangerDetails({
     if (emptyState === 'inactive') {
       return (
         <div className="rounded-lg border border-border bg-surface-2 p-3">
-          <p className="text-sm font-medium">No tracked Pancake position</p>
+          <p className="text-sm font-medium">No tracked Uniswap v3 position</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-2">
             The runner is not currently confirmed active, so this dashboard will not describe
             Ranger as preparing a position. The idle balances above remain live on-chain.
@@ -108,7 +110,7 @@ function RangerDetails({
     }
     return (
       <div className="rounded-lg border border-border bg-surface-2 p-3">
-        <p className="text-sm font-medium">Waiting for the first Pancake V3 range</p>
+        <p className="text-sm font-medium">Waiting for the first Uniswap v3 range</p>
         <p className="mt-1 text-xs leading-relaxed text-muted-2">
           The idle WBNB and USDT above remain in your account while Ranger prepares or rebalances
           the position. This card will show its NFT and live range as soon as it is minted.
@@ -125,9 +127,9 @@ function RangerDetails({
     <div className="rounded-lg border border-border bg-surface-2 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-2">PancakeSwap V3 position</p>
+          <p className="text-xs uppercase tracking-wide text-muted-2">Uniswap v3 position</p>
           <a
-            href={`https://bscscan.com/token/0x46A15B0b27311cedF172AB29E4f4766fbE7F4364?a=${ranger.tokenId.toString()}`}
+            href={bscScanNft(56, RANGER_POSITION_MANAGER, ranger.tokenId.toString())}
             target="_blank"
             rel="noreferrer"
             className="mt-1 inline-block font-mono text-sm font-semibold text-primary hover:underline"
@@ -249,7 +251,7 @@ function StrategyRecoveryPanel({
       </button>
       <p className="mt-2 text-xs leading-relaxed text-muted-2">
         This stops every on-chain session sharing this account. {hasRanger
-          ? 'Ranger liquidity is closed and collected through the pinned Pancake position manager. '
+          ? 'Ranger liquidity is closed and collected through the pinned Uniswap v3 position manager. '
           : ''}
         Venue allowances are reset before exact, freshly read token balances are sent. Native BNB
         stays behind as recovery gas until every account position is empty.
