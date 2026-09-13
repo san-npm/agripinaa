@@ -207,17 +207,32 @@ sandbox path. The human-backed flow is therefore proven by
 live 402 challenge on the tunnel, and the reasons are in
 [`docs/world-agentkit-feedback.md`](docs/world-agentkit-feedback.md).
 
-**Uniswap.** Ranger runs on Uniswap v3 on BNB Smart Chain as a selectable
-venue (`apps/agents/src/lp-venues.ts`, addresses probed on-chain and recorded
-there), and it is live: on 2026-09-13 the production runner switched venue,
-rebalanced through Ophis and minted Uniswap v3 position 2745250 in
+**Uniswap.** I moved Ranger, my concentrated-liquidity agent, onto Uniswap v3
+on BNB Smart Chain. Its own capital has run there since 2026-09-13 00:45 UTC:
+the runner switched venue, rebalanced through Ophis and minted Uniswap v3
+position 2745250 in
 [`0x3dffa2c5…5076`](https://bscscan.com/tx/0x3dffa2c5dc47ebbfea32fef0fecb628b2aca991877025285a5cda285e4c15076)
-within forty seconds. Since 2026-09-13 the managed mandates users activate
-are scoped to the same Uniswap v3 position manager
-(`RANGER_POSITION_MANAGER` in `packages/shared/src/managed-strategies.ts`),
-so Ranger is a Uniswap v3 agent for its own capital and for every user
-account. [`FEEDBACK.md`](FEEDBACK.md) has the contribution pointers, the log
-lines and the developer feedback.
+within forty seconds, with no code change between the two runs. Later that day
+I moved the user side too: the managed mandates users activate are scoped to
+the same Uniswap v3 position manager, so Ranger is a Uniswap v3 agent for its
+own capital and for every user account. [`FEEDBACK.md`](FEEDBACK.md) has the
+log lines and my developer feedback.
+
+Where to look (permalinks at commit `1333f24`):
+
+| What | Code |
+|---|---|
+| Uniswap v3 on BNB Chain: NonfungiblePositionManager `0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613`, UniswapV3Factory `0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7`, fee tiers and the on-chain probe record | [`lp-venues.ts` L56-L73](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/lp-venues.ts#L56-L73) |
+| Venue for Ranger's own capital, picked from `LP_RANGE_VENUE`; an unknown name stops Ranger only | [`lp-venues.ts` L85](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/lp-venues.ts#L85), [`ops/launch.md` L56](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/ops/launch.md#L56) |
+| Each run bound to one venue record (`ctx.venue`) | [`lp-range.ts` L1055](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/agents/lp-range.ts#L1055) |
+| Factory check on the position manager, then the deepest WBNB/USDT pool across fee tiers with `getPool` | [`lp-range.ts` L425-L450](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/agents/lp-range.ts#L425-L450) |
+| TWAP guard on the pool's `observe` | [`lp-range.ts` L274](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/agents/lp-range.ts#L274) |
+| Inventory prep: the 50/50 swap clears in an Ophis batch auction, never across the pool | [`lp-range.ts` L925-L999](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/agents/lp-range.ts#L925-L999) |
+| Token approvals and `mint` | [`lp-range.ts` L639-L650](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/agents/lp-range.ts#L639-L650) |
+| Exit: TWAP check, `decreaseLiquidity`, `collect` | [`lp-range.ts` L702-L770](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/agents/lp-range.ts#L702-L770) |
+| User mandates: the session grants only `mint`, `decreaseLiquidity` and `collect` on the Uniswap v3 position manager, and activation approves WBNB and USDT to it | [`managed-strategies.ts` L29](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/packages/shared/src/managed-strategies.ts#L29), [L148-L158](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/packages/shared/src/managed-strategies.ts#L148-L158) |
+| Mandates granted under the old PancakeSwap policy are retired, never run | [`managed-strategy-runner.ts` L394](https://github.com/san-npm/agripinaa/blob/1333f2482964641415616a7c25dce88c20afda51/apps/agents/src/managed-strategy-runner.ts#L394) |
+| Tests | [`lp-venues.test.ts`](apps/agents/tests/lp-venues.test.ts), [`lp-range-venue.test.ts`](apps/agents/tests/lp-range-venue.test.ts), [`lp-range-venue-config.test.ts`](apps/agents/tests/lp-range-venue-config.test.ts), [`managed-strategy-runner.test.ts`](apps/agents/tests/managed-strategy-runner.test.ts), [`managed-strategies.test.ts`](packages/shared/tests/managed-strategies.test.ts) |
 
 **Bazantic.** Two gateways and two recipes so any MCP client can discover,
 vet and hire an agent: the Agripinaa Agent Index (`apps/web/public/openapi.json`)
