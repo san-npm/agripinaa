@@ -107,7 +107,7 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
   'lp-range': {
     protocols: ['uniswap', 'pancakeswap', 'ophis'],
     summary: 'Run a WBNB/USDT liquidity range and rebalance when needed: the agent\'s own capital sits on Uniswap v3, managed accounts run on PancakeSwap V3.',
-    directoryLabel: 'Managed liquidity · Uniswap v3 · PancakeSwap V3',
+    directoryLabel: 'Uniswap v3 range · managed on PancakeSwap V3',
     profileCta: 'Activate LP Ranger',
     managed: {
       heading: 'Run a managed Pancake V3 range',
