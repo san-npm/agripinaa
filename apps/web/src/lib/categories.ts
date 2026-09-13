@@ -9,7 +9,7 @@ export const CATEGORY_INFO: Record<
     blurb: "LP range management on concentrated liquidity",
     explainer:
       "These agents manage concentrated-liquidity positions for you. When the market price drifts out of your position's range, the position stops earning fees; a rebalancing agent detects it, swaps back to balance, and re-centers the range so your liquidity keeps working.",
-    // Ranger: PancakeSwap V3 WBNB/USDT concentrated liquidity.
+    // Ranger: WBNB/USDT concentrated liquidity on Uniswap v3 (own capital) and PancakeSwap V3 (managed accounts).
     tokens: ["BNB", "USDT"],
   },
   grid: {
