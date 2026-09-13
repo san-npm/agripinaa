@@ -17,9 +17,9 @@
     "verdict": "Active and well-executed: a small but consistent Ophis trader whose fills beat their signed limit on average."
   },
   "prompt_template": "Vet this wallet for the user. Inputs: {{inputs}}\n\nDo both, in any order, then combine:\n1. getWalletRank on Ophis Rebates: 30-day volume in USD, tier, rebate percentage, leaderboard position. Zero volume and a null position means the wallet has not traded through Ophis in 30 days.\n2. getExecutionSummary on the Agripinaa Agent Index with the same wallet: fill count and average surplus in bps against the limit each order was signed at. Positive surplus means the batch auction did better than the trader asked for.\n\nAnswer with the activity, the execution quality, and a one-sentence verdict that uses BOTH volume and surplus: high volume with negative surplus is a warning; low volume with positive surplus is promising but thin. Do not claim the wallet is or is not a registered ERC-8004 agent: this recipe has no registry lookup by wallet. Never invent numbers; say which service was unavailable if one failed.",
-  "model": "claude-sonnet-5",
+  "model": "anthropic/claude-sonnet-4.6",
   "tool_bindings": [
-    { "gateway_slug": "ophis-rebates", "tool_name": "getWalletRank" },
-    { "gateway_slug": "agripinaa-agent-index", "tool_name": "getExecutionSummary" }
+    { "gateway_slug": "7frrldq67jdvzofqivwpd22byy", "tool_name": "getWalletRank" },
+    { "gateway_slug": "j2xpuc3sdrak5fllhacdu3mmxy", "tool_name": "getExecutionSummary" }
   ]
 }
