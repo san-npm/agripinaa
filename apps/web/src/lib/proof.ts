@@ -80,6 +80,9 @@ export function normalizeProofEvents(value: unknown): ProofEvent[] {
       at,
       ...(txHash ? { txHash } : {}),
       ...(orderUid ? { orderUid } : {}),
+      ...(typeof row.positionManager === 'string' && /^0x[0-9a-fA-F]{40}$/.test(row.positionManager)
+        ? { positionManager: row.positionManager as `0x${string}` }
+        : {}),
       // Runner versions can lag this deployment. Only independently fetched
       // order amounts earn a BPS badge in getOnchainTradeBackfill below.
       ...(hf !== undefined && hf > 0 && hf < 1_000 ? { hf } : {}),

@@ -34,8 +34,8 @@ import { RequestGate } from './request-gate';
 
 export const FREE_TRIAL_USES = 3;
 /** Chains a caller may sign the challenge on. AgentBook lookup is chain-independent. */
-export const SIGNING_CHAINS = ['eip155:56', 'eip155:8453', 'eip155:480'] as const;
-export const STATEMENT =
+const SIGNING_CHAINS = ['eip155:56', 'eip155:8453', 'eip155:480'] as const;
+const STATEMENT =
   'Prove this agent acts for a real, World ID-verified human to read this Agripinaa agent status without paying.';
 /**
  * AgentBook on Base. The verifier's default reads World Chain, the
@@ -53,6 +53,8 @@ const CHALLENGE_TTL_MS = 5 * 60_000;
 /** A nonce is remembered for the challenge TTL plus the library's issuedAt window. */
 const NONCE_TTL_MS = CHALLENGE_TTL_MS + 5 * 60_000;
 const NONCE_CAP = 10_000;
+/** Whole admission budget: parse, validate, verify (one eth_call at most), registry reads. */
+const ADMIT_DEADLINE_MS = 8_000;
 
 /**
  * Hosts a challenge may be bound to: this runner's own published hostname and
@@ -60,7 +62,7 @@ const NONCE_CAP = 10_000;
  * likes, and a signature bound to a foreign host (another quick tunnel
  * included) must not count here. The runner learns its hostname the way the
  * operators do: `ops/tunnel-url.txt`, written by start-agents.sh and
- * report-runner-url.sh on every tunnel start, re-read every 30 seconds.
+ * report-runner-url.sh on every tunnel start, re-read on every admission.
  * `AGENTKIT_PUBLIC_HOSTS` (comma separated) adds fixed hosts for other setups.
  */
 const EXTRA_PUBLIC_HOSTS = new Set(
@@ -69,25 +71,22 @@ const EXTRA_PUBLIC_HOSTS = new Set(
 /** Resolved from this file, not the cwd: pnpm starts the runner inside apps/agents. */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TUNNEL_URL_FILE = process.env.AGENTKIT_TUNNEL_URL_FILE ?? join(REPO_ROOT, 'ops', 'tunnel-url.txt');
-let tunnelHost: { value: string | null; readAt: number } = { value: null, readAt: 0 };
-function publishedTunnelHost(now = Date.now()): string | null {
-  if (now - tunnelHost.readAt < 30_000) return tunnelHost.value;
-  let value: string | null = null;
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/** The hostname in ops/tunnel-url.txt, re-read on every call: 60 bytes behind the rate limit. */
+function publishedTunnelHost(): string | null {
   try {
     const url = new URL(readFileSync(TUNNEL_URL_FILE, 'utf8').trim());
-    if (url.protocol === 'https:') value = url.host.toLowerCase();
+    return url.protocol === 'https:' ? url.host.toLowerCase() : null;
   } catch {
-    value = null;
+    return null;
   }
-  tunnelHost = { value, readAt: now };
-  return value;
 }
 
 export function trustedHost(host: string | undefined): boolean {
   if (!host) return false;
   const h = host.toLowerCase();
-  if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(h)) return true;
-  return EXTRA_PUBLIC_HOSTS.has(h) || publishedTunnelHost() === h;
+  return LOCAL_HOST.test(h) || EXTRA_PUBLIC_HOSTS.has(h) || publishedTunnelHost() === h;
 }
 
 /**
@@ -97,7 +96,7 @@ export function trustedHost(host: string | undefined): boolean {
 export function resourceUriFor(req: Pick<IncomingMessage, 'headers'>, pathname: string): string | null {
   const host = req.headers.host;
   if (!trustedHost(host)) return null;
-  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host!);
+  const local = LOCAL_HOST.test(host!);
   try {
     // Normalized (host lowercased) so the challenge, the signature and the
     // check all carry the same string; a Host that is not a URL is refused.
@@ -215,6 +214,11 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
     const reserved = storage.reserveNonce(payload.nonce);
     if (reserved === 'replay') return { granted: false, reason: 'nonce already used (replay)' };
     if (reserved === 'full') return { granted: false, reason: 'verification store is full; retry in a few minutes' };
+    // Only the chains the challenge advertised: a client must not pick which
+    // RPC this runner talks to by naming a chain of its own.
+    if (!(SIGNING_CHAINS as readonly string[]).includes(payload.chainId)) {
+      return { granted: false, reason: `chain ${payload.chainId} is not one the challenge offered` };
+    }
     const validation = await validateAgentkitMessage(payload, resourceUri);
     if (!validation.valid) return { granted: false, reason: firstLine(validation.error, 'invalid message') };
     // The library binds the host only. This runner serves several agents'
@@ -261,11 +265,18 @@ export function createAgentkitGate(opts: AgentkitGateOptions = {}) {
       if (!resourceUri) return { granted: false, reason: 'request Host is not a published runner host' };
       const permit = gate.enter(clientKey);
       if (!permit.ok) return { granted: false, reason: `too many verification attempts; retry in ${permit.retryAfterSeconds}s` };
+      // A stalled registry or signature RPC must not hold one of the few
+      // in-flight slots: past the deadline the caller pays like everyone else.
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<Admission>((resolve) => {
+        deadline = setTimeout(() => resolve({ granted: false, reason: 'verification took too long' }), ADMIT_DEADLINE_MS);
+      });
       try {
-        return await admitInner(header, resourceUri, path);
+        return await Promise.race([admitInner(header, resourceUri, path), timeout]);
       } catch (err) {
         return { granted: false, reason: firstLine(err instanceof Error ? err.message : undefined, 'bad header') };
       } finally {
+        clearTimeout(deadline);
         permit.release();
       }
     },

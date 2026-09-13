@@ -2,7 +2,7 @@ import { TOKENS_BSC, fromBaseUnits, toBaseUnits, type TokenInfo } from '@agripin
 import { erc20Abi, maxUint256, padHex, parseAbi, toEventSelector, type Hex, type PublicClient } from 'viem';
 
 import type { ManagedExecutor } from '../executor';
-import { graphConfirms, readGraphRates, type GraphRatesRead } from '../graph-rates';
+import { graphConfirms, plausibleAgainstChain, readGraphRates, type GraphRatesRead } from '../graph-rates';
 import { isGlobalHalt, type AgentContext, type AgentModule } from '../types';
 
 export type Venue = 'none' | 'venus' | 'aave';
@@ -220,13 +220,16 @@ export async function readRates(client: Reader, venues: Venues = USDT_VENUES): P
     readGraphRates(venues.token, blocksPerYear),
   ]);
 
+  const venusBps = venusApyBps(venusRate, blocksPerYear);
+  const aaveBps = aaveApyBps(reserve.currentLiquidityRate);
   return {
-    venusBps: venusApyBps(venusRate, blocksPerYear),
-    aaveBps: aaveApyBps(reserve.currentLiquidityRate),
+    venusBps,
+    aaveBps,
     blocksPerYear,
     venusRatePerBlock: venusRate.toString(),
     aaveLiquidityRate: reserve.currentLiquidityRate.toString(),
-    graph,
+    // A second opinion only counts when it measures the same thing as the chain.
+    graph: plausibleAgainstChain(graph, { venusBps, aaveBps }),
   };
 }
 
