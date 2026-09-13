@@ -74,11 +74,12 @@ test('a prototype key is not an agent', () => {
  * The bodies below are the exact responses `/manifests/<slug>.json` returns
  * after each registered identity has transitioned to live, captured with the
  * runner base pinned to the fixture origin. Those URLs are the tokenURI of an
- * already-minted, immutable ERC-8004 identity, so the bytes may not drift: not
- * a value, not a key, not the order of the keys. The composition below mirrors
- * buildManifest (endpoint first inside x402, everything else in declaration
- * order), so this fails the moment a registry edit would change what an x402
- * client reads back.
+ * already-minted, immutable ERC-8004 identity: the URLs never change, and the
+ * bodies change only on purpose. The composition below mirrors buildManifest
+ * (endpoint first inside x402, everything else in declaration order), so this
+ * fails the moment a registry edit would change what an x402 client reads
+ * back; a deliberate policy update (a venue move, say) updates the fixture in
+ * the same commit.
  *
  * All first-party agents are registered, so every served body is captured.
  */
@@ -96,7 +97,7 @@ const SERVED: Record<string, string> = {
   'yield-b':
     '{"name":"Agripinaa Steward","description":"Stablecoin yield rotation across BSC lending venues, run patiently. Compares live Venus and Aave supply rates every twelve hours and moves a deposit only when the other venue leads by 120 bps on three consecutive checks, and never more than once every two days. The same policy applies to its own capital and to every account it manages, and funds move through a router that can only ever pay them back to their owner.","category":"yield","image":"https://agripinaa.vercel.app/agent-icon.png","capabilities":["session-keys","x402-status"],"execution":{"asset":"USDT","chainId":56},"safety":{"maxMovesPerDay":1,"hysteresisBps":120,"thresholdComparator":"inclusive","confirmations":3,"minHoursBetweenMoves":48,"checkEveryHours":12,"venues":["venus","aave"],"custody":"funds stay in the depositor account throughout; the agent holds a session key scoped to one router whose every recipient is hardcoded to that same account, so it can never send funds anywhere else and never withdraws to itself","onRevoke":"revoking the session stops all further moves; the position stays where it is and the depositor withdraws it themselves"},"recommendedScope":{"spendCapUsdtPerDay":"250","expiresHours":720},"x402":{"endpoint":"https://parity-fixture.example.com/yield-b/status","priceUsdt":"0.05","note":"live"}}',
   'lp-range':
-    '{"name":"Agripinaa Ranger","description":"Concentrated-liquidity range management on PancakeSwap V3 (WBNB/USDT). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.","category":"rebalancing","image":"https://agripinaa.vercel.app/agent-icon.png","capabilities":["trading","lp-management","x402-status"],"execution":{"venue":"pancakeswap-v3","rebalanceVenue":"ophis","pair":"WBNB/USDT","chainId":56},"safety":{"rangePct":5,"outOfRangeMinutes":30,"maxRebalancesPerDay":2,"maxRebalancesPerWeek":4},"x402":{"endpoint":"https://parity-fixture.example.com/lp-range/status","priceUsdt":"0.05","note":"live"}}',
+    '{"name":"Agripinaa Ranger","description":"Concentrated-liquidity range management on Uniswap v3 (WBNB/USDT, BNB Smart Chain). Detects when the position drifts out of range, collects and closes it, rebalances inventory 50/50 through an Ophis batch auction, and re-mints a fresh range around the current tick. Fee-bleed guard caps rebalances per day and week.","category":"rebalancing","image":"https://agripinaa.vercel.app/agent-icon.png","capabilities":["trading","lp-management","x402-status"],"execution":{"venue":"uniswap-v3","rebalanceVenue":"ophis","pair":"WBNB/USDT","chainId":56},"safety":{"rangePct":5,"outOfRangeMinutes":30,"maxRebalancesPerDay":2,"maxRebalancesPerWeek":4},"x402":{"endpoint":"https://parity-fixture.example.com/lp-range/status","priceUsdt":"0.05","note":"live"}}',
   'weight-rebalancer':
     '{"name":"Agripinaa Rebalancer","description":"Portfolio-weight rebalancer holding WBNB and USDT at a 50/50 split by value. Checks the split every 10 minutes and, when drift leaves a 5 percent band, restores the target with a single Ophis batch-auction swap (MEV-protected, a receipt for every rebalance). Sized to the distance from target and no further, so it can neither overdraw a leg nor overshoot into the opposite drift.","category":"rebalancing","image":"https://agripinaa.vercel.app/agent-icon.png","capabilities":["trading","x402-status"],"execution":{"venue":"ophis","pair":"WBNB/USDT","chainId":56},"safety":{"targetWeightPct":50,"driftBandPct":5,"maxRebalancesPerDay":4,"minTradeUsd":1,"cooldownMinutes":35,"tickMinutes":10,"maxTradeSize":"the distance from the target weight, which is at most half the overweight side, never the whole balance","onHalt":"no automatic halt: the agent takes no directional view, so the daily cap, the cooldown and the minimum notional are the limits"},"x402":{"endpoint":"https://parity-fixture.example.com/weight-rebalancer/status","priceUsdt":"0.05","note":"live"}}',
 };

@@ -7,11 +7,12 @@ import { parseAbi } from 'viem';
  * reads. What differs is what a venue record holds: the addresses and the
  * fee tiers the pair is deployed at.
  *
- * `LP_RANGE_VENUE` selects the venue for the agent's own capital; PancakeSwap
- * stays the default so the live runner is unchanged. Managed mandates keep
- * their PancakeSwap session policy
- * (`packages/shared/src/managed-strategies.ts`); a venue there is a policy
- * change that must be re-verified on-chain, not an env var.
+ * `LP_RANGE_VENUE` selects the venue for the agent's own capital (production
+ * runs `uniswap-v3`; unset keeps the original PancakeSwap default so an old
+ * checkout behaves as before). Managed mandates are bound to the position
+ * manager their session policy names (`RANGER_POSITION_MANAGER` in
+ * `packages/shared/src/managed-strategies.ts`): that is what the browser
+ * grants, so a venue change there is a policy change, not an env var.
  */
 export interface LpVenue {
   name: 'pancakeswap-v3' | 'uniswap-v3';
@@ -71,6 +72,11 @@ export const LP_VENUES: Record<LpVenue['name'], LpVenue> = {
     feeTiers: [500, 100, 3000, 10000],
   },
 };
+
+/** The venue whose position manager is `address`, or undefined for a manager Ranger does not know. */
+export function venueForPositionManager(address: string): LpVenue | undefined {
+  return Object.values(LP_VENUES).find((venue) => venue.positionManager.toLowerCase() === address.toLowerCase());
+}
 
 /**
  * The venue named by `LP_RANGE_VENUE`. An unknown name is reported, not

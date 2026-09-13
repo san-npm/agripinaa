@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { TOKENS_BSC, toBaseUnits } from '@agripinaa/shared';
+import { PANCAKE_V3_POSITION_MANAGER, RANGER_POSITION_MANAGER, TOKENS_BSC, toBaseUnits } from '@agripinaa/shared';
 import { parseAbi } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import { managedAccountStateKey } from '../src/managed';
+import { loadManaged, managedAccountStateKey, upsertManaged } from '../src/managed';
 import {
   buildManagedStrategyContext,
   managedStrategyNextDelayMs,
   managedStrategySweepIntervalMs,
   readManagedRelayStatus,
+  tickManagedStrategy,
 } from '../src/managed-strategy-runner';
 import { ChassisOphisWallet } from '../src/ophis-wallet';
 import type { AgentContext } from '../src/types';
@@ -331,4 +335,50 @@ test('Ranger handoff requires the WBNB ceiling that makes direct mint executable
     },
     { period: 'day', limit: toBaseUnits('0.005', 18) },
   ]);
+});
+
+function rangerEntry(target: `0x${string}`) {
+  const base = entry();
+  return {
+    ...base,
+    session: {
+      ...base.session,
+      permissions: {
+        calls: [{ to: target, signature: 'mint((address,address,uint24,int24,int24,uint256,uint256,uint256,uint256,address,uint256))' }],
+        spend: [],
+      },
+    },
+  };
+}
+
+test('a mandate scoped to a superseded policy target is retired without a tick; a canonical one proceeds', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'agripinaa-managed-'));
+  const logged: { event: string }[] = [];
+  const { base } = baseContext('lp-range');
+  (base as { log: (r: { event: string }) => void }).log = (r) => logged.push(r);
+  let ticked = 0;
+  const module = { name: 'lp-range', tick: async () => { ticked += 1; } } as never;
+  const managerKey = { privateKey: PRIVATE_KEY, address: manager.address, publicKey: manager.publicKey };
+
+  let fetches = 0;
+  t.mock.method(globalThis, 'fetch', async () => { fetches += 1; throw new Error('offline'); });
+
+  upsertManaged('lp-range', rangerEntry(PANCAKE_V3_POSITION_MANAGER) as never, dir);
+  const retired = await tickManagedStrategy({ ctx: base, module, client: {} as never, managerKey, dataDir: dir });
+  assert.equal(fetches, 0, 'a superseded mandate is retired before any on-chain read');
+  assert.deepEqual(retired, { serviced: 0, errors: 0 });
+  assert.equal(ticked, 0);
+  assert.deepEqual(loadManaged('lp-range', dir), []);
+  assert.deepEqual(logged.map((r) => r.event), ['managed-entry-retired']);
+
+  // The canonical target passes the scope check and reaches the on-chain
+  // session read, which this test makes fail: the entry then stays registered
+  // and the sweep reports the error instead of retiring the mandate.
+  upsertManaged('lp-range', rangerEntry(RANGER_POSITION_MANAGER) as never, dir);
+  const canonical = await tickManagedStrategy({ ctx: base, module, client: {} as never, managerKey, dataDir: dir });
+  assert.ok(fetches > 0, 'the canonical mandate reached the on-chain session check');
+  assert.deepEqual(canonical, { serviced: 0, errors: 1 });
+  assert.equal(ticked, 0);
+  assert.equal(loadManaged('lp-range', dir).length, 1);
+  assert.ok(!logged.slice(1).some((r) => r.event === 'managed-entry-retired'));
 });

@@ -1,3 +1,4 @@
+import { managedStrategyFor } from '@agripinaa/shared';
 import { isSessionKeyValid } from '@agripinaa/session-kit/verify';
 import {
   RELAY_URL,
@@ -360,9 +361,17 @@ export async function tickManagedStrategy(opts: {
   client: Client;
   managerKey: ManagerKey;
   relayStatus?: ManagedRelayStatusReader;
+  /** Registry directory; tests point it at a scratch dir. */
+  dataDir?: string;
 }): Promise<{ serviced: number; errors: number }> {
   if (isGlobalHalt(opts.ctx.breakers.isHalted())) return { serviced: 0, errors: 0 };
-  const all = loadManaged(opts.ctx.name);
+  const all = loadManaged(opts.ctx.name, opts.dataDir);
+  // The target the browser grants today. An entry scoped to an earlier
+  // policy's target can never act again under this runner (the relay would
+  // refuse every call), so it is retired. The owner re-activates from a new
+  // strategy account: KeyStore never registers the same manager key twice on
+  // one account, so reusing the old account needs a manager-key rotation first.
+  const canonicalTarget = managedStrategyFor(opts.ctx.name)?.callScopes[0]?.to;
   const cursorKey = 'managed:strategySweepCursor';
   const batch = managedSweepBatch(all, opts.ctx.state.get<number>(cursorKey, 0));
   opts.ctx.state.set(cursorKey, batch.nextCursor);
@@ -375,17 +384,28 @@ export async function tickManagedStrategy(opts: {
       const target = scopedTarget(entry);
       try {
         if (entry.session.expiry * 1000 <= Date.now()) {
-          removeManagedEntry(opts.ctx.name, entry);
+          removeManagedEntry(opts.ctx.name, entry, opts.dataDir);
           continue;
         }
         if (!target) throw new Error('managed strategy has no concrete scoped target');
+        if (canonicalTarget && target.toLowerCase() !== canonicalTarget.toLowerCase()) {
+          removeManagedEntry(opts.ctx.name, entry, opts.dataDir);
+          opts.ctx.log({
+            event: 'managed-entry-retired',
+            account: entry.account,
+            target,
+            canonicalTarget,
+            reason: 'session scope predates the current managed policy; re-activate from a new strategy account',
+          });
+          continue;
+        }
         const live = await isSessionKeyValid({
           chainId: entry.chainId,
           account: entry.account,
           sessionPublicKey: entry.session.publicKey,
         });
         if (!live) {
-          removeManagedEntry(opts.ctx.name, entry);
+          removeManagedEntry(opts.ctx.name, entry, opts.dataDir);
           continue;
         }
         const managedCtx = buildManagedStrategyContext({

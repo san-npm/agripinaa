@@ -58,3 +58,13 @@ test('Ranger grants the extra WBNB spend ceiling its direct mint requires', () =
     );
   }
 });
+
+test('Ranger mandates are scoped to, and approve, the Uniswap v3 position manager on BSC', () => {
+  const uniswapNpm = '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613';
+  const ranger = MANAGED_STRATEGIES['lp-range'];
+  assert.equal(ranger.callScopes[0]!.to, uniswapNpm);
+  assert.deepEqual(
+    ranger.approvals.filter((approval) => approval.spender === uniswapNpm).map((approval) => approval.token).sort(),
+    ['USDT', 'WBNB'],
+  );
+});

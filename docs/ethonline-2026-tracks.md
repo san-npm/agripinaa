@@ -17,7 +17,7 @@ one-day window.
 | World | AgentKit Continuity | $1,166 x3 | Register the 8 agents in AgentBook (World Chain 480). Marketplace shows a human-backed badge resolved live from AgentBook. x402 status endpoint grants a free-trial to human-backed callers via `createAgentBookVerifier` (our server is raw `node:http`, not Hono). Feedback doc required. | 3-4h |
 | Bazantic | 1 Help an agent use your project (Continuity) | $500 x2 | Publish an OpenAPI spec for the runner's `/:slug/status` and `/proof`, `baz gateway add`, one recipe, before/after comparison video. | 2h |
 | Bazantic | 3 Agentify a new API | $500/300/200 | Add the Ophis quote API as a new gateway, recipe chains Ophis quote + Agripinaa status. | 1h on top |
-| Uniswap Foundation | Continuity | $1k x2 | Ranger (`lp-range`) gains Uniswap v3 on BSC as a second venue: same NonfungiblePositionManager ABI as Pancake V3, different pinned addresses, probed on-chain like the rest. FEEDBACK.md + Developer Feedback Form. | 3-4h |
+| Uniswap Foundation | Continuity | $1k x2 | Ranger (`lp-range`) moves to Uniswap v3 on BSC, own capital and managed mandates: same NonfungiblePositionManager ABI as Pancake V3, different pinned addresses, probed on-chain like the rest. FEEDBACK.md + Developer Feedback Form. | 3-4h |
 
 ## Tier 2: stretch
 

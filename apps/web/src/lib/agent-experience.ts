@@ -105,13 +105,13 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'lp-range': {
-    protocols: ['uniswap', 'pancakeswap', 'ophis'],
-    summary: 'Run a WBNB/USDT liquidity range: own capital on Uniswap v3, managed accounts on PancakeSwap V3, rebalanced through Ophis.',
-    directoryLabel: 'Uniswap v3 range · managed on PancakeSwap V3',
+    protocols: ['uniswap', 'ophis'],
+    summary: 'Manage a WBNB/USDT liquidity range on Uniswap v3 and rebalance through Ophis when needed.',
+    directoryLabel: 'Managed liquidity · Uniswap v3',
     profileCta: 'Activate LP Ranger',
     managed: {
-      heading: 'Run a managed Pancake V3 range',
-      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares WBNB and USDT, then LP Ranger mints a ±5% position and uses Ophis when inventory needs balancing. Managed accounts stay on PancakeSwap V3 by session policy; the agent runs the same range with its own capital on Uniswap v3.',
+      heading: 'Run a managed Uniswap v3 range',
+      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares WBNB and USDT, then LP Ranger mints a ±5% Uniswap v3 position and uses Ophis when inventory needs balancing.',
       submitLabel: 'Start LP Ranger',
       activeSummary: 'LP Ranger now owns the range lifecycle for this dedicated account under its weekly rebalance and daily action limits.',
     },

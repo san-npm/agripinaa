@@ -1,9 +1,9 @@
 'use client';
 
-import { PANCAKE_V3_FACTORY_BSC } from '@agripinaa/shared/funding';
 import {
   managedStrategyFor,
-  PANCAKE_V3_POSITION_MANAGER,
+  RANGER_FACTORY,
+  RANGER_POSITION_MANAGER,
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
@@ -158,7 +158,7 @@ async function readRangerPosition(
   if (!tokenIdText || !/^[1-9]\d*$/.test(tokenIdText)) return null;
   const tokenId = BigInt(tokenIdText);
   const owner = await readRangerOwnerOrNull(() => client.readContract({
-    address: PANCAKE_V3_POSITION_MANAGER,
+    address: RANGER_POSITION_MANAGER,
     abi: NPM_ABI,
     functionName: 'ownerOf',
     args: [tokenId],
@@ -168,7 +168,7 @@ async function readRangerPosition(
   const wbnb = TOKENS_BSC.WBNB!.address.toLowerCase();
   const usdt = TOKENS_BSC.USDT!.address.toLowerCase();
   const position = await client.readContract({
-    address: PANCAKE_V3_POSITION_MANAGER,
+    address: RANGER_POSITION_MANAGER,
     abi: NPM_ABI,
     functionName: 'positions',
     args: [tokenId],
@@ -187,7 +187,7 @@ async function readRangerPosition(
   const tickLower = position[5];
   const tickUpper = position[6];
   const pool = await client.readContract({
-    address: PANCAKE_V3_FACTORY_BSC,
+    address: RANGER_FACTORY,
     abi: FACTORY_ABI,
     functionName: 'getPool',
     args: [token0, token1, fee],

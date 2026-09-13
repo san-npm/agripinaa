@@ -17,7 +17,7 @@ function fakeCtx(managedAccount?: `0x${string}`, logged: unknown[] = []): Ctx {
   } as unknown as Ctx;
 }
 
-test('own capital reports the bad venue name and sits out; a mandate still binds to PancakeSwap', async () => {
+test('own capital reports the bad venue name and sits out; a mandate still binds to the policy venue', async () => {
   const own = venueContext(fakeCtx());
   assert.ok('configError' in own && /LP_RANGE_VENUE=sushi-v3/.test(own.configError));
   const logged: unknown[] = [];
@@ -25,5 +25,5 @@ test('own capital reports the bad venue name and sits out; a mandate still binds
   assert.deepEqual(logged.map((r) => (r as { event: string }).event), ['config-error']);
   assert.deepEqual(await lpRangeAgent.status(fakeCtx()), { configError: (own as { configError: string }).configError });
   const managed = venueContext(fakeCtx('0x2222222222222222222222222222222222222222'));
-  assert.ok(!('configError' in managed) && managed.venue.name === 'pancakeswap-v3');
+  assert.ok(!('configError' in managed) && managed.venue.name === 'uniswap-v3');
 });

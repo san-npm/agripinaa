@@ -10,6 +10,7 @@ import {
   FUNDING_QUOTE_BUFFER_BPS,
   FUNDING_REGISTRATION_COUNT,
   BPS_DENOMINATOR,
+  MANAGED_STRATEGIES,
   PANCAKE_V3_QUOTER_V2_BSC,
   PANCAKE_V3_SMART_ROUTER_BSC,
   TOKENS_BSC,
@@ -425,8 +426,12 @@ const ALLOWED_APPROVAL_SPENDERS = new Set([
   '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110', // Ophis VaultRelayer
   '0x6807dc923806fE8Fd134338EABCA509979a7e0cB', // Aave v3 pool
   '0xfD5840Cd36d94D7229439859C0112a4185BC0255', // Venus vUSDT
-  '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364', // Pancake v3 position manager
+  '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364', // Pancake v3 position manager (Ranger before 2026-09-13)
   ...YIELD_ROUTERS_BSC.map((router) => router.address),
+  // Every spender a managed-strategy activation approves, read from the same
+  // policy the browser builds the bundle from, so a venue move cannot leave the
+  // sponsor rejecting the bundle (Ranger's Uniswap v3 position manager).
+  ...Object.values(MANAGED_STRATEGIES).flatMap((strategy) => strategy.approvals.map((approval) => approval.spender)),
 ].map((address) => address.toLowerCase()));
 const ALLOWED_TOKEN_TARGETS = new Set([
   ...Object.values(TOKENS_BSC).map((token) => token.address),

@@ -43,7 +43,7 @@ flowchart TB
     ID["ERC-8004 IdentityRegistry 0x8004A1..."]
     REP["ERC-8004 ReputationRegistry 0x8004BA..."]
     RT["AgripinaaYieldRouter<br/>USDT and USDC deployments"]
-    VEN["Aave V3 · Venus · PancakeSwap V3"]
+    VEN["Aave V3 · Venus · Uniswap v3 · PancakeSwap V3"]
     ST["Ophis settlement"]
   end
 
@@ -112,7 +112,9 @@ depend on during judging.
 **Aleph Cloud VM, `apps/agents`.** One process, one tick loop per agent, all
 state in `apps/agents/data` on the VM (gitignored; the managed-account registry
 is written 0600 inside a 0700 directory, alongside wallet files at 0600). It
-talks to Ophis for trades, to Aave and Venus and PancakeSwap V3 for positions,
+talks to Ophis for trades, to Aave and Venus for lending positions, to Uniswap v3
+for Ranger's liquidity positions (PancakeSwap V3 before 2026-09-13, and still for
+funding swaps),
 and to the ERC-8004 registries for registration and attestation. Through the
 tunnel it exposes only these shapes: the paid `GET /:slug/status`, the public
 bounded `GET /proof`, `GET /healthz`, `GET /:slug/manager-key` (the public half

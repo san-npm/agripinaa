@@ -53,6 +53,7 @@ import {
   type ManagedAccount,
   type ManagedHealth,
 } from './managed';
+import { managedPositionStateKey } from './agents/lp-range';
 import { isGlobalHalt, type AgentContext, type AgentModule } from './types';
 
 /** Public identity of an agent's manager session key (private half stays on the VM). */
@@ -985,11 +986,12 @@ export function startX402Server(opts: {
       // namespaced runner state is retained so the dashboard can still account
       // for that deployed principal instead of showing only idle balances.
       const canonicalTarget = managedStrategyFor(agent)?.callScopes[0]?.to;
-      const positionTokenId = canonicalTarget?.toLowerCase() === targetAddress.toLowerCase()
+      const positionKey = managedPositionStateKey();
+      const positionTokenId = positionKey && canonicalTarget?.toLowerCase() === targetAddress.toLowerCase()
         ? managedRangerTokenId(
             agent,
             runtime.ctx.state.get(
-              managedAccountStateKey(account as Hex, 'position'),
+              managedAccountStateKey(account as Hex, positionKey),
               null,
             ),
           )

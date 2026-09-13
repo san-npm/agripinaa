@@ -236,7 +236,20 @@ test('never retries a revoked or expired KeyStore registration', async () => {
         wasKeyRegistered: async () => true,
       }),
     }),
-    /registered or partially visible on-chain/,
+    /registered or partially visible on-chain.*activate from a new passkey account/,
+  );
+  // Stop & recover revokes the key: KeyStore keeps its bytes but never
+  // registers it again on this account, so the remedy is a new account.
+  await assert.rejects(
+    recoverExistingSession({
+      account: ACCOUNT,
+      manager: MANAGER,
+      scope: SCOPE,
+      signatureCheckers: [CHECKER],
+      signer: {},
+      dependencies: dependencies({ isKeyValid: async () => false }),
+    }),
+    /cannot be registered twice\. Activate from a new passkey account/,
   );
 });
 

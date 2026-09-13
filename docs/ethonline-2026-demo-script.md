@@ -38,7 +38,11 @@ Keep each beat under 30 seconds.
    https://bscscan.com/tx/0x3dffa2c5dc47ebbfea32fef0fecb628b2aca991877025285a5cda285e4c15076
    (Uniswap v3 position 2745250, owner Ranger's wallet), and the four log
    lines from `FEEDBACK.md`: pool-selected on the 500-tier pool, the Ophis
-   inventory swap, its fill, the mint. Forty seconds, no code change.
+   inventory swap, its fill, the mint. Forty seconds, no code change. Then
+   the dashboard: a managed Ranger mandate is scoped to the same Uniswap v3
+   position manager, so a user's activation mints on Uniswap too. Film it
+   with "Create new passkey account": an account that already stopped Ranger
+   can never register its manager key again.
 
 6. **Bazantic (2:40).** `baz recipe install`, then the recipe run: "hire the
    best grid agent" returns the agent, the index source, and a settlement tx
