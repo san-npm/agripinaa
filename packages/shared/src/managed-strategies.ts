@@ -15,6 +15,20 @@ export const VENUS_VUSDT =
 export const PANCAKE_V3_POSITION_MANAGER =
   '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364' as const;
 
+/** Uniswap v3 on BNB Smart Chain, from developers.uniswap.org, probed on-chain (apps/agents/src/lp-venues.ts). */
+export const UNISWAP_V3_POSITION_MANAGER =
+  '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613' as const;
+export const UNISWAP_V3_FACTORY_BSC =
+  '0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7' as const;
+
+/**
+ * The venue every Ranger mandate is scoped to. Since 2026-09-13 that is
+ * Uniswap v3; the PancakeSwap manager above stays exported for the funding
+ * routes and for positions minted under the earlier policy.
+ */
+export const RANGER_POSITION_MANAGER = UNISWAP_V3_POSITION_MANAGER;
+export const RANGER_FACTORY = UNISWAP_V3_FACTORY_BSC;
+
 export interface ManagedCallScope {
   to: `0x${string}`;
   signatures: readonly string[];
@@ -129,9 +143,9 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
   'lp-range': {
     slug: 'lp-range',
     depositTokens: ['WBNB', 'USDT'],
-    fundingNote: 'A single BTCB, BNB, USDT, or USDC deposit is prepared into WBNB and USDT before Ranger mints the range.',
+    fundingNote: 'A single BTCB, BNB, USDT, or USDC deposit is prepared into WBNB and USDT before Ranger mints the Uniswap v3 range.',
     callScopes: [{
-      to: PANCAKE_V3_POSITION_MANAGER,
+      to: RANGER_POSITION_MANAGER,
       signatures: [
         'mint((address,address,uint24,int24,int24,uint256,uint256,uint256,uint256,address,uint256))',
         'decreaseLiquidity((uint256,uint128,uint256,uint256,uint256))',
@@ -140,8 +154,8 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
     }],
     approvals: [
       ...OPHIS_WBNB_USDT_APPROVALS,
-      { token: 'WBNB', spender: PANCAKE_V3_POSITION_MANAGER },
-      { token: 'USDT', spender: PANCAKE_V3_POSITION_MANAGER },
+      { token: 'WBNB', spender: RANGER_POSITION_MANAGER },
+      { token: 'USDT', spender: RANGER_POSITION_MANAGER },
     ],
     // mint() spends both legs through the position manager. Without a WBNB
     // spend permission Porto correctly rejects the first managed mint even
@@ -149,8 +163,8 @@ export const MANAGED_STRATEGIES: Record<ManagedStrategySlug, ManagedStrategyDefi
     additionalSpendCaps: [{ token: 'WBNB', amount: '100' }],
     signatureCheckers: [OPHIS_SETTLEMENT_BSC],
     usesOphis: true,
-    summary: 'Mints and maintains a ±5% Pancake V3 WBNB/USDT range from your strategy account.',
-    riskNote: 'Use a dedicated account: this mandate controls the Pancake position and the two assets assigned to it.',
+    summary: 'Mints and maintains a ±5% Uniswap v3 WBNB/USDT range from your strategy account.',
+    riskNote: 'Use a dedicated account: this mandate controls the Uniswap v3 position and the two assets assigned to it.',
   },
   'weight-rebalancer': {
     slug: 'weight-rebalancer',

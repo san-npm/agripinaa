@@ -12,7 +12,7 @@ import {
 } from '@agripinaa/shared/contracts';
 import {
   OPHIS_VAULT_RELAYER_BSC,
-  PANCAKE_V3_POSITION_MANAGER,
+  RANGER_POSITION_MANAGER,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { decodeFunctionData, erc20Abi } from 'viem';
@@ -38,7 +38,7 @@ import {
 import {
   buildRangerExitCalls,
   buildStrategyTokenRecoveryCalls,
-  PANCAKE_POSITION_MANAGER_ABI,
+  POSITION_MANAGER_ABI,
   rangerExitMinimums,
 } from '../src/lib/strategy-recovery-pure';
 import {
@@ -130,8 +130,8 @@ test('Ranger owner recovery decreases bounded liquidity before collecting to the
     deadline: 1234n,
   });
   assert.equal(calls.length, 2);
-  assert.equal(calls[0]!.to, PANCAKE_V3_POSITION_MANAGER);
-  const decrease = decodeFunctionData({ abi: PANCAKE_POSITION_MANAGER_ABI, data: calls[0]!.data });
+  assert.equal(calls[0]!.to, RANGER_POSITION_MANAGER);
+  const decrease = decodeFunctionData({ abi: POSITION_MANAGER_ABI, data: calls[0]!.data });
   assert.equal(decrease.functionName, 'decreaseLiquidity');
   assert.deepEqual(decrease.args?.[0], {
     tokenId: 7271073n,
@@ -140,7 +140,7 @@ test('Ranger owner recovery decreases bounded liquidity before collecting to the
     amount1Min: 181n,
     deadline: 1234n,
   });
-  const collect = decodeFunctionData({ abi: PANCAKE_POSITION_MANAGER_ABI, data: calls[1]!.data });
+  const collect = decodeFunctionData({ abi: POSITION_MANAGER_ABI, data: calls[1]!.data });
   assert.equal(collect.functionName, 'collect');
   assert.equal(collect.args?.[0].recipient.toLowerCase(), account.toLowerCase());
 });
@@ -166,7 +166,7 @@ test('strategy recovery resets every pinned allowance before transferring live b
     && decoded.args?.[0]?.toLowerCase() === OPHIS_VAULT_RELAYER_BSC.toLowerCase()));
   assert.ok(approvals.some(({ to, decoded }) =>
     to === TOKENS_BSC.USDT!.address.toLowerCase()
-    && decoded.args?.[0]?.toLowerCase() === PANCAKE_V3_POSITION_MANAGER.toLowerCase()));
+    && decoded.args?.[0]?.toLowerCase() === RANGER_POSITION_MANAGER.toLowerCase()));
   const transfers = calls.slice(7).map((call) =>
     decodeFunctionData({ abi: erc20Abi, data: call.data }));
   assert.deepEqual(transfers.map((decoded) => decoded.functionName), ['transfer', 'transfer', 'transfer']);

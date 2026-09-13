@@ -1,13 +1,13 @@
 import {
   MANAGED_STRATEGIES,
   managedStrategyFor,
-  PANCAKE_V3_POSITION_MANAGER,
+  RANGER_POSITION_MANAGER,
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
 import { encodeFunctionData, erc20Abi, parseAbi, type Hex } from 'viem';
 
-export const PANCAKE_POSITION_MANAGER_ABI = parseAbi([
+export const POSITION_MANAGER_ABI = parseAbi([
   'function factory() view returns (address)',
   'function WETH9() view returns (address)',
   'function ownerOf(uint256 tokenId) view returns (address)',
@@ -46,9 +46,9 @@ export function buildRangerExitCalls(input: {
     if (!input.quotedExit) throw new Error('Ranger exit quote is required for live liquidity.');
     const [amount0Min, amount1Min] = rangerExitMinimums(input.quotedExit);
     calls.push({
-      to: PANCAKE_V3_POSITION_MANAGER,
+      to: RANGER_POSITION_MANAGER,
       data: encodeFunctionData({
-        abi: PANCAKE_POSITION_MANAGER_ABI,
+        abi: POSITION_MANAGER_ABI,
         functionName: 'decreaseLiquidity',
         args: [{
           tokenId: input.tokenId,
@@ -61,9 +61,9 @@ export function buildRangerExitCalls(input: {
     });
   }
   calls.push({
-    to: PANCAKE_V3_POSITION_MANAGER,
+    to: RANGER_POSITION_MANAGER,
     data: encodeFunctionData({
-      abi: PANCAKE_POSITION_MANAGER_ABI,
+      abi: POSITION_MANAGER_ABI,
       functionName: 'collect',
       args: [{
         tokenId: input.tokenId,

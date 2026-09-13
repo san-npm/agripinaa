@@ -1,9 +1,9 @@
 'use client';
 
-import { PANCAKE_V3_FACTORY_BSC } from '@agripinaa/shared/funding';
 import { listActiveAccountSessionPublicKeys } from '@agripinaa/session-kit/verify';
 import {
-  PANCAKE_V3_POSITION_MANAGER,
+  RANGER_FACTORY,
+  RANGER_POSITION_MANAGER,
   type ManagedStrategySlug,
 } from '@agripinaa/shared/managed-strategies';
 import { TOKENS_BSC } from '@agripinaa/shared/tokens';
@@ -15,7 +15,7 @@ import { assertSafeWithdrawalDestination } from './managed';
 import {
   buildRangerExitCalls,
   buildStrategyTokenRecoveryCalls,
-  PANCAKE_POSITION_MANAGER_ABI,
+  POSITION_MANAGER_ABI,
 } from './strategy-recovery-pure';
 import { readStrategyAccountPosition } from './strategy-position';
 import {
@@ -60,8 +60,8 @@ function snapshotFingerprint(value: RangerExitSnapshot): string {
 /** Confirm the entered NFT belongs to the passkey account before stopping any live session. */
 export async function assertRangerPositionOwner(account: Hex, tokenId: bigint): Promise<void> {
   const owner = await readBscQuorumAtCommonBlock(async (client, blockNumber) => client.readContract({
-    address: PANCAKE_V3_POSITION_MANAGER,
-    abi: PANCAKE_POSITION_MANAGER_ABI,
+    address: RANGER_POSITION_MANAGER,
+    abi: POSITION_MANAGER_ABI,
     functionName: 'ownerOf',
     args: [tokenId],
     blockNumber,
@@ -79,27 +79,27 @@ async function readRangerExitSnapshot(
   return readBscQuorumAtCommonBlock(async (client, blockNumber) => {
     const [owner, factory, weth, position] = await Promise.all([
       client.readContract({
-        address: PANCAKE_V3_POSITION_MANAGER,
-        abi: PANCAKE_POSITION_MANAGER_ABI,
+        address: RANGER_POSITION_MANAGER,
+        abi: POSITION_MANAGER_ABI,
         functionName: 'ownerOf',
         args: [tokenId],
         blockNumber,
       }),
       client.readContract({
-        address: PANCAKE_V3_POSITION_MANAGER,
-        abi: PANCAKE_POSITION_MANAGER_ABI,
+        address: RANGER_POSITION_MANAGER,
+        abi: POSITION_MANAGER_ABI,
         functionName: 'factory',
         blockNumber,
       }),
       client.readContract({
-        address: PANCAKE_V3_POSITION_MANAGER,
-        abi: PANCAKE_POSITION_MANAGER_ABI,
+        address: RANGER_POSITION_MANAGER,
+        abi: POSITION_MANAGER_ABI,
         functionName: 'WETH9',
         blockNumber,
       }),
       client.readContract({
-        address: PANCAKE_V3_POSITION_MANAGER,
-        abi: PANCAKE_POSITION_MANAGER_ABI,
+        address: RANGER_POSITION_MANAGER,
+        abi: POSITION_MANAGER_ABI,
         functionName: 'positions',
         args: [tokenId],
         blockNumber,
@@ -118,7 +118,7 @@ async function readRangerExitSnapshot(
       };
     }
     const pool = await client.readContract({
-      address: PANCAKE_V3_FACTORY_BSC,
+      address: RANGER_FACTORY,
       abi: FACTORY_ABI,
       functionName: 'getPool',
       args: [typedPosition[2], typedPosition[3], typedPosition[4]],
@@ -135,8 +135,8 @@ async function readRangerExitSnapshot(
         blockNumber,
       }),
       client.simulateContract({
-        address: PANCAKE_V3_POSITION_MANAGER,
-        abi: PANCAKE_POSITION_MANAGER_ABI,
+        address: RANGER_POSITION_MANAGER,
+        abi: POSITION_MANAGER_ABI,
         functionName: 'decreaseLiquidity',
         args: [{
           tokenId,
@@ -227,9 +227,9 @@ export async function closeRangerPosition(
   if (owner.toLowerCase() !== account.toLowerCase()) {
     throw new Error(`Ranger NFT #${tokenId} is not owned by this strategy account.`);
   }
-  if (factory.toLowerCase() !== PANCAKE_V3_FACTORY_BSC.toLowerCase()
+  if (factory.toLowerCase() !== RANGER_FACTORY.toLowerCase()
       || weth.toLowerCase() !== TOKENS_BSC.WBNB!.address.toLowerCase()) {
-    throw new Error('Pancake position-manager runtime configuration does not match the pinned deployment.');
+    throw new Error('Ranger position-manager runtime configuration does not match the pinned Uniswap v3 deployment.');
   }
   const token0 = position[2];
   const token1 = position[3];

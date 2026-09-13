@@ -4,7 +4,8 @@ import { test } from 'node:test';
 /** The venue is chosen once at import, like the runner does. */
 process.env.LP_RANGE_VENUE = 'uniswap-v3';
 
-const { venueContext } = await import('../src/agents/lp-range');
+const { managedStrategyFor } = await import('@agripinaa/shared');
+const { managedPositionStateKey, venueContext } = await import('../src/agents/lp-range');
 const { LP_VENUES } = await import('../src/lp-venues');
 
 type Ctx = Parameters<typeof venueContext>[0];
@@ -31,11 +32,13 @@ function bound(ctx: Ctx) {
   return out;
 }
 
-test('own capital runs on the selected venue; a managed mandate stays on the venue its session policy names', () => {
+test('own capital runs on the selected venue; a managed mandate runs on the venue its session policy names', () => {
   assert.equal(bound(fakeCtx().ctx).venue.name, 'uniswap-v3');
   const managed = bound(fakeCtx('0x2222222222222222222222222222222222222222').ctx);
-  assert.equal(managed.venue.name, 'pancakeswap-v3');
-  assert.equal(managed.venue.positionManager, LP_VENUES['pancakeswap-v3'].positionManager);
+  assert.equal(managed.venue.name, 'uniswap-v3');
+  assert.equal(managed.venue.positionManager, managedStrategyFor('lp-range')!.callScopes[0]!.to);
+  assert.equal(managed.venue.positionManager, LP_VENUES['uniswap-v3'].positionManager);
+  assert.equal(managedPositionStateKey(), 'venue:uniswap-v3:position');
 });
 
 test('on a non-default venue only the position state is kept apart; a pending order is the wallet\'s', () => {
@@ -53,8 +56,15 @@ test('on a non-default venue only the position state is kept apart; a pending or
   // The PancakeSwap position written before the switch is invisible here, not misread.
   store.set('position', { tokenId: 'pancake-7271073' });
   assert.deepEqual(own.state.get('position', null), { tokenId: '1' });
-  // A managed context reads the plain keys, exactly as before the venue switch existed.
-  const managed = bound(fakeCtx('0x2222222222222222222222222222222222222222').ctx);
+  // A managed context keeps its position state apart the same way, so a
+  // mandate re-activated after the venue change never reads the PancakeSwap
+  // position its account held under the earlier policy.
+  const { ctx: managedCtx, store: managedStore } = fakeCtx('0x2222222222222222222222222222222222222222');
+  managedStore.set('position', { tokenId: 'pancake-7425769' });
+  const managed = bound(managedCtx);
+  assert.equal(managed.state.get('position', null), null);
   managed.state.set('position', { tokenId: 'm' });
-  assert.deepEqual(managed.state.get('position', null), { tokenId: 'm' });
+  assert.deepEqual(managedStore.get('venue:uniswap-v3:position'), { tokenId: 'm' });
+  managed.state.set('pendingOrder', { uid: '0xorder' });
+  assert.deepEqual(managedStore.get('pendingOrder'), { uid: '0xorder' });
 });
