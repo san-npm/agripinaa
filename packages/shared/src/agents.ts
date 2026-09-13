@@ -85,6 +85,8 @@ export interface ExecutionProof {
   /** BscScan tx hash, or a token id for an NFT position. */
   ref: string;
   kind: 'tx' | 'position';
+  /** For `kind: 'position'`: the NFT position manager that minted `ref`. Omitted on rows that predate a second venue (PancakeSwap V3). */
+  positionManager?: `0x${string}`;
   note: string;
 }
 
@@ -537,7 +539,18 @@ export const AGENTS: Record<AgentSlug, AgentRecord> = {
     // agent rebalanced out of it; its live position is 7248592. Task 12's proof
     // harvest is what should refresh this ref (and the attestation anchored to
     // it), not a hand edit here.
+    //
+    // The Uniswap v3 row is the agent's own-capital run since 2026-09-13
+    // (`LP_RANGE_VENUE=uniswap-v3` on the runner); managed accounts stay on
+    // PancakeSwap V3 because their session policy allows only that venue.
     proofs: [
+      {
+        label: 'Uniswap v3 position minted',
+        ref: '2745250',
+        kind: 'position',
+        positionManager: '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613',
+        note: 'Concentrated-liquidity WBNB/USDT position in the 0.05% pool, funded from the agent\'s own wallet',
+      },
       {
         label: 'PancakeSwap V3 position minted',
         ref: '7173629',

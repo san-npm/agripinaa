@@ -4,6 +4,7 @@ import type { VerifiedAgent } from "@/lib/verified";
 import { VerifiedIcon } from "./icons";
 import { ProofSummary } from './ProofSummary';
 
+/** PancakeSwap V3 position manager, the venue of proof rows that carry no `positionManager`. */
 const NPM = "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364";
 
 function ProofRow({
@@ -62,7 +63,7 @@ export function ProofPanel({ agent }: { agent: VerifiedAgent }) {
             note={p.note}
             href={
               p.kind === "position"
-                ? `${bscScanAddress(56, NPM)}?a=${p.ref}`
+                ? `${bscScanAddress(56, p.positionManager ?? NPM)}?a=${p.ref}`
                 : bscScanTx(56, p.ref)
             }
             linkText={p.kind === "position" ? `position #${p.ref}` : "execution tx"}
