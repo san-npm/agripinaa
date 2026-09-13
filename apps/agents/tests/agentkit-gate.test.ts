@@ -195,6 +195,25 @@ test('verification is rate limited per client and in flight', async () => {
   assert.equal(someoneElse.granted, true);
 });
 
+test('a verification past its deadline declines, keeps its slot until it settles, and spends no trial', async () => {
+  // A registry that answers well after the deadline.
+  const slow = { name: 'slow', verifier: { lookupHuman: () => new Promise<string>((resolve) => setTimeout(() => resolve('0xhuman1'), 700)) } };
+  const storage = new BoundedAgentKitStorage();
+  const gate = createAgentkitGate({ agentBooks: [slow], uses: 1, storage, gate: new RequestGate(30, 60_000, 1), deadlineMs: 50 });
+  const late = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', 'a');
+  assert.equal(late.granted, false);
+  assert.match(reason(late), /took too long/);
+  // The one in-flight slot is still taken by the unfinished lookup.
+  const blocked = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', 'b');
+  assert.match(reason(blocked), /too many verification attempts/);
+  await new Promise((r) => setTimeout(r, 1_500));
+  // The late lookup resolved after the deadline: no trial use was spent.
+  assert.equal(storage.tryIncrementUsage('/grid/status', '0xhuman1', 1), true, 'the single free read is still unspent');
+  // And the slot came back once the lookup settled.
+  const slot = await gate.admit(await headerFor(human), RESOURCE, '/grid/status', 'c');
+  assert.doesNotMatch(reason(slot), /too many verification attempts/);
+});
+
 test('the status route offers the challenge in its 402 and serves a human-backed caller without settlement', async (t) => {
   const logged: Record<string, unknown>[] = [];
   const entry = {

@@ -87,7 +87,9 @@ export const yieldBAgent: AgentModule = {
 
     if (venue === 'none') {
       // Entry is not a rotation: the floor and the confirmation count exist to
-      // stop churn between venues, and neither should leave capital idle.
+      // stop churn between venues, and neither should leave capital idle. The
+      // lane's veto streak ends here too, since there was nothing to veto.
+      ctx.state.set('graphVetoes', 0);
       const deployableWei = position.walletUsdtWei - RESERVE_WEI;
       if (deployableWei <= DUST_WEI) {
         ctx.log({
@@ -176,6 +178,7 @@ export const yieldBAgent: AgentModule = {
       from: venue,
       to: decision.target,
       edgeBps: decision.edgeBps,
+      graphOverruled: decision.graphOverruled,
     });
     // Anchored before the withdraw, so a crash between the two legs cannot let
     // the next tick start a second rotation on top of a half-finished one.

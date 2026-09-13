@@ -451,6 +451,8 @@ export const yieldAgent: AgentModule = {
     };
 
     if (venue === 'none') {
+      // No rotation to veto here, so the lane's veto streak ends.
+      ctx.state.set('graphVetoes', 0);
       const deployableWei = position.walletUsdtWei - RESERVE_WEI;
       if (deployableWei <= DUST_WEI) {
         ctx.log({ ...base, event: 'tick', decision: 'unfunded', deployable: fromBaseUnits(
@@ -796,6 +798,8 @@ export async function managedYieldTick(
   }
 
   if (venue === 'none') {
+    // No rotation to veto here, so the lane's veto streak ends.
+    ctx.state.set(ns('graphVetoes'), 0);
     // Managed funds deploy in full: the router moves the account's entire USDT
     // balance, so there is no reserve/partial-deploy split as in own-capital mode.
     if (position.walletUsdtWei <= DUST_WEI) {
@@ -910,6 +914,7 @@ export async function managedYieldTick(
   const action = decision.target === 'venus' ? 'toVenus' : 'toAave';
   // Anchored before the call, so a crash inside the execute window cannot let
   // the next tick fire a second rotation against a mandate already moving.
+  ctx.log({ ...base, event: 'managed-tick', decision: 'rotate', target: decision.target, edgeBps: decision.edgeBps, graphOverruled: decision.graphOverruled });
   ctx.state.set(ns('lastRotateAt'), now);
   let res: Awaited<ReturnType<ManagedExecutor['execute']>>;
   try {
