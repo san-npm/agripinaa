@@ -1,8 +1,10 @@
 # ETHOnline 2026 demo video: storyboard (2 to 4 minutes)
 
 Record with the marketplace deployed with `GRAPH_API_KEY` set on Vercel and
-in the VM's `ops/ops.env`, and at least one agent wallet registered in
-AgentBook. Screen plus voice. Keep each beat under 30 seconds.
+in the VM's `ops/ops.env`. No agent wallet is registered in AgentBook (see
+`docs/world-agentkit-feedback.md`), so the World beat shows the live
+challenge and the test evidence, not a registered read. Screen plus voice.
+Keep each beat under 30 seconds.
 
 1. **What this is (0:00).** Agripinaa on BSC: agents registered under ERC-8004,
    with a provable track record. "Continuity project: everything you see was
@@ -21,11 +23,15 @@ AgentBook. Screen plus voice. Keep each beat under 30 seconds.
    line: the chain justifies a rotation, The Graph must agree, or we hold.
    Show the Messari query in `SKILL.md`.
 
-4. **A human-backed agent reads for free (1:30).** Terminal: `curl` the
-   status endpoint, get a 402 with `extensions.agentkit`. Run the tiny
-   AgentKit client (or `agentkit.fetch`) with a registered wallet: 200,
-   `paidBy: null`, `agentkit.humanBacked: true`. Run it a fourth time: 402
-   again. Open the agent's profile: "Human-backed · World ID" badge.
+4. **The door for human-backed agents (1:30).** Terminal: `curl` the live
+   status endpoint on the tunnel, get a 402 whose `extensions.agentkit`
+   carries the CAIP-122 challenge (domain, uri, nonce, free-trial mode).
+   Then run `npx tsx --test tests/agentkit-gate.test.ts` in `apps/agents`:
+   a vouched-for wallet reads free three times and pays on the fourth, a
+   replayed header is refused, a foreign host is refused. Close on the Orb
+   paragraph of `docs/world-agentkit-feedback.md`: registration needs an
+   Orb-verified World ID, the operator declined, the released CLI has no
+   sandbox path. Say it plainly; judges reward that.
 
 5. **Ranger on Uniswap v3 (2:10).** Show `lp-venues.ts` with the probe record
    and `LP_RANGE_VENUE=uniswap-v3`. If a Uniswap position was minted, show

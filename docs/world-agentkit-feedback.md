@@ -1,14 +1,16 @@
 # World AgentKit: integration feedback
 
 Written 2026-09-12 and 2026-09-13 while adding AgentKit to Agripinaa for
-ETHOnline 2026. What we built: the marketplace shows a "Human-backed · World
-ID" badge resolved live from AgentBook on each profile; the runner's paid
-`GET /:agent/status` (x402, permit2-exact USDT on BSC) grants a human-backed
-caller a free trial of three reads per human per endpoint before the normal
-payment applies, and its 402 carries the AgentKit challenge. What we could
-not do: register the eight agent wallets in AgentBook, because that requires
-an Orb-verified World ID and the operator declined biometric verification;
-the last section explains what that exposed. Code: `apps/agents/src/agentkit-gate.ts`,
+ETHOnline 2026. What we built: every profile looks its agent's wallet up in
+AgentBook live and, for a registered first-party wallet, shows a
+"Human-backed · World ID" badge; the runner's paid `GET /:agent/status`
+(x402, permit2-exact USDT on BSC) grants a human-backed caller a free trial
+of three reads per human per endpoint before the normal payment applies,
+and its 402 carries the AgentKit challenge. What we could not do: register
+the eight agent wallets in AgentBook, because that requires an Orb-verified
+World ID and the operator declined biometric verification. No profile
+therefore shows the badge today; the lookup answers "not in World AgentBook"
+for each, and the last section explains what that exposed. Code: `apps/agents/src/agentkit-gate.ts`,
 `apps/web/src/lib/agentbook.ts`, the 402 branch of
 `apps/agents/src/x402-server.ts`.
 
