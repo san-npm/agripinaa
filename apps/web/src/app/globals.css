@@ -154,8 +154,8 @@ input, select, textarea { font-size: 1rem; }
 .protocol-logo img { width: 86px; height: 24px; object-fit: contain; }
 .protocol-logo[data-protocol="pancakeswap"] img { width: 132px; }
 .protocol-logo[data-protocol="bnb-chain"] img { width: 118px; }
-.protocol-logo[data-protocol="ophis"] img { width: 24px; }
-.protocol-logo[data-protocol="ophis"] > span { font-size: 1rem; font-weight: 650; }
+.protocol-logo[data-protocol="ophis"] img, .protocol-logo[data-protocol="uniswap"] img { width: 24px; }
+.protocol-logo[data-protocol="ophis"] > span, .protocol-logo[data-protocol="uniswap"] > span { font-size: 1rem; font-weight: 650; }
 .ecosystem-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 2rem 3rem; padding: 0 0 2.5rem; }
 .ecosystem-strip .eyebrow { margin-bottom: 12px; font-size: .625rem; }
 .ecosystem-protocols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }

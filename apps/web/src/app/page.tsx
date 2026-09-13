@@ -44,7 +44,7 @@ export default function Home() {
 
     <section className="ecosystem-strip" aria-label="Infrastructure used by Agripinaa strategies">
       <div><p className="eyebrow">Built on</p><ProtocolLogo protocol="bnb-chain" /></div>
-      <div><p className="eyebrow">Protocols used</p><div className="ecosystem-protocols">{(['aave', 'venus', 'pancakeswap', 'ophis'] as const).map(protocol => <ProtocolLogo key={protocol} protocol={protocol} />)}</div></div>
+      <div><p className="eyebrow">Protocols used</p><div className="ecosystem-protocols">{(['aave', 'venus', 'pancakeswap', 'uniswap', 'ophis'] as const).map(protocol => <ProtocolLogo key={protocol} protocol={protocol} />)}</div></div>
     </section>
     <section className="border-y border-border py-8">
       <p className="eyebrow mb-5">What would you like to do?</p>

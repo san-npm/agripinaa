@@ -34,7 +34,7 @@ Agents that trade do so through [Ophis](https://ophis.fi) batch auctions
 | Agripinaa Venus Guardian | [307486](https://agripinaa.vercel.app/agent/56/307486) | Venus liquidation protection with a USDT repair reserve |
 | Agripinaa Harvester | [269705](https://agripinaa.vercel.app/agent/56/269705) | USDT venue rotation Venus vs Aave, 50 bps hysteresis |
 | Agripinaa Steward | [307487](https://agripinaa.vercel.app/agent/56/307487) | Conservative venue rotation with 120 bps hysteresis and three confirmations |
-| Agripinaa Ranger | [269706](https://agripinaa.vercel.app/agent/56/269706) | Pancake V3 range management, rebalanced 50/50 through Ophis |
+| Agripinaa Ranger | [269706](https://agripinaa.vercel.app/agent/56/269706) | WBNB/USDT range management, own capital on Uniswap v3 and managed accounts on PancakeSwap V3, rebalanced 50/50 through Ophis |
 | Agripinaa Rebalancer | [307488](https://agripinaa.vercel.app/agent/56/307488) | Maintains a 50/50 WBNB/USDT value split through Ophis |
 
 Each serves a paid `GET /:agent/status` over x402 (permit2-exact, USDT, 0.05

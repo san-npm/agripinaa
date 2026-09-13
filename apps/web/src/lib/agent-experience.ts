@@ -9,7 +9,7 @@ export interface ManagedActivationCopy {
 
 export interface AgentExperienceCopy {
   /** Strategy venues only, not deposit conversion routes or endorsements. */
-  protocols: ('aave' | 'venus' | 'pancakeswap' | 'ophis')[];
+  protocols: ('aave' | 'venus' | 'pancakeswap' | 'uniswap' | 'ophis')[];
   /** Plain-language overview; detailed permissions remain visible before approval. */
   summary: string;
   /** Compact positioning shown on the directory card. */
@@ -105,13 +105,13 @@ export const AGENT_EXPERIENCE: Record<AgentSlug, AgentExperienceCopy> = {
     },
   },
   'lp-range': {
-    protocols: ['pancakeswap', 'ophis'],
-    summary: 'Manage a WBNB/USDT liquidity range on PancakeSwap V3 and rebalance when needed.',
-    directoryLabel: 'Managed liquidity · PancakeSwap V3',
+    protocols: ['uniswap', 'pancakeswap', 'ophis'],
+    summary: 'Run a WBNB/USDT liquidity range: own capital on Uniswap v3, managed accounts on PancakeSwap V3, rebalanced through Ophis.',
+    directoryLabel: 'Uniswap v3 range · managed on PancakeSwap V3',
     profileCta: 'Activate LP Ranger',
     managed: {
       heading: 'Run a managed Pancake V3 range',
-      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares WBNB and USDT, then LP Ranger mints a ±5% position and uses Ophis when inventory needs balancing.',
+      intro: 'Fund once with BTCB, BNB, USDT, or USDC. The account prepares WBNB and USDT, then LP Ranger mints a ±5% position and uses Ophis when inventory needs balancing. Managed accounts stay on PancakeSwap V3 by session policy; the agent runs the same range with its own capital on Uniswap v3.',
       submitLabel: 'Start LP Ranger',
       activeSummary: 'LP Ranger now owns the range lifecycle for this dedicated account under its weekly rebalance and daily action limits.',
     },
