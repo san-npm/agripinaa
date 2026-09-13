@@ -28,6 +28,23 @@ block 121491250: `factory()` and `WETH9()` on the manager match the published
 factory and WBNB; the four pools report liquidity 1.35e23, 1.14e24, 3.50e22
 and 1.81e22, token0 USDT in all four, `slot0().feeProtocol` 68 and 102.
 
+## Live on mainnet
+
+Switched on 2026-09-13 00:45 UTC with `LP_RANGE_VENUE=uniswap-v3` on the
+production runner. Ranger's first tick on the new venue, from its JSONL log:
+
+- `pool-selected`: `0x6fe9E9de56356F7eDBfcBB29FAB7cd69471a4869`, fee 500,
+  the deepest WBNB/USDT pool at that moment (liquidity 1.65e24).
+- `inventory-prep`: sold 0.00152 WBNB for USDT through an Ophis batch
+  auction, order `0xf3f261b5…a5f94b`, filled 15 seconds later.
+- `minted`: Uniswap v3 position **2745250**, ticks -66390 to -65410 around
+  the current tick -65897, transaction
+  `0x3dffa2c5dc47ebbfea32fef0fecb628b2aca991877025285a5cda285e4c15076`,
+  owned by Ranger's wallet `0x79827EF1faDeA3B30A8E77fdbaF17944298A3bB6`.
+
+Forty seconds from restart to a live position, no code change between the
+PancakeSwap and Uniswap runs.
+
 ## Feedback
 
 1. **The deployments page moved and the old URL chains two redirects.**
