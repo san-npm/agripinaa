@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import workspace from "../../package.json";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   cacheComponents: true,
   transpilePackages: [
     "@agripinaa/agent-index",
