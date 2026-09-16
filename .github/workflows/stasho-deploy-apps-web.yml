@@ -1,0 +1,228 @@
+name: Stasho Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/web/**
+      - packages/agent-index/**
+      - packages/exec-metrics/**
+      - packages/session-kit/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - package.json
+      - pnpm-workspace.yaml
+      - .github/workflows/stasho-deploy-apps-web.yml
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit SHA to deploy'
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      BACKEND_URL: https://api.stasho.xyz
+      AUDIENCE: https://api.stasho.xyz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: ${{ github.event.inputs.commit || github.sha }}
+
+      - name: Enable Corepack (pnpm)
+        # The pin is a fallback for repos with no "packageManager" field.
+        # Corepack prefers that field when it is present; without a pin it
+        # silently tracks whatever pnpm major is latest upstream.
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Register deploy (installing)
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg msg "$COMMIT_MSG" --arg url "$ACTIONS_RUN_URL" \
+                        '{"status":"installing","commitMessage":$msg,"actionsRunUrl":$url}')"
+
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          { pnpm install --frozen-lockfile || { echo "::error::pnpm-lock.yaml is out of sync with your workspace manifests (a workspace was likely added without updating it). Run pnpm install locally and commit the updated pnpm-lock.yaml."; exit 1; }; } 2>&1 | tee /tmp/build.log
+
+      - name: Report building
+        run: |
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"building"}'
+
+      - name: Fetch build env
+        run: |
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf "$BACKEND_URL/api/deploy/env" -H "Authorization: Bearer $TOKEN" \
+            -o /tmp/stasho-env.json
+          jq -r '.env | to_entries[] | "\(.key)<<__SE__\n\(.value)\n__SE__"' \
+            /tmp/stasho-env.json >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          set -o pipefail
+          pnpm --filter ./apps/web build 2>&1 | tee /tmp/build.log
+
+      - name: Package bundle
+        run: |
+          set -o pipefail
+          {
+            if [ ! -d apps/web/.next/standalone ]; then
+              echo "FATAL: apps/web/.next/standalone not found. Set output: 'standalone' in next.config and push again." >&2
+              exit 1
+            fi
+            if [ ! -f apps/web/.next/standalone/apps/web/server.js ]; then
+              echo "FATAL: apps/web/.next/standalone/apps/web/server.js not found. Expected the nested workspace standalone layout at this path; check that the workspace build produced output." >&2
+              exit 1
+            fi
+            mkdir -p /tmp/bundle-flat
+            if [ -d apps/web/.next/standalone/node_modules ]; then
+              cp -a apps/web/.next/standalone/node_modules /tmp/bundle-flat/node_modules
+            fi
+            cp -a apps/web/.next/standalone/apps/web/. /tmp/bundle-flat/
+            if [ -d /tmp/bundle-flat/node_modules ]; then
+              find /tmp/bundle-flat/node_modules -maxdepth 2 -type l -not -path '*/.pnpm/*' | while read -r link; do
+                target=$(readlink "$link")
+                case "$target" in
+                  */node_modules/.pnpm/*) ;;
+                  *) continue ;;
+                esac
+                rel=${link#/tmp/bundle-flat/node_modules/}
+                up=""
+                case "$rel" in */*) up="../" ;; esac
+                ln -sfn "${up}.pnpm/${target#*/node_modules/.pnpm/}" "$link"
+              done
+            fi
+            mkdir -p /tmp/bundle-flat/.next
+            cp -a apps/web/.next/static /tmp/bundle-flat/.next/static
+            if [ -d apps/web/public ]; then cp -a apps/web/public /tmp/bundle-flat/public; fi
+            tar -czf /tmp/app.tar.gz -C /tmp/bundle-flat .
+            ARTIFACT_HASH=$(sha256sum /tmp/app.tar.gz | cut -d' ' -f1)
+            mkdir -p /tmp/bundle-stage
+            jq -n --arg projectId "proj_UBQDh3v3O8nJ" --arg hash "$ARTIFACT_HASH" \
+              --slurpfile envfile /tmp/stasho-env.json \
+              '{v: 1, projectId: $projectId, framework: "nextjs", nodeVersion: "22", startCommand: "node server.js", artifactHash: $hash, env: ($envfile[0].env // {})}' \
+              > /tmp/bundle-stage/manifest.json
+            cp /tmp/app.tar.gz /tmp/bundle-stage/app.tar.gz
+            tar -czf /tmp/bundle.tar.gz -C /tmp/bundle-stage manifest.json app.tar.gz
+          } 2>&1 | tee /tmp/build.log
+
+      - name: Encrypt bundle
+        run: |
+          set -o pipefail
+          {
+            TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+            HTTP_CODE=$(curl -sLS -o /tmp/instance-keys.json -w "%{http_code}" \
+              -H "Authorization: Bearer $TOKEN" "$BACKEND_URL/api/deploy/instance-keys")
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "FATAL: instance-keys returned $HTTP_CODE:" >&2
+              cat /tmp/instance-keys.json >&2
+              exit 1
+            fi
+            mkdir -p /tmp/stasho-encrypt
+            cd /tmp/stasho-encrypt || exit 1
+            npm init -y > /dev/null
+            npm install --no-save eciesjs@0.4.18 > /dev/null
+            cat > encrypt.mjs <<'STASHO_ENCRYPT_EOF'
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { randomBytes, createCipheriv } from "node:crypto";
+          import { encrypt as eciesEncrypt } from "eciesjs";
+
+          const [plaintextPath, keysPath, outPath] = process.argv.slice(2);
+          if (!plaintextPath || !keysPath || !outPath) {
+            console.error("usage: node encrypt.mjs <bundle.tar.gz> <keys.json> <out>");
+            process.exit(1);
+          }
+          const keys = JSON.parse(readFileSync(keysPath, "utf8"));
+          const PUBKEY_RE = /^0x04[0-9a-fA-F]{128}$/;
+          for (const name of ["vmPubkey", "encryptionPubkey"]) {
+            if (!PUBKEY_RE.test(keys[name] || "")) {
+              console.error("FATAL: " + name + " is not an uncompressed secp256k1 pubkey");
+              process.exit(1);
+            }
+          }
+          const plaintext = readFileSync(plaintextPath);
+          const dek = randomBytes(32);
+          const iv = randomBytes(12);
+          const cipher = createCipheriv("aes-256-gcm", dek, iv);
+          const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+          const tag = cipher.getAuthTag();
+          const wrap = (pubkeyHex) =>
+            Buffer.from(eciesEncrypt(Buffer.from(pubkeyHex.slice(2), "hex"), dek)).toString("base64");
+          const envelope = {
+            v: 1,
+            kind: "stasho-bundle",
+            alg: "aes-256-gcm",
+            ct: ct.toString("base64"),
+            iv: iv.toString("base64"),
+            tag: tag.toString("base64"),
+            deks: { vm: wrap(keys.vmPubkey), encryption: wrap(keys.encryptionPubkey) },
+          };
+          writeFileSync(outPath, JSON.stringify(envelope));
+          console.log("encrypted " + plaintext.length + " bytes -> " + outPath);
+
+          STASHO_ENCRYPT_EOF
+            node encrypt.mjs /tmp/bundle.tar.gz /tmp/instance-keys.json /tmp/bundle.enc
+          } 2>&1 | tee /tmp/build.log
+
+      - name: Report uploading
+        run: |
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"uploading"}'
+
+      - name: Upload bundle
+        run: |
+          set -o pipefail
+          {
+            TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value) \
+            && curl -sLSf -X POST "$BACKEND_URL/api/deploy/upload" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "artifact=@/tmp/bundle.enc" \
+              -F "projectId=proj_UBQDh3v3O8nJ"
+          } 2>&1 | tee /tmp/build.log
+
+      - name: Report failure
+        if: failure()
+        run: |
+          ERROR_TAIL=$(tail -n 50 /tmp/build.log 2>/dev/null | head -c 32768 || echo "")
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg err "$ERROR_TAIL" \
+                        '{"status":"failed","error":$err}')"
