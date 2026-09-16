@@ -1,0 +1,90 @@
+name: Stasho Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - package.json
+      - pnpm-workspace.yaml
+      - .github/workflows/stasho-deploy-packages-shared.yml
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit SHA to deploy'
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      BACKEND_URL: https://api.stasho.xyz
+      AUDIENCE: https://api.stasho.xyz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          ref: ${{ github.event.inputs.commit || github.sha }}
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Register deploy (installing)
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg msg "$COMMIT_MSG" --arg url "$ACTIONS_RUN_URL" \
+                        '{"status":"installing","commitMessage":$msg,"actionsRunUrl":$url}')"
+
+      - name: Report uploading
+        run: |
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"uploading"}'
+
+      - name: Upload artifact
+        run: |
+          set -o pipefail
+          {
+            if [ ! -d "packages/shared/." ]; then
+              echo "Build produced no packages/shared/./. If this is a server app, switch the project's Deploy target to Instance in Settings." >&2
+              exit 1
+            fi
+            tar -czf /tmp/build.tar.gz -C packages/shared/. . \
+            && TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value) \
+            && curl -sLSf -X POST "$BACKEND_URL/api/deploy/upload" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "artifact=@/tmp/build.tar.gz"
+          } 2>&1 | tee /tmp/build.log
+
+      - name: Report failure
+        if: failure()
+        # Tail last 50 lines (capped at 32 KB) of the failing step's combined
+        # stdout/stderr from /tmp/build.log. jq -n --arg safely escapes the
+        # captured text so shell metacharacters in the build output can't
+        # corrupt the JSON payload. Errors flow through the same dual-envelope
+        # encryption as commit/branch/commitMessage on the backend.
+        run: |
+          ERROR_TAIL=$(tail -n 50 /tmp/build.log 2>/dev/null | head -c 32768 || echo "")
+          TOKEN=$(curl -sLS "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
+          curl -sLSf -X POST "$BACKEND_URL/api/deploy/report" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg err "$ERROR_TAIL" \
+                        '{"status":"failed","error":$err}')"
